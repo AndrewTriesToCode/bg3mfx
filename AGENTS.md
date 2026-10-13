@@ -12,7 +12,7 @@ separate control. Preserve BG3's native Off and AMD FSR 1.0 options.
   the `AndrewTriesToCode/homebrew-brews` tap) and start the game with the
   `bg3mfx` launcher (`src/launcher/`), which supports the Steam build only and
   never modifies the game. Keep README.md player-facing; developer material goes
-  in `docs/dev/`.
+  in `docs/dev/`. Never edit README.md without first checking with the user.
 - Preserve upscaler quality selection and resolution across startup.
 - Spatial preserves BG3's independent anti-aliasing control. It consumes linear
 HDR after bloom and color grading, before `FSR_Tonemap`.
