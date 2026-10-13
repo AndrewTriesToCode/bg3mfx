@@ -1,0 +1,1 @@
+regex:(?i)^bin[\\/](?:bg3(?:_dx11)?\.exe|nvngx[^\\/]*\.dll|[^\\/]*dlss[^\\/]*\.dll)$

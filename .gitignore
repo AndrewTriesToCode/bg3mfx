@@ -1,0 +1,42 @@
+# Build output, local captures, traces and downloaded references (see AGENTS.md).
+build/
+
+# Game files: never commit BG3 executables, extracted shaders or assets.
+*.app/
+*.exe
+*.dll
+*.pak
+*.dmg
+Baldur's Gate 3*
+bg3-arm64
+*.metallib
+*.air
+*.bc
+*.ll
+
+# Test and profiling data.
+*.gputrace
+*.trace
+*.jsonl
+*.log
+*.err
+*sample*.txt
+*.time
+
+# Compiled objects.
+*.o
+*.dylib
+*.dSYM/
+
+# Python.
+__pycache__/
+*.pyc
+.venv/
+
+# Local tooling and editor state.
+.claude/settings.local.json
+.DS_Store
+*.swp
+.vscode/
+.idea/
+xcuserdata/
