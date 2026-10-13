@@ -60,8 +60,8 @@ moving-scene validation for interpolation, separately from temporal scaling.
 Presentation (second design, after live tests showed the first was slower and
 choppier):
 
-- While value 4 is selected, BG3's `nextDrawable` returns a stand-in backed by
-  one of three pooled BGRA8 textures. BG3's own `CombineUI` composes the real
+- While Frame Generation is on, BG3's `nextDrawable` returns a stand-in backed by
+  one of three pooled textures in the layer's pixel format. BG3's own `CombineUI` composes the real
   frame into it; that image is used as-is. If all three stand-ins are still
   waiting to be shown, `nextDrawable` blocks up to one second, like a real
   drawable.
@@ -158,7 +158,7 @@ choppier):
   were not a presenter limit. The diagnostic runtime is not representative for
   frame rates.
 - Frames without a pair are copied to a real drawable and presented at once.
-  Leaving value 4 makes `nextDrawable` return real drawables again and releases
+  Turning Frame Generation off makes `nextDrawable` return real drawables again and releases
   the effect; stand-ins already handed out keep their presenter until shown.
 
 The first design overwrote BG3's acquired drawable after GPU completion and
