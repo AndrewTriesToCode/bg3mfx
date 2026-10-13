@@ -5,8 +5,17 @@ are archived under [`history/`](history/).
 
 ## Frame Generation (initial integration)
 
-Frame Generation is the Upscaling Type entry "MetalFX Temporal + Frame
-Generation"; other entries stay native and release the effect. Live tests of the
+Frame Generation is the "MetalFX Frame Generation" checkbox and combines with
+every Upscaling Type; clearing it releases the effect. As of October 13, only
+Temporal + Frame Generation has run live. Off, FSR and Spatial with Frame
+Generation are covered synthetically: `frame-generation-hook-smoke` pairs each
+with a byte-identical generated composition, switches between them, and checks
+that frames without TAA inputs are presented unpaired and pairing resumes. Live,
+Temporal, Spatial and FSR with Frame Generation worked; Off first did not pair
+because BG3's CAS sharpening pass broke the scene chain. With CAS followed, all
+four worked live, and the October 13 presentation pacing (minimum-duration and
+spaced presents, see [Frame Generation](frame-generation.md)) was reported
+working very well with VSync on and off. Live tests of the
 first presentation design showed generated frames reaching the display at
 roughly twice the rendered rate. The user found it slower and choppier: the HUD
 did not show a higher FPS and motion did not look smoother. Presentation has

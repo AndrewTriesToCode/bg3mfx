@@ -111,6 +111,37 @@ choppier):
   hook records BG3's later changes instead of applying them, and the latest one
   is restored on leaving the entry. The fixture checks the two/three limits and
   the restore. Recommended setting: vsync on with Frame Generation.
+- Vsync off, Upscaling Off, no FPS limiter (diagnostic trace, October 13,
+  `build/fg-vsyncoff.jsonl`): BG3 rendered about 20 fps without Frame Generation
+  and about 19 with it (frames every ~52 ms; interpolation 5-6 ms GPU; BG3 never
+  waited on stand-ins). The HUD showed about 10 "rendered" fps, so its rendered
+  figure is unreliable with the unsynced `-present` path. Motion was very choppy:
+  real and generated images became ready together and replaced each other
+  before scan-out (generated-to-real gaps as low as 2 ms; 20-28% of generated
+  images dropped). A standalone window test (`build/experiments/mindur.mm`, 120 Hz,
+  display sync off, two presents every 50 ms) showed 59 of 120 images displayed
+  with `presentDrawable:` and 118 of 120, every gap exactly 25 ms, with
+  `presentDrawable:afterMinimumDuration:0.025`. At 125 pairs/s with a 4 ms
+  minimum, `afterMinimumDuration:` still showed exactly 120 images/s (8.3 ms
+  apart) and fell behind (500 images over 4.2 s), so it rounds to whole
+  refreshes; plain presents ran uncapped (132 images/s, tearing, some lost). The
+  vsync-off path therefore uses `afterMinimumDuration:` with half BG3's smoothed
+  frame interval while that spans at least one refresh of the window's display,
+  and plain presents (uncapped, may tear) when BG3 renders faster. The user
+  reported the minimum-duration version "much better" at about 20 rendered fps;
+  a one-refresh floor capped every Upscaling Type at 120 displayed, so it was
+  replaced by the switch. Live with that switch, the fast case was "very jittery
+  and unpaced": both images were presented together. That case now presents
+  the generated image, waits half an interval on the worker, then presents the
+  real one. With display sync on and 30 pairs/s, standalone, plain presents
+  alternated 8.3/25 ms gaps while `afterMinimumDuration:` with half the interval
+  gave 16.7 ms every time, so the VSync-on path now uses `afterMinimumDuration:`
+  instead of `presentDrawable:atTime:` with display-time anchors. BG3's VSync
+  setting is untouched. Live (October 13, quiet runtime with
+  `BG3MFX_FRAME_LOG=1`), the user tested VSync on, VSync off fast and slow, and
+  Frame Generation off, and reported all "working very well". Not yet
+  confirmed live; the fixture's layer is unattached, so it does not measure
+  display timing.
 - `MTL_CAPTURE_ENABLED=1` slows the whole session (Temporal measured 23-34 fps
   instead of about 55), so do not combine capture-enabled launches with pacing
   or frame-rate comparisons. A GPU profile of plain Temporal at 3840x2160 output

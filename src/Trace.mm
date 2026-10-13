@@ -12,6 +12,7 @@
 #import "TemporalUpscaler.h"
 #import "NativeMenu.h"
 #import "FrameInterpolation.h"
+#import "FrameLog.h"
 #import "GPUResources.h"
 #import <QuartzCore/CAMetalLayer.h>
 #include <mach/mach_time.h>
@@ -1794,6 +1795,7 @@ static id computeEncoderType(id self, SEL cmd, MTLDispatchType type) {
 }
 static void countPresent(id drawable, SEL cmd) {
     (void)drawable; (void)cmd;
+    BG3MFXFrameLogRendered();
     std::lock_guard<std::recursive_mutex> lock(guard()); ++frames;
     if (frames == 1 || frames == 120 || frames % 3600 == 0)
         record(@{@"event": @"present", @"method": NSStringFromSelector(cmd), @"frames": @(frames), @"texture": texture([drawable texture])});
@@ -1809,14 +1811,20 @@ static BOOL deferPresent(id buffer, SEL cmd, id drawable) {
         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return YES;
 }
+// With Frame Generation off, BG3 presents real drawables itself.
+static void logNativePresent(id drawable) {
+    if (!BG3MFXFrameLogEnabled()) return;
+    BG3MFXFrameLogMethod(BG3MFXPresentNative);
+    [(id<MTLDrawable>)drawable addPresentedHandler:^(id<MTLDrawable> d){ BG3MFXFrameLogShown(NO,d.presentedTime); }];
+}
 static void present(id self, SEL cmd, id drawable) {
     if(deferPresent(self,cmd,drawable)) return;
-    countPresent(drawable,cmd);
+    countPresent(drawable,cmd); logNativePresent(drawable);
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable);
 }
 static void presentTimed(id self, SEL cmd, id drawable, double time) {
     if(deferPresent(self,cmd,drawable)) return;
-    countPresent(drawable,cmd);
+    countPresent(drawable,cmd); logNativePresent(drawable);
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time);
 }
 static void commit(id self, SEL cmd) {

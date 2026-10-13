@@ -39,6 +39,13 @@ about a third of the frame rate. For a diagnostic session, use a new trace path:
 python3 tools/bg3mfx.py launch-trace --output /absolute/path/to/new-trace.jsonl
 ```
 
+Add `BG3MFX_FRAME_LOG=1` (quiet or diagnostic runtime) to log BG3's actual
+rendered rate, the real and generated images that reached the display, drops,
+the presentation method, and the gaps between shown images every 2 s:
+`log stream --predicate 'subsystem == "com.bg3mfx"'`. With Frame Generation on,
+the Metal HUD's "rendered" figure is unreliable (a trace showed about 19
+rendered fps while the HUD showed about 10); use this log instead.
+
 Add `MTL_HUD_LOG_ENABLED=1` to record the Metal HUD's per-second frame counts in
 the unified log (`/usr/bin/log show --predicate 'category == "Logging"'`). Do
 not combine `MTL_CAPTURE_ENABLED=1` with frame-rate comparisons: the capture

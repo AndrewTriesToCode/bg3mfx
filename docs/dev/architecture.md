@@ -113,10 +113,20 @@ pooled textures; BG3 renders, composes UI, and "presents" into them unchanged,
 and blocks like a real drawable when all three are in flight. BG3 presents before
 encoding `CombineUI`, so the stand-in present is resolved at `commit`, which also
 signals a shared event. The worker in `FrameInterpolation.*` acquires real
-drawables itself, waits for that event on the GPU, shows the generated image
-half a frame interval after the previous real frame, and then the real image
-half an interval after the generated one was actually displayed
-(`presentDrawable:atTime:`). Only the generated scene goes through an extra
+drawables itself and waits for that event on the GPU. It spaces the generated
+and real images about half of BG3's smoothed frame interval apart:
+
+| Case | Presentation |
+| --- | --- |
+| VSync on | `presentDrawable:afterMinimumDuration:` with half the interval, at least one refresh |
+| VSync off, BG3 at or below half the refresh rate | `afterMinimumDuration:` with half the interval |
+| VSync off, faster | Generated image when its copy finishes, a half-interval wait on the worker, then the real image; uncapped and tearing |
+
+`afterMinimumDuration:` rounds up to whole refreshes, so it would cap the
+vsync-off fast case. The refresh interval is read on the main thread from the
+layer's window. The stand-in is released when the real copy completes, before
+any wait, and the worker skips the wait when BG3's next frame is already
+queued. Frames without a generated image are presented at once. Only the generated scene goes through an extra
 `CombineUI` pass. The worker never blocks BG3's or Metal's threads. Devices
 without Metal 4 FX use the Metal 3 effect. This implementation still needs
 displayed/pacing validation and does not establish HDR support. See the

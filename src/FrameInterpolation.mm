@@ -1,5 +1,6 @@
 #import "FrameInterpolation.h"
 #import "GPUResources.h"
+#import "FrameLog.h"
 #import <MetalFX/MetalFX.h>
 #include <cmath>
 #include <thread>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <mach/mach_time.h>
 #import <QuartzCore/QuartzCore.h>
+#import <AppKit/AppKit.h>
 #import <objc/runtime.h>
 
 static NSError *fgError(NSString *reason) {
@@ -227,8 +229,8 @@ struct PresentTask {
     std::atomic<NSUInteger> _drawableIDs;
     std::atomic<double> _standInWait;
     // Diagnostics, in seconds; reset by takeTimingSummary.
-    std::atomic<double> _idleTime, _drawableTime, _gpuTime, _sleepTime, _standInTime;
-    std::atomic<unsigned> _timedTasks, _immediateTasks, _backlogSkips;
+    std::atomic<double> _idleTime, _drawableTime, _standInTime;
+    std::atomic<unsigned> _timedTasks, _immediateTasks;
     std::mutex _mutex;
     std::condition_variable _wake;
     std::deque<PresentTask> _tasks;
@@ -322,9 +324,8 @@ struct PresentTask {
 - (NSDictionary *)takeTimingSummary {
     unsigned tasks=_timedTasks.exchange(0);
     auto ms=[&](std::atomic<double> &total){ double value=total.exchange(0); return @(tasks ? value*1000/tasks : 0); };
-    return @{@"tasks":@(tasks),@"vsyncOffTasks":@(_immediateTasks.exchange(0)),@"backlogSkips":@(_backlogSkips.exchange(0)),
-        @"idleMs":ms(_idleTime),@"drawableWaitMs":ms(_drawableTime),@"gpuWaitMs":ms(_gpuTime),
-        @"pacingSleepMs":ms(_sleepTime),@"bg3StandInWaitMs":ms(_standInTime)};
+    return @{@"tasks":@(tasks),@"vsyncOffTasks":@(_immediateTasks.exchange(0)),
+        @"idleMs":ms(_idleTime),@"drawableWaitMs":ms(_drawableTime),@"bg3StandInWaitMs":ms(_standInTime)};
 }
 - (void)encodeCopy:(id<MTLTexture>)src to:(id<CAMetalDrawable>)drawable into:(id<MTLCommandBuffer>)cb {
     auto pass=[MTLRenderPassDescriptor new];
@@ -342,22 +343,38 @@ static void waitUntilMediaTime(CFTimeInterval target) {
 - (void)run {
     presentationThread=true;
     @autoreleasepool { NSThread.currentThread.name=@"BG3 Frame Generation Present"; }
-    // The generated image goes half a smoothed interval after the previous real
-    // frame (its scheduled time, or its measured display time if that was
-    // later); the real image half an interval after that.
+    // Each rendered frame yields a generated and a real image that finish on the
+    // GPU at about the same time. To look smooth they must reach the display
+    // about half a frame interval apart, generated first.
     //
-    // With vsync on, both are scheduled with presentDrawable:atTime: and this
-    // thread never waits for display. Waiting held BG3's stand-in until display,
-    // and pacing by BG3's interval then slowed BG3 further: a feedback loop
-    // measured live at about 13 rendered fps.
+    // Vsync on, and vsync off while half the interval spans at least one refresh:
+    // each image is presented after the previous one has been on screen for half
+    // the interval (at least one refresh with vsync on), with
+    // presentDrawable:afterMinimumDuration:. Standalone at 120 Hz, two presents
+    // every 50 ms with display sync off: 118 of 120 shown, every gap exactly
+    // 25 ms (plain presents: 59 of 120 shown); with display sync on at 30 pairs/s,
+    // every gap 16.7 ms (plain presents: alternating 8.3 and 25 ms). Live with
+    // vsync off at about 20 rendered fps, the user found it much smoother than
+    // plain presents, which dropped 20-28% of generated images.
     //
-    // With vsync off (BG3's setting, displaySyncEnabled == NO), atTime still
-    // rounds to the display refresh, which capped BG3 at half the refresh rate
-    // (measured: every present 16.7 or 33.3 ms apart on a 60 Hz display). Instead
-    // both copies are committed at once, which frees the stand-in as soon as they
-    // finish, and this thread presents each drawable at its time with -present.
-    CFTimeInterval lastRealTarget=0; double smoothed=0;
-    auto realShown=std::make_shared<std::atomic<double>>(0);
+    // Vsync off and faster: afterMinimumDuration: rounds up to whole refreshes
+    // (standalone at 125 pairs/s: exactly 120 images/s, falling behind), so it
+    // would cap the frame rate; presenting both images at once shows the
+    // generated one for a sliver at most (live: very jittery). This thread
+    // presents the generated image when its copy is done, waits half an
+    // interval, then presents the real one, tearing as vsync off does without
+    // Frame Generation. It skips the wait when BG3's next frame is already queued
+    // so it never falls behind.
+    //
+    // Both copies are committed at once, and the stand-in is released when the
+    // real copy completes, before any wait: BG3 never waits for this thread's
+    // pacing. (Earlier designs that waited for display held stand-ins and slowed
+    // BG3 to about 13 fps.)
+    double smoothed=0;
+    // The display's refresh interval, read on the main thread from the layer's
+    // window and refreshed periodically (the window can move between displays).
+    auto refresh=std::make_shared<std::atomic<double>>(1.0/120);
+    unsigned refreshCheck=0;
     for (;;) { @autoreleasepool {
         PresentTask task;
         CFTimeInterval idleStart=CACurrentMediaTime();
@@ -374,45 +391,53 @@ static void waitUntilMediaTime(CFTimeInterval target) {
             smoothed=smoothed>0 ? smoothed*0.75+sample*0.25 : sample;
         }
         double interval=smoothed>0 ? smoothed : 1.0/60;
-        bool immediate=!task.layer.displaySyncEnabled;
-        CFTimeInterval generatedTarget=0, realTarget=0;
+        if (refreshCheck++%120==0) {
+            CAMetalLayer *layer=task.layer;
+            dispatch_async(dispatch_get_main_queue(),^{
+                id view=layer.delegate;
+                NSInteger fps=[view isKindOfClass:NSView.class] ? ((NSView *)view).window.screen.maximumFramesPerSecond : 0;
+                if (fps>0) refresh->store(1.0/fps);
+            });
+        }
+        bool synced=task.layer.displaySyncEnabled;
+        double frameRefresh=refresh->load();
+        BG3MFXPresentMethod method=synced ? BG3MFXPresentSynced :
+            interval*0.5>=frameRefresh*0.95 ? BG3MFXPresentMinimum : BG3MFXPresentSpaced;
+        bool spaced=method==BG3MFXPresentSpaced;
+        // Each image's minimum on-screen time on the paced paths.
+        double minimum=synced ? fmax(interval*0.5,frameRefresh) : interval*0.5;
+        BG3MFXFrameLogMethod(method);
+        if (!synced) ++_immediateTasks;
+        dispatch_semaphore_t generatedReady=spaced ? dispatch_semaphore_create(0) : nil;
+        dispatch_semaphore_t realReady=spaced ? dispatch_semaphore_create(0) : nil;
         id<CAMetalDrawable> generatedDrawable=nil;
-        dispatch_semaphore_t generatedReady=dispatch_semaphore_create(0), realReady=dispatch_semaphore_create(0);
         if (task.generated) {
             generatedDrawable=timed(_drawableTime,[&]{ return [task.layer nextDrawable]; });
             if (generatedDrawable) {
-                CFTimeInterval now=CACurrentMediaTime(), anchor=fmax(lastRealTarget,realShown->load());
-                // Behind schedule: show the generated image as soon as it is ready.
-                generatedTarget=anchor>0 && anchor+interval*0.5>now ? anchor+interval*0.5 : 0;
-                realTarget=(generatedTarget>0 ? generatedTarget : now)+interval*0.5;
                 auto cb=[_queue commandBuffer];
                 if (task.value) [cb encodeWaitForEvent:_event value:task.value];
                 [self encodeCopy:task.generated to:generatedDrawable into:cb];
                 [task.generatedPool relinquish:task.generated afterCommandBuffer:cb];
-                CFTimeInterval target=generatedTarget;
-                [generatedDrawable addPresentedHandler:^(id<MTLDrawable> d){ if (diagnostic) diagnostic(YES,d.presentedTime,target,interval); }];
+                [generatedDrawable addPresentedHandler:^(id<MTLDrawable> d){
+                    BG3MFXFrameLogShown(YES,d.presentedTime); if (diagnostic) diagnostic(YES,d.presentedTime,0,interval); }];
                 [cb addCompletedHandler:^(id<MTLCommandBuffer> b){
-                    dispatch_semaphore_signal(generatedReady); if (b.error && failure) failure(b.error); }];
-                if (!immediate) {
-                    if (generatedTarget>0) [cb presentDrawable:generatedDrawable atTime:generatedTarget];
-                    else [cb presentDrawable:generatedDrawable];
-                }
+                    if (generatedReady) dispatch_semaphore_signal(generatedReady); if (b.error && failure) failure(b.error); }];
+                if (!spaced) [cb presentDrawable:generatedDrawable afterMinimumDuration:minimum];
                 [cb commit];
             } else {
                 // BG3 may hold the remaining drawables briefly (for example while
                 // leaving Frame Generation): skip the generated image, keep going.
                 [task.generatedPool relinquish:task.generated];
-                if (diagnostic) diagnostic(YES,-1,0,interval);
+                BG3MFXFrameLogShown(YES,-1); if (diagnostic) diagnostic(YES,-1,0,interval);
             }
         }
+        dispatch_time_t limit=dispatch_time(DISPATCH_TIME_NOW,(int64_t)((interval+0.2)*NSEC_PER_SEC));
         id<CAMetalDrawable> drawable=timed(_drawableTime,[&]{ return [task.layer nextDrawable]; });
         if (!drawable) {
             // Dropping one frame is recoverable; never end the game for it.
             [task.realPool relinquish:task.real]; [_slots releaseSlot];
-            if (diagnostic) diagnostic(NO,-1,0,interval);
-            if (immediate && generatedDrawable && !dispatch_semaphore_wait(generatedReady,dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/5))) {
-                waitUntilMediaTime(generatedTarget); [generatedDrawable present]; lastRealTarget=CACurrentMediaTime();
-            }
+            BG3MFXFrameLogShown(NO,-1); if (diagnostic) diagnostic(NO,-1,0,interval);
+            if (spaced && generatedDrawable && !dispatch_semaphore_wait(generatedReady,limit)) [generatedDrawable present];
             continue;
         }
         auto cb=[_queue commandBuffer];
@@ -420,45 +445,30 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         [self encodeCopy:task.real to:drawable into:cb];
         BG3MFXTexturePool *pool=task.realPool; id<MTLTexture> real=task.real; BG3MFXSlotGate *slots=_slots;
         [cb addCompletedHandler:^(id<MTLCommandBuffer> b){
-            [pool relinquish:real]; [slots releaseSlot]; dispatch_semaphore_signal(realReady);
+            [pool relinquish:real]; [slots releaseSlot]; if (realReady) dispatch_semaphore_signal(realReady);
             if (b.error && failure) failure(b.error); }];
-        if (!generatedDrawable) realTarget=0;
-        CFTimeInterval target=realTarget;
         NSArray *handlers=task.handlers; __weak BG3MFXStandInDrawable *standIn=task.standIn;
         [drawable addPresentedHandler:^(id<MTLDrawable> d){
-            if (d.presentedTime>0) realShown->store(d.presentedTime); if (diagnostic) diagnostic(NO,d.presentedTime,target,interval);
+            BG3MFXFrameLogShown(NO,d.presentedTime); if (diagnostic) diagnostic(NO,d.presentedTime,0,interval);
             BG3MFXStandInDrawable *owner=standIn; owner.presentedTime=d.presentedTime;
             for (MTLDrawablePresentedHandler h in handlers) h(owner ?: d);
         }];
-        if (!immediate) {
-            if (realTarget>CACurrentMediaTime()) [cb presentDrawable:drawable atTime:realTarget]; else [cb presentDrawable:drawable];
+        if (!spaced) {
+            // A frame without a generated image (menus, loading) shows at once.
+            if (generatedDrawable) [cb presentDrawable:drawable afterMinimumDuration:minimum];
+            else [cb presentDrawable:drawable];
             [cb commit];
-            lastRealTarget=realTarget>CACurrentMediaTime() ? realTarget : CACurrentMediaTime();
         } else {
             [cb commit];
-            // Present each copy once its GPU work is done, at its time. Waits are
-            // bounded and on this thread only; the stand-in is already released
-            // when the copy completes, independent of these waits.
-            // Never fall behind BG3: with a frame already waiting, present without
-            // sleeping. Sleeping a full interval per frame held stand-ins, slowed
-            // BG3, lengthened the interval and the sleeps: measured live at
-            // 60-90 ms per rendered frame.
             auto backlog=[&]{ std::lock_guard<std::mutex> lock(_mutex); return !_tasks.empty(); };
-            ++_immediateTasks;
-            auto pace=[&](CFTimeInterval target) {
-                if (backlog()) { ++_backlogSkips; return; }
-                timed(_sleepTime,[&]{ waitUntilMediaTime(target); return 0; }); };
-            dispatch_time_t limit=dispatch_time(DISPATCH_TIME_NOW,(int64_t)((interval+0.2)*NSEC_PER_SEC));
-            if (generatedDrawable && !timed(_gpuTime,[&]{ return dispatch_semaphore_wait(generatedReady,limit); })) {
-                pace(generatedTarget);
-                CFTimeInterval shown=CACurrentMediaTime(); [generatedDrawable present];
-                realTarget=shown+interval*0.5;
+            CFTimeInterval realAt=0;
+            if (generatedDrawable && !dispatch_semaphore_wait(generatedReady,limit)) {
+                [generatedDrawable present]; realAt=CACurrentMediaTime()+interval*0.5;
             }
-            if (!timed(_gpuTime,[&]{ return dispatch_semaphore_wait(realReady,limit); })) {
-                pace(realTarget);
+            if (!dispatch_semaphore_wait(realReady,limit)) {
+                if (realAt>0 && !backlog()) waitUntilMediaTime(realAt);
                 [drawable present];
             }
-            lastRealTarget=CACurrentMediaTime();
         }
         if (generatedDrawable) _presentedPairs++;
     }}
