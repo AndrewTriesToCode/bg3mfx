@@ -139,6 +139,18 @@ buffers, events and a persistent residency set. Spatial, Temporal and frame
 interpolation intermediates come from these pools, so steady-state frames
 allocate no textures and create no Metal 4 submission objects.
 
+Temporal scalers are cached per input/output size. Creating one takes tens of
+milliseconds, and on macOS 27.0.1 MetalFX never deallocates a Temporal scaler
+whose output is 1512 px tall or less, through either the Metal 3 or Metal 4 API.
+Each keeps an `ANEServicesThread` and about 28 MB, or about 200 MB after
+encoding. Taller outputs, Spatial scalers and the frame interpolator are freed.
+Evicting such a scaler from the cache therefore reclaims nothing. A standalone
+reproduction with the full measurements is kept outside this repository for an
+Apple report. A live windowed-mode drag created one per frame
+until BG3 hung inside scaler creation with about 1,000 `ANEServicesThread`s
+(October 13). A size with no scaler now runs BG3's native FSR until it holds for
+0.3 s; the session's first scaler is created at once.
+
 MetalFX consumes BG3's textures directly wherever it accepts their format and
 usage, avoiding per-frame conversion passes (about 0.7 ms each for Temporal and
 Frame Generation at 4K, measured with GPU timestamps). Frame Generation reads
