@@ -14,7 +14,11 @@ the selected type separately. Startup and Options → Back use the same setup.
 The quality state is independent of the custom type. This bridge is
 build-specific and guarded by the executable's Mach-O UUID.
 
-Spatial keeps the native anti-aliasing option enabled. Temporal keeps BG3's TAA
+Spatial keeps the native anti-aliasing option enabled unless Frame Generation is
+on. While Temporal or Frame Generation is on, the menu selects the Anti-Aliasing
+entry labelled "TAA" through its own callback, dims the control, and saves the
+player's previous choice (`BG3MFXSavedAntiAliasing`) to restore when neither is
+on. Temporal keeps BG3's TAA
 input production but skips the TAA draw only on exact targets previously seen
 feeding the upscaling stage. Inventory and other auxiliary views retain native
 TAA. A newly discovered upscaled target keeps native AA for its discovery frame;
@@ -77,14 +81,33 @@ frame presentation, patching, or distribution responsibilities.
 
 ## Frame Generation
 
-Frame Generation is Upscaling Type value 4, "MetalFX Temporal + Frame
-Generation", appended only on supported devices. The menu stores values 0–4; the
-renderer sees value 4 as Temporal plus a frame-generation flag, so every other
-choice never enters the frame-generation path. Selecting another type releases
-the interpolator and presentation worker. A saved Temporal selection with the
-earlier checkbox enabled migrates to value 4.
+Frame Generation is the "MetalFX Frame Generation" checkbox (item `0x7f02`),
+added right after the upscaling controls only on supported devices and saved
+as `BG3MFXFrameGenerationEnabled`. It combines with every Upscaling Type, which
+is back to BG3's Off and FSR plus MetalFX Spatial and Temporal (values 0–3).
+Startup migrates earlier settings: Upscaling Type values 4 (Temporal + Frame
+Generation) and 5 (Spatial + Frame Generation) become Temporal or Spatial with
+the checkbox set, and the older Temporal-only checkbox carries over. Clearing
+the checkbox releases the interpolator and presentation worker.
 
-Presentation follows Apple's present-thread model. While value 4 is selected, a
+Frame Generation pairs frames using the depth, motion and camera constants
+captured at BG3's TAA pass, validated as for Temporal, so the scene must be
+followed from there to `CombineUI`. Temporal attaches them to its output.
+Every other type keeps native TAA, whose output seeds the chain: MetalFX
+Spatial attaches them to its output, BG3's FSR and RCAS dispatches forward them
+from input to output, and with Off, BG3's CAS (FidelityFX sharpening) dispatch
+after tone mapping forwards them from its input to its output. The
+recognized color passes and tone mapping then carry them to `CombineUI`. Jitter
+comes from BG3's constants, so the native eight-phase sequence is described as
+is. Frames that reach `CombineUI` without these inputs (menus, loading screens,
+native-FSR fallback frames) are presented unpaired, and pairing resumes with the
+next frame that has them. With `BG3MFX_TRACE_TEMPORAL_CHAIN=1`, the diagnostic
+runtime records the recent pass chain in each `frameGenerationNoScene` event.
+A live trace (October 13) showed Off + Frame Generation losing the scene at
+CAS, which reads the tone-mapped RGB10A2 scene and writes the one `CombineUI`
+composes; with the CAS forward, Off + Frame Generation works live.
+
+Presentation follows Apple's present-thread model. While Frame Generation is on, a
 `CAMetalLayer nextDrawable` hook gives BG3 stand-in drawables backed by three
 pooled textures; BG3 renders, composes UI, and "presents" into them unchanged,
 and blocks like a real drawable when all three are in flight. BG3 presents before
@@ -165,6 +188,12 @@ at 4K); it is kept because it removes passes and memory, not for frame rate.
 MetalFX initialization, resource, encoding, or GPU-completion failure presents
 an AppKit error and closes BG3 with exit code 78. The runtime does not continue
 through FSR after a failed MetalFX frame.
+
+Frame Generation is the exception for frames it cannot reproduce: unexpected
+composition bindings or scene format, camera parameters, or an interpolator or
+presenter that cannot be created. It turns itself off with a notice naming the
+mismatch, the selected Upscaling Type continues, and turning the checkbox off
+and on again retries. Encoding and GPU failures after it starts still close BG3.
 
 `libBG3MetalFX.dylib` is the quiet development runtime. `libBG3MetalFXTrace.dylib`
 adds JSONL traces, shader reflection, and opt-in captures. Diagnostics are not

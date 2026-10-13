@@ -20,17 +20,25 @@ static void (*originalApplyCombo)(void *, const void *);
 static void (*originalUpscaleCall)(void *, const void *);
 static void (*originalQualityCall)(void *, const void *);
 static BOOL hudEnabled;
-// Upscaling Type menu value: 0 Off, 1 FSR, 2 Spatial, 3 Temporal,
-// 4 Temporal + Frame Generation. The renderer sees 4 as Temporal plus a flag.
+// Upscaling Type menu value: 0 Off, 1 FSR, 2 Spatial, 3 Temporal. Frame
+// Generation is a separate checkbox that combines with any of them.
 static std::atomic<int> selectedScalingMode{0};
-static bool metalFXValue(int value) { return value >= 2 && value <= 4; }
-static bool temporalValue(int value) { return value == 3 || value == 4; }
-// Earlier builds stored Frame Generation as a separate checkbox.
+static std::atomic<bool> frameGenerationChecked{false};
+static bool metalFXValue(int value) { return value == 2 || value == 3; }
+static bool temporalValue(int value) { return value == 3; }
+static NSString *const frameGenerationPreference = @"BG3MFXFrameGenerationEnabled";
+// The player's Anti-Aliasing choice while MetalFX holds it at TAA.
+static NSString *const savedAntiAliasingPreference = @"BG3MFXSavedAntiAliasing";
+// The open Video options manager, for the Frame Generation checkbox callback.
+static void *optionsManager;
+// Earlier builds stored Frame Generation as a Temporal-only checkbox under this
+// key, then as Upscaling Type values 4 (Temporal + FG) and 5 (Spatial + FG).
 static NSString *const legacyFrameGenerationPreference=@"BG3MFXFrameGeneration";
 static NSString *const hudPreference = @"BG3MFXMetalHUD";
 static NSString *const scalingPreference = @"BG3MFXUpscalingType";
 static NSString *const qualityPreference = @"BG3MFXUpscalingQuality";
 static const uint16_t hudID = 0x7f01;
+static const uint16_t frameGenerationID = 0x7f02;
 
 static void event(NSDictionary *value);
 template<class T> T at(uintptr_t address) { return reinterpret_cast<T>(address + slide); }
@@ -62,6 +70,17 @@ static void hudChanged(void *, const void *item) {
     [NSUserDefaults.standardUserDefaults setBool:hudEnabled forKey:hudPreference];
     if (NSThread.isMainThread) applyHUD(); else dispatch_async(dispatch_get_main_queue(),^{ applyHUD(); });
 }
+static void updateDependentControls(void *manager, int mode);
+static void frameGenerationChanged(void *, const void *item) {
+    if (!item || field<uint16_t>(const_cast<void *>(item),0x88) != frameGenerationID) return;
+    bool enabled = field<uint8_t>(const_cast<void *>(item),0xa8) != 0;
+    frameGenerationChecked.store(enabled);
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:frameGenerationPreference];
+    // BG3 can quit right after a change; keep the next launch consistent.
+    [NSUserDefaults.standardUserDefaults synchronize];
+    event(@{@"event":@"frameGenerationChanged",@"enabled":@(enabled)});
+    if (optionsManager) updateDependentControls(optionsManager,selectedScalingMode.load());
+}
 static void *findItem(void *manager, uint8_t type, uint16_t id) {
     void **items = field<void **>(manager,0x30);
     uint32_t count = field<uint32_t>(manager,0x3c);
@@ -83,15 +102,59 @@ static void setItemEnabled(void *item, uint8_t enabled) {
         if (table && table[0]) reinterpret_cast<void(*)(void *)>(table[0])(entry+8);
     }
 }
+static NSArray *comboValues(void *combo, uint32_t count);
 static bool frameGenerationSupported() {
     static bool supported = [MTLFXFrameInterpolatorDescriptor supportsDevice:MTLCreateSystemDefaultDevice()];
     return supported;
 }
+// The Anti-Aliasing combo value labelled "TAA", or -1. ComboItems are 0x24
+// bytes: label Text at +0, description at +0x10, enum value at +0x20.
+static int taaValue(void *aa) {
+    uint32_t count = field<uint32_t>(aa,0x9c);
+    char *array = field<char *>(aa,0x90);
+    if (!array || count > 16) return -1;
+    for (uint32_t i=0;i<count;++i) {
+        View label = at<View(*)(const void *,uint32_t,uint32_t)>(0x1065465e4)(array+i*0x24,0,0);
+        if (label.data && label.size >= 3 && label.size < 64 && memmem(label.data,label.size,"TAA",3))
+            return (int)field<uint32_t>(array+i*0x24,0x20);
+    }
+    return -1;
+}
+// Select an Anti-Aliasing value through BG3's own callback, and show it.
+static void selectAntiAliasing(void *aa, int value) {
+    field<int32_t>(aa,0xd0) = value;
+    if (auto call = field<void(*)(void *,const void *)>(aa,0x38)) call(static_cast<char *>(aa)+0x38,aa);
+    void *observers = field<void *>(aa,0xc0);
+    int32_t observerCount = field<int32_t>(aa,0xcc);
+    if (observers && observerCount >= 0 && observerCount <= 256) for (int32_t j=0;j<observerCount;++j) {
+        char *entry = static_cast<char *>(observers)+j*0x48;
+        void **table = field<void **>(entry,0);
+        if (table && table[0]) reinterpret_cast<void(*)(void *,int)>(table[0])(entry+8,value);
+    }
+}
 static void updateDependentControls(void *manager, int mode) {
-    // Keep the underlying TAA value: the renderer needs that pass's inputs even
-    // when MetalFX Temporal replaces its draw.
+    // MetalFX Temporal and Frame Generation use the depth, motion and camera
+    // data of BG3's TAA pass (Temporal then replaces its draw). While either is
+    // on, select TAA and dim the control; afterwards restore the player's choice.
     void *aa = findItem(manager,3,98);
-    if (aa) setItemEnabled(aa,!temporalValue(mode) && field<uint32_t>(aa,0x9c) > 1);
+    if (!aa) return;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    bool requiresTAA = temporalValue(mode) || (frameGenerationChecked.load() && frameGenerationSupported());
+    int current = field<int32_t>(aa,0xd0), taa = taaValue(aa);
+    if (requiresTAA && taa >= 0 && current != taa) {
+        if (![defaults objectForKey:savedAntiAliasingPreference]) [defaults setInteger:current forKey:savedAntiAliasingPreference];
+        selectAntiAliasing(aa,taa);
+        event(@{@"event":@"antiAliasingForced",@"previous":@(current),@"taa":@(taa)});
+    } else if (!requiresTAA && [defaults objectForKey:savedAntiAliasingPreference]) {
+        int saved = (int)[defaults integerForKey:savedAntiAliasingPreference];
+        [defaults removeObjectForKey:savedAntiAliasingPreference];
+        if (saved != current && [comboValues(aa,field<uint32_t>(aa,0x9c)) containsObject:@(saved)]) {
+            selectAntiAliasing(aa,saved);
+            event(@{@"event":@"antiAliasingRestored",@"value":@(saved)});
+        }
+    }
+    if (requiresTAA && taa < 0) event(@{@"event":@"nativeMenuError",@"error":@"No TAA Anti-Aliasing option found"});
+    setItemEnabled(aa,!requiresTAA && field<uint32_t>(aa,0x9c) > 1);
 }
 static int customQuality(void *manager) {
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:qualityPreference];
@@ -165,7 +228,7 @@ static void upscaleChanged(void *storage, const void *item) {
     }
     void *manager = field<void *>(storage,0x18);
     int value = field<int32_t>(const_cast<void *>(item),0xd0);
-    if (!manager || value < 0 || value > 4 || (value == 4 && !frameGenerationSupported())) {
+    if (!manager || value < 0 || value > 3) {
         originalUpscaleCall(storage,item);
         event(@{@"event":@"nativeUpscalingSelectionError",@"value":@(value)});
         return;
@@ -231,6 +294,7 @@ static NSArray *comboValues(void *combo, uint32_t count) {
 }
 static void menuInit(void *manager) {
     originalInit(manager);
+    optionsManager = manager;
     void **items = field<void **>(manager,0x30);
     uint32_t count = field<uint32_t>(manager,0x3c);
     void *upscale = nullptr, *quality = nullptr;
@@ -252,7 +316,7 @@ static void menuInit(void *manager) {
     NSArray *nativeValues = comboValues(upscale,nativeCount);
     BOOL nativeOptions = nativeCount == 2 && [nativeValues isEqualToArray:@[@0,@1]];
     bool frameGeneration = frameGenerationSupported();
-    NSArray *extendedValues = frameGeneration ? @[@0,@1,@2,@3,@4] : @[@0,@1,@2,@3];
+    NSArray *extendedValues = @[@0,@1,@2,@3];
     BOOL alreadyExtended = nativeCount == extendedValues.count && [nativeValues isEqualToArray:extendedValues];
     if (!nativeOptions && !alreadyExtended) {
         event(@{@"event":@"nativeMenuError",@"error":@"Unexpected Upscaling Type options",
@@ -267,13 +331,12 @@ static void menuInit(void *manager) {
         makeText(temporalDescription,"h00000000g0000g0000g0000g00000000f006","Uses MetalFX Temporal history to upscale each frame and replaces TAA.") &&
         makeText(hudName,"h00000000g0000g0000g0000g00000000f003","Show Metal HUD") &&
         makeText(hudDescription,"h00000000g0000g0000g0000g00000000f004","Shows Apple's Metal performance overlay. Changes take effect immediately.") &&
-        makeText(frameName,"h00000000g0000g0000g0000g00000000f007","MetalFX Temporal + Frame Generation") &&
-        makeText(frameDescription,"h00000000g0000g0000g0000g00000000f008","MetalFX Temporal upscaling, plus a MetalFX-generated frame between rendered frames. The FPS limiter controls rendered frames.");
+        makeText(frameName,"h00000000g0000g0000g0000g00000000f00b","MetalFX Frame Generation") &&
+        makeText(frameDescription,"h00000000g0000g0000g0000g00000000f00c","Adds a MetalFX-generated frame between rendered frames, with any Upscaling Type. Uses the game's TAA depth and motion data. The FPS limiter controls rendered frames.");
     if (!ok) { event(@{@"event":@"nativeMenuError",@"error":@"Could not register menu text"}); return; }
     if (nativeOptions) {
         at<void(*)(void *,int,const Text *,const Text *)>(0x103294954)(upscale,2,&spatialName,&spatialDescription);
         at<void(*)(void *,int,const Text *,const Text *)>(0x103294954)(upscale,3,&temporalName,&temporalDescription);
-        if (frameGeneration) at<void(*)(void *,int,const Text *,const Text *)>(0x103294954)(upscale,4,&frameName,&frameDescription);
     }
     if (field<uint32_t>(upscale,0x9c) != extendedValues.count) {
         event(@{@"event":@"nativeMenuError",@"error":@"Could not append the MetalFX options"});
@@ -321,13 +384,31 @@ static void menuInit(void *manager) {
             memmove(items+i+1,items+i,(count-i-1)*sizeof(void *)); items[i] = hud; break;
         }
     }
+    if (frameGeneration) {
+        void *frameItem = at<void *(*)(void *,uint16_t,const Text *,const Text *,bool)>(0x1030a39bc)
+            (manager,frameGenerationID,&frameName,&frameDescription,frameGenerationChecked.load());
+        field<void *>(frameItem,0x38) = reinterpret_cast<void *>(frameGenerationChanged);
+        // Put Frame Generation right after the upscaling controls (Upscaling
+        // Type, then Upscaling Quality when BG3 lists it).
+        items = field<void **>(manager,0x30); count = field<uint32_t>(manager,0x3c);
+        if (count && items[count-1] == frameItem) {
+            uint32_t anchor = count;
+            for (uint32_t i=0;i+1<count;++i) {
+                uint16_t id = field<uint8_t>(items[i],8) == 3 ? field<uint16_t>(items[i],0x88) : 0;
+                if (id == 99 || id == 100) anchor = i;
+            }
+            if (anchor+2 < count) {
+                memmove(items+anchor+2,items+anchor+1,(count-anchor-2)*sizeof(void *)); items[anchor+1] = frameItem;
+            }
+        }
+    }
     destroyText(frameName); destroyText(frameDescription);
     destroyText(spatialName); destroyText(spatialDescription);
     destroyText(temporalName); destroyText(temporalDescription);
     destroyText(hudName); destroyText(hudDescription);
     if (NSThread.isMainThread) applyHUD(); else dispatch_async(dispatch_get_main_queue(),^{ applyHUD(); });
-    event(@{@"event":@"nativeMenuReady",@"upscalingOptions":frameGeneration ? @[@"Off",@"AMD FSR 1.0",@"MetalFX Spatial",@"MetalFX Temporal",@"MetalFX Temporal + Frame Generation"] :
-                @[@"Off",@"AMD FSR 1.0",@"MetalFX Spatial",@"MetalFX Temporal"],
+    event(@{@"event":@"nativeMenuReady",@"upscalingOptions":@[@"Off",@"AMD FSR 1.0",@"MetalFX Spatial",@"MetalFX Temporal"],
+            @"frameGenerationOption":@(frameGeneration),@"frameGeneration":@(frameGenerationChecked.load()),
             @"selectedScalingMode":@(mode),@"hudEnabled":@(hudEnabled)});
 }
 }
@@ -374,27 +455,39 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     id savedScaling = [defaults objectForKey:scalingPreference];
     int startupMode = savedScaling ? [savedScaling intValue] : 0;
+    // Migrate earlier Frame Generation settings to the checkbox.
     if ([defaults objectForKey:legacyFrameGenerationPreference]) {
-        if (startupMode == 3 && [defaults boolForKey:legacyFrameGenerationPreference]) {
-            startupMode = 4; [defaults setInteger:startupMode forKey:scalingPreference];
-        }
-        [defaults removeObjectForKey:legacyFrameGenerationPreference]; [defaults synchronize];
+        if (startupMode == 3 && [defaults boolForKey:legacyFrameGenerationPreference])
+            [defaults setBool:YES forKey:frameGenerationPreference];
+        [defaults removeObjectForKey:legacyFrameGenerationPreference];
     }
-    if (!metalFXValue(startupMode) || (startupMode == 4 && !frameGenerationSupported())) startupMode = 0;
+    if (startupMode == 4 || startupMode == 5) {
+        [defaults setBool:YES forKey:frameGenerationPreference];
+        startupMode = startupMode == 4 ? 3 : 2;
+        [defaults setInteger:startupMode forKey:scalingPreference];
+    }
+    [defaults synchronize];
+    if (!metalFXValue(startupMode)) startupMode = 0;
     selectedScalingMode.store(startupMode);
-    event(@{@"event":@"nativeMenuStartupMode",@"value":@(startupMode)});
+    frameGenerationChecked.store([defaults boolForKey:frameGenerationPreference]);
+    event(@{@"event":@"nativeMenuStartupMode",@"value":@(startupMode),@"frameGeneration":@(frameGenerationChecked.load())});
     event(@{@"event":@"nativeMenuInstalled"});
     return YES;
 }
 
-int BG3MFXSelectedScalingMode(void) { int value = selectedScalingMode.load(); return value == 4 ? 3 : value; }
+int BG3MFXSelectedScalingMode(void) { return selectedScalingMode.load(); }
 
 // Standalone GPU regression harnesses have no BG3 settings manager. Never
 // permit them to override a real game's menu selection.
 extern "C" BOOL BG3MFXSetStandaloneScalingMode(int mode) {
-    if (originalInit || [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"] || mode < 0 || mode > 4) return NO;
+    if (originalInit || [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"] || mode < 0 || mode > 3) return NO;
     selectedScalingMode.store(mode);
     return YES;
 }
+extern "C" BOOL BG3MFXSetStandaloneFrameGeneration(BOOL enabled) {
+    if (originalInit || [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return NO;
+    frameGenerationChecked.store(enabled);
+    return YES;
+}
 
-BOOL BG3MFXFrameGenerationEnabled(void) { return selectedScalingMode.load() == 4 && frameGenerationSupported(); }
+BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported(); }

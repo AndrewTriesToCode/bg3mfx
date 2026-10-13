@@ -3,9 +3,10 @@
 ## Active scope
 
 Keep the project focused on Show Metal HUD, MetalFX Spatial, MetalFX Temporal,
-and MetalFX Frame Generation. Frame Generation is the Upscaling Type entry
-"MetalFX Temporal + Frame Generation" (shown only on supported devices), not a
-separate control. Preserve BG3's native Off and AMD FSR 1.0 options.
+and MetalFX Frame Generation. Frame Generation is the "MetalFX Frame
+Generation" checkbox (shown only on supported devices), placed after the
+upscaling controls; it combines with every Upscaling Type. Preserve BG3's native
+Off and AMD FSR 1.0 options.
 
 - Keep the HUD checkbox first under General and persistent.
 - Players install with Homebrew (`packaging/homebrew/bg3mfx.rb`, published in

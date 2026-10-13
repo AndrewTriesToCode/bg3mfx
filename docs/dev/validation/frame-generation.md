@@ -6,13 +6,14 @@ offscreen fixtures but has not been tested in the game.
 
 ## Scope
 
-Frame Generation is the fifth Upscaling Type entry, "MetalFX Temporal + Frame
-Generation", appended after MetalFX Temporal on supported devices. It uses the
-Temporal path, quality levels, and anti-aliasing handling, and adds
-interpolation. All other entries never enter the frame-generation path, and
-selecting one releases the interpolator and presentation worker. Earlier builds'
-separate checkbox setting migrates to this entry when Temporal was saved with the
-checkbox enabled; the old preference is then removed.
+Frame Generation is the "MetalFX Frame Generation" checkbox, shown after the
+upscaling controls on supported devices, and combines with every Upscaling Type
+(see [architecture](../architecture.md#frame-generation)). Clearing it releases
+the interpolator and presentation worker. Earlier settings migrate to the
+checkbox: the Temporal-only checkbox of the first builds, and the later
+"MetalFX Temporal + Frame Generation" and "MetalFX Spatial + Frame Generation"
+Upscaling Type entries. Results below predate the checkbox and were measured
+with Temporal.
 
 History: the first build offered an independent checkbox for all four upscalers.
 Off/FSR/Spatial relied on native TAA supplying camera, depth, and motion, and
@@ -134,7 +135,25 @@ competed with BG3 for drawables. It allocated two 4K images, four interpolation
 textures and a Metal 4 allocator, residency set and two events every frame, and
 ran `CombineUI` three times. The second design removes all of that.
 
-HDR `CombineUI_HDR`, split-screen, minimize/resize/quit transitions, a BG3 path
+HDR output: a live diagnostic trace (October 13, 1728x1080, macOS HDR on) showed
+BG3 composing with `CombineUI_HDR` into a BGR10A2Unorm drawable from the same
+RGB10A2Unorm scene and RGBA8 UI, so Frame Generation formed no pairs (0 paired,
+5400 unpaired). The runtime now accepts `CombineUI_HDR` with a BGR10A2Unorm
+output, and `frame-generation-hook-smoke ... hdr` covers it synthetically; HDR
+image quality and pacing still need live confirmation.
+
+Composition replay: the generated frame repeats BG3's own `CombineUI` draw with
+its recorded draw call, viewport and scissor, and starts from a copy of the real
+frame when the viewport does not cover the output. Scene, UI and output sizes
+may therefore differ (windowed, non-native resolution, other aspect ratios).
+`frame-generation-hook-smoke ... scaled` covers a letterboxed 256x256 scene in
+a 320x288 output with a triangle-strip draw (byte-identical generated pair;
+fails with exit 9 if the viewport replay is removed). Not yet confirmed live at
+a mismatched size. A composition the runtime cannot replay turns Frame
+Generation off without closing the game; the hook test checks unpaired
+presentation, real drawables afterward, and retry on reselection.
+
+Split-screen, minimize/resize/quit transitions, a BG3 path
 that calls `-[drawable present]` directly (handled without GPU ordering), and
 displayed pacing need further verification. Do not report broad compatibility
 from the synthetic tests.

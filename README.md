@@ -3,15 +3,19 @@
 Better image quality and up to 2x the frame rate for **Baldur's Gate 3 on Mac**,
 using Apple MetalFX upscaling and frame generation.
 
-It adds three new choices to the game's own **Upscaling Type** setting:
+It adds two new choices to the game's own **Upscaling Type** setting:
 
 | Option | What it does |
 | --- | --- |
 | **MetalFX Spatial** | Sharp upscaling from a lower render resolution. Keeps the game's anti-aliasing setting. |
 | **MetalFX Temporal** | Higher-quality upscaling that uses previous frames. Replaces the game's anti-aliasing. |
-| **MetalFX Temporal + Frame Generation** | Temporal upscaling, plus an extra generated frame between each pair of rendered frames for smoother motion. |
 
-It also adds a **Show Metal HUD** checkbox, Apple's on-screen performance overlay.
+It also adds two checkboxes:
+
+| Option | What it does |
+| --- | --- |
+| **MetalFX Frame Generation** | An extra generated frame between each pair of rendered frames for smoother motion. Works with any Upscaling Type. |
+| **Show Metal HUD** | Apple's on-screen performance overlay. |
 
 The game's original **Off** and **AMD FSR 1.0** options still work as before.
 Nothing in your game folder is changed: BG3 MetalFX loads alongside the game
@@ -102,8 +106,10 @@ Make sure Steam is running (BG3 MetalFX starts it if it isn't), then either:
 
 Baldur's Gate 3 starts with MetalFX available. In the game, go to
 **Options → Video → Upscaling Type** and pick a MetalFX option, then choose a
-quality (Ultra Quality, Quality, Balanced or Performance). Your choice is
-remembered.
+quality (Ultra Quality, Quality, Balanced or Performance). Tick **MetalFX Frame
+Generation**, just below, for the extra generated frames. Your choices are
+remembered. If you used **MetalFX Temporal + Frame Generation** in an earlier
+version, it carries over as MetalFX Temporal with the checkbox ticked.
 
 **Play from your Steam library:** in Steam, choose
 **Games → Add a Non-Steam Game to My Library…**, select **BG3 MetalFX**, and
@@ -116,8 +122,9 @@ Baldur's Gate 3 entry still starts the game without MetalFX.
   MacBook Pro's 120 Hz ProMotion screen, with **VSync on**. Set the game's
   FPS limiter to half the frame rate you want to see (for example, 60 on a
   120 Hz display).
-- **MetalFX Temporal** turns off the game's own anti-aliasing option, because it
-  does the anti-aliasing itself.
+- **Frame Generation** and **MetalFX Temporal** use the depth and motion data
+  from the game's TAA anti-aliasing, so while either is on, Anti-Aliasing is set
+  to TAA and greyed out. Your previous choice comes back when you turn both off.
 - Turn on **Show Metal HUD** (Options → Video → General) to see your frame rate.
 
 ## Troubleshooting
@@ -134,6 +141,13 @@ If you opened the app, it lets you choose the game's location. In Terminal, use
 [open an issue](https://github.com/AndrewTriesToCode/bg3mfx/issues) with the
 message text, your Mac model, and what you were doing. In the meantime, choose
 Off or AMD FSR 1.0 in Upscaling Type, or play from Steam as usual.
+
+**"MetalFX Frame Generation is off."** Frame Generation couldn't handle the
+game's frames, so it turned itself off. The game keeps running with your
+Upscaling Type. Untick and tick MetalFX Frame Generation to try again. If it
+keeps happening, please
+[open an issue](https://github.com/AndrewTriesToCode/bg3mfx/issues) with the
+message text.
 
 **Check your setup without starting the game:** `bg3mfx --dry-run`.
 
