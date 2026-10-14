@@ -1,4 +1,4 @@
-VERSION ?= 0.2.1
+VERSION ?= 0.2.2
 PREFIX ?= /usr/local
 CXX = xcrun clang++
 CXXFLAGS = -std=c++17 -fobjc-arc -O2 -Wall -Wextra -mmacosx-version-min=26.0
