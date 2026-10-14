@@ -24,8 +24,11 @@ does. Live on October 14, with the shadow fix (quiet runtime, Ultra, Upscaling
 Off, windowed): the diagnostic trace showed 230 prepass draws skipped and 230
 G-buffer draws switched per frame; HUD GPU time 12.0 → 10.5 ms; 82.9 → 84.4
 fps, because the frame is now limited by BG3's render thread. The user saw no
-artifacts on characters or distant geometry. Not yet covered by a synthetic
-regression test.
+artifacts on characters or distant geometry. `prepass-trim-smoke` (in
+`make test`) checks G-buffer pixels with the trim on and off, that the trim
+skips only vertex-only prepass draws and leaves a discarding material's
+Equal test intact, and that bind filtering forwards a changed texture slot;
+negative controls (no depth swap, a dropped texture change) fail it.
 
 ## Redundant bind filtering
 

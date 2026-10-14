@@ -24,6 +24,9 @@ build/runtime-smoke: tests/runtime_smoke.mm | build
 build/spatial-hook-smoke: tests/spatial_hook_smoke.mm | build
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -framework AppKit -o $@
 
+build/prepass-trim-smoke: tests/prepass_trim_smoke.mm | build
+	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
+
 build/temporal-hook-smoke: tests/temporal_hook_smoke.mm | build
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
 
@@ -67,7 +70,7 @@ build/libBG3MetalFX.dylib: src/Trace.mm src/FrameInterpolation.mm src/FrameInter
 build/metalfx-probe: tools/metalfx_probe.m | build
 	xcrun clang -fobjc-arc -mmacosx-version-min=26.0 $< $(FRAMEWORKS) -o $@
 
-test: build/frame-generation-hook-smoke build/frame-interpolation-smoke build/metal4-bridge-smoke build/runtime-smoke build/metalfx-smoke build/temporal-quality-smoke build/temporal-jitter-smoke build/spatial-upscaler-smoke build/temporal-upscaler-smoke build/spatial-hook-smoke build/temporal-hook-smoke build/libBG3MetalFX.dylib build/libBG3MetalFXTrace.dylib
+test: build/frame-generation-hook-smoke build/frame-interpolation-smoke build/metal4-bridge-smoke build/runtime-smoke build/metalfx-smoke build/temporal-quality-smoke build/temporal-jitter-smoke build/spatial-upscaler-smoke build/temporal-upscaler-smoke build/spatial-hook-smoke build/temporal-hook-smoke build/prepass-trim-smoke build/libBG3MetalFX.dylib build/libBG3MetalFXTrace.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFX.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFXTrace.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFX.dylib hdr
@@ -88,6 +91,9 @@ test: build/frame-generation-hook-smoke build/frame-interpolation-smoke build/me
 	./build/spatial-hook-smoke ./build/libBG3MetalFXTrace.dylib
 	./build/temporal-hook-smoke ./build/libBG3MetalFX.dylib
 	./build/temporal-hook-smoke ./build/libBG3MetalFXTrace.dylib
+	BG3MFX_PREPASS_TRIM=1 ./build/prepass-trim-smoke ./build/libBG3MetalFX.dylib expect-trim
+	BG3MFX_PREPASS_TRIM=1 ./build/prepass-trim-smoke ./build/libBG3MetalFXTrace.dylib expect-trim
+	BG3MFX_PREPASS_TRIM=0 ./build/prepass-trim-smoke ./build/libBG3MetalFX.dylib expect-full
 
 # These exercise the development launch helper, not rendering acceptance.
 test-python: build/bg3mfx
@@ -97,7 +103,7 @@ clean:
 	rm -f build/libBG3MetalFX.dylib build/libBG3MetalFXTrace.dylib build/bg3mfx build/metalfx-probe \
 		build/runtime-smoke build/metalfx-smoke build/spatial-upscaler-smoke \
 		build/temporal-upscaler-smoke build/spatial-hook-smoke \
-		build/temporal-hook-smoke build/temporal-replay-smoke build/temporal-quality-smoke build/temporal-jitter-smoke build/temporal-api-compare build/metal4-bridge-smoke \
+		build/temporal-hook-smoke build/prepass-trim-smoke build/temporal-replay-smoke build/temporal-quality-smoke build/temporal-jitter-smoke build/temporal-api-compare build/metal4-bridge-smoke \
 		build/frame-interpolation-smoke build/frame-generation-hook-smoke
 
 build/frame-interpolation-smoke: tests/frame_interpolation_smoke.mm src/FrameInterpolation.mm src/FrameInterpolation.h src/FrameLog.mm src/FrameLog.h src/GPUResources.mm src/GPUResources.h | build
