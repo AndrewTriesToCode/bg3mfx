@@ -10,7 +10,7 @@ depth convention, HDR pass placement, exposure, and history management remain
 unchanged. No sharpening or mip bias was added.
 
 The conversion is shared by the real renderer, diagnostic probe, and new
-analytic reconstruction regression in `BG3MFXApplyNativeJitter`.
+analytic reconstruction regression in `BG3MFXApplyTemporalJitter`.
 
 ## Evidence
 

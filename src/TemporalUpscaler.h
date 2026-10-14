@@ -6,7 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // BG3's sampling displacement uses clip-space Y. MetalFX wants the opposite
 // image displacement in framebuffer pixels (Y down).
-static inline void BG3MFXApplyNativeJitter(BG3MFXFrameParameters *p, float x, float y) {
+static inline void BG3MFXApplyTemporalJitter(BG3MFXFrameParameters *p, float x, float y) {
     p->jitterX = -x;
     p->jitterY = y;
 }

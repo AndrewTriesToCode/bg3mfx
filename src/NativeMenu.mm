@@ -1,5 +1,6 @@
 #import "NativeMenu.h"
-#import "NativeJitter.h"
+#import "TemporalJitter.h"
+#import "ShadowDuplicateFix.h"
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -631,7 +632,14 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     slide = _dyld_get_image_vmaddr_slide(imageIndex);
     bool focusRepairInstalled = installRenderViewFocusRepair();
     event(@{@"event":@"nativeMenuFocusRepairHook", @"installed":@(focusRepairInstalled)});
-    if (!BG3MFXInstallNativeJitter(slide,report,error)) return NO;
+    if (!BG3MFXInstallTemporalJitter(slide,report,error)) return NO;
+    // Remove BG3's duplicate cascaded-shadow stage. A mismatch leaves BG3
+    // unchanged; the environment switch allows comparison runs.
+    if (!(getenv("BG3MFX_SINGLE_SHADOW_STAGE") && strcmp(getenv("BG3MFX_SINGLE_SHADOW_STAGE"),"0") == 0)) {
+        NSError *shadowError = nil;
+        if (!BG3MFXInstallShadowDuplicateFix(slide,report,&shadowError))
+            event(@{@"event":@"shadowDuplicateFixSkipped",@"reason":shadowError.localizedDescription ?: @""});
+    }
     void **table = at<void **>(0x1087ac1a0);
     if (table[4] != at<void *>(0x103288fb8) || table[7] != at<void *>(0x103290180)) { errorOut(error,@"The Video menu callback was already modified."); return NO; }
     originalInit = reinterpret_cast<void(*)(void *)>(table[4]);

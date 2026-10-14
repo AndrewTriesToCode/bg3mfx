@@ -7,7 +7,7 @@ BG3's quality ratios (1.3/1.5/1.7/2).
 
 ## Integration
 
-`NativeJitter.mm` reads the native frame index and supplies one uncentered
+`TemporalJitter.mm` reads the native frame index and supplies one uncentered
 Halton (2,3) pair to three native sample loads. BG3 still subtracts 0.5, computes
 the projection and camera constants, stores previous jitter/projection, and
 compensates motion. The MetalFX adapter still converts that resulting sample
