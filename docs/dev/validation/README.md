@@ -27,6 +27,19 @@ fps, because the frame is now limited by BG3's render thread. The user saw no
 artifacts on characters or distant geometry. Not yet covered by a synthetic
 regression test.
 
+## Redundant bind filtering
+
+BG3 calls `setFragmentTextures:withRange:` about 1,130 times per frame over
+about 30,000 slots; 92% of those slots already hold the same texture, and 12%
+of pipeline binds repeat the bound pipeline (diagnostic counters, October 14).
+The runtime forwards only changed slot runs and new pipelines
+(`BG3MFX_TEXTURE_DEDUP=0` disables it). `make test` passes with it on. Live,
+quiet runtime with the shadow fix and prepass trim (Ultra, Upscaling Off,
+windowed): 83.1 → 84.0 fps at about 10.7 ms GPU time. CPU samples show
+driver time on BG3's render thread down about 25% per frame (texture binds
+−72%), but this scene is now mostly GPU-limited, so little of it shows as
+frame rate; CPU-heavier scenes should gain more.
+
 ## Frame Generation (initial integration)
 
 Frame Generation is the "MetalFX Frame Generation" checkbox and combines with

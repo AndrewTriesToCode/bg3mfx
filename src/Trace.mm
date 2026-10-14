@@ -83,6 +83,16 @@ enum TrimRole : uint8_t { RoleNone, RolePrepass, RoleGBuffer };
 static bool prepassTrim;
 static char pipelineTrimKey, depthReplacementKey;
 static std::atomic<unsigned> prepassTrimSkipped{0}, prepassTrimSwapped{0};
+// Bind dedup: BG3 rebinds about 27 fragment texture slots per call when about
+// two change (92% of slots repeat the current binding), and re-sets the bound
+// pipeline about 12% of the time. Bindings persist for the encoder's lifetime,
+// so only changed slots and pipelines are forwarded to the driver.
+static bool bindDedup;
+// Diagnostics: binds that repeat the encoder's current binding.
+static bool redundantProbe;
+enum RedundantCount { TextureCalls, TextureCallsRedundant, TextureSlots, TextureSlotsRedundant,
+    BufferBinds, BufferBindsRedundant, PipelineBinds, PipelineBindsRedundant, DepthBinds, DepthBindsRedundant, RedundantCounts };
+static std::atomic<uint64_t> redundantCounts[RedundantCounts];
 // Bound buffers, textures and the pipeline are not retained
 // here: the encoder (from a retained-references command buffer; see
 // commandBuffer) keeps everything bound to it alive until it ends, and BG3 keeps
@@ -118,6 +128,14 @@ struct CompositionDraw {
     TrimPipeline trimPipeline;
     TrimRole trimRole;
     __unsafe_unretained id depthState;
+    // Diagnostics (BG3MFX_TRACE_REDUNDANT=1): every binding BG3 has made in
+    // this encoder, to count binds that repeat what is already bound.
+    __unsafe_unretained id seenTexture[64];
+    __unsafe_unretained id seenBuffer[2][32];
+    NSUInteger seenOffset[2][32];
+    __unsafe_unretained id seenPipeline, seenDepth;
+    // Bind dedup: fragment textures this encoder has actually forwarded.
+    __unsafe_unretained id fragmentTexture[64];
 }
 @end
 @implementation BG3MFXEncoderState
@@ -263,12 +281,62 @@ static NSMutableDictionary *constantBindings(id encoder) {
     }
     return bindings;
 }
+// Diagnostics: count binds that repeat the encoder's current binding. Called
+// before forwarding; compute bindings are not counted.
+static void countBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> const *buffers, const NSUInteger *offsets, NSRange range, bool offsetOnly) {
+    if (!diagnostics || !redundantProbe) return;
+    __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
+    EncoderStage stage=bindingStage(cmd);
+    if (!s || stage==StageCompute) return;
+    for (NSUInteger i=0; i<range.length; ++i) {
+        NSUInteger index=range.location+i;
+        if (index>=32) continue;
+        __unsafe_unretained id buffer=offsetOnly ? s->seenBuffer[stage][index] : buffers[i];
+        bool same=buffer && s->seenBuffer[stage][index]==buffer && s->seenOffset[stage][index]==offsets[i];
+        ++redundantCounts[BufferBinds];
+        if (same) ++redundantCounts[BufferBindsRedundant];
+        s->seenBuffer[stage][index]=buffer; s->seenOffset[stage][index]=offsets[i];
+    }
+}
+static void countTextures(__unsafe_unretained id self, SEL cmd, id<MTLTexture> const *textures, NSRange range) {
+    if (!diagnostics || !redundantProbe) return;
+    static SEL one=@selector(setFragmentTexture:atIndex:), many=@selector(setFragmentTextures:withRange:);
+    if (cmd!=one && cmd!=many) return;
+    __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
+    if (!s) return;
+    bool callSame=true;
+    for (NSUInteger i=0; i<range.length; ++i) {
+        NSUInteger index=range.location+i;
+        bool same=index<64 && s->seenTexture[index]==textures[i];
+        ++redundantCounts[TextureSlots];
+        if (same) ++redundantCounts[TextureSlotsRedundant]; else callSame=false;
+        if (index<64) s->seenTexture[index]=textures[i];
+    }
+    ++redundantCounts[TextureCalls];
+    if (callSame) ++redundantCounts[TextureCallsRedundant];
+}
+static void flushRedundantCounts() {
+    static unsigned long lastFrame;
+    if (!diagnostics || !redundantProbe || frames-lastFrame<120) return;
+    [[maybe_unused]] double n=(double)(frames-lastFrame);
+    lastFrame=frames;
+    uint64_t c[RedundantCounts];
+    for (int i=0; i<RedundantCounts; ++i) c[i]=redundantCounts[i].exchange(0);
+    record(@{@"event":@"redundantBinds",@"frame":@(frames),
+        @"textureCallsPerFrame":@(c[TextureCalls]/n),@"textureCallsRedundant":@(c[TextureCallsRedundant]/n),
+        @"textureSlotsPerFrame":@(c[TextureSlots]/n),@"textureSlotsRedundant":@(c[TextureSlotsRedundant]/n),
+        @"bufferBindsPerFrame":@(c[BufferBinds]/n),@"bufferBindsRedundant":@(c[BufferBindsRedundant]/n),
+        @"pipelineBindsPerFrame":@(c[PipelineBinds]/n),@"pipelineBindsRedundant":@(c[PipelineBindsRedundant]/n),
+        @"depthBindsPerFrame":@(c[DepthBinds]/n),@"depthBindsRedundant":@(c[DepthBindsRedundant]/n)});
+}
 static void bindBuffer(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger index) {
+    if (diagnostics && redundantProbe) { id<MTLBuffer> const one[1]={buffer}; countBuffers(self,cmd,one,&offset,NSMakeRange(index,1),false); }
     ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,buffer,offset,index);
     if (!constantInputNeeded(self,index)) return;
     if (ConstantBinding *b=constantSlot(self,bindingStage(cmd),index)) { b->buffer=buffer; b->offset=offset; b->hasBytes=false; b->length=0; }
 }
 static void bindBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> const *buffers, const NSUInteger *offsets, NSRange range) {
+    countBuffers(self,cmd,buffers,offsets,range,false);
     ((void(*)(id,SEL,id<MTLBuffer> const *,const NSUInteger *,NSRange))original(self,cmd))(self,cmd,buffers,offsets,range);
     if (!temporalInputsNeeded(self)) return;
     EncoderStage stage=bindingStage(cmd);
@@ -278,6 +346,7 @@ static void bindBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> cons
     }
 }
 static void bufferOffset(__unsafe_unretained id self, SEL cmd, NSUInteger offset, NSUInteger index) {
+    if (diagnostics && redundantProbe) countBuffers(self,cmd,nullptr,&offset,NSMakeRange(index,1),true);
     ((void(*)(id,SEL,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,offset,index);
     if (!constantInputNeeded(self,index)) return;
     if (ConstantBinding *b=constantSlot(self,bindingStage(cmd),index)) if (b->buffer) b->offset=offset;
@@ -303,7 +372,7 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"nativeQualityChanged"] || [kind hasPrefix:@"waterfall"] ||
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
-        [kind isEqualToString:@"shadowPassStack"] || [kind isEqualToString:@"prepassTrim"];
+        [kind isEqualToString:@"shadowPassStack"] || [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
@@ -521,7 +590,14 @@ static id depthStencilStateHook(id self, SEL cmd, MTLDepthStencilDescriptor *des
 static BG3MFXEncoderState *encoderState(__unsafe_unretained id encoder);
 static void setDepthStencilHook(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
-    if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(self)) s->depthState = state;
+    if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(self)) {
+        if (diagnostics && redundantProbe) {
+            ++redundantCounts[DepthBinds];
+            if (s->seenDepth==state) ++redundantCounts[DepthBindsRedundant];
+            s->seenDepth=state;
+        }
+        s->depthState = state;
+    }
 }
 // Applied around each draw: skip an opaque prepass draw, or give its G-buffer
 // draw the depth-writing state and restore BG3's state afterwards.
@@ -594,11 +670,40 @@ static void rememberTexture(__unsafe_unretained id self, SEL cmd, __unsafe_unret
     }
 }
 static void bindTexture(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLTexture> t, NSUInteger index) {
+    if (diagnostics && redundantProbe) { id<MTLTexture> const one[1]={t}; countTextures(self,cmd,one,NSMakeRange(index,1)); }
+    if (bindDedup && index<64 && cmd==@selector(setFragmentTexture:atIndex:))
+        if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(self)) {
+            if (s->fragmentTexture[index]==t) { rememberTexture(self,cmd,t,index); return; }
+            s->fragmentTexture[index]=t;
+        }
     ((void(*)(id,SEL,id,NSUInteger))original(self,cmd))(self,cmd,t,index);
     rememberTexture(self,cmd,t,index);
 }
 static void bindTextures(__unsafe_unretained id self, SEL cmd, id<MTLTexture> const *textures, NSRange range) {
-    ((void(*)(id,SEL,id<MTLTexture> const *,NSRange))original(self,cmd))(self,cmd,textures,range);
+    countTextures(self,cmd,textures,range);
+    __unsafe_unretained BG3MFXEncoderState *s=bindDedup && cmd==@selector(setFragmentTextures:withRange:) &&
+        range.location+range.length<=64 ? encoderState(self) : nil;
+    if (s) {
+        // Forward runs of changed slots; a gap of up to two unchanged slots
+        // joins two runs rather than adding a call.
+        auto forward=((void(*)(id,SEL,id<MTLTexture> const *,NSRange))original(self,cmd));
+        NSUInteger i=0, n=range.length, base=range.location;
+        while (i<n) {
+            while (i<n && s->fragmentTexture[base+i]==textures[i]) ++i;
+            if (i==n) break;
+            NSUInteger start=i, end=i;
+            while (i<n) {
+                if (s->fragmentTexture[base+i]!=textures[i]) { end=i; ++i; continue; }
+                NSUInteger gap=i;
+                while (gap<n && gap-end<=2 && s->fragmentTexture[base+gap]==textures[gap]) ++gap;
+                if (gap<n && gap-end<=3 && s->fragmentTexture[base+gap]!=textures[gap]) { i=gap; continue; }
+                break;
+            }
+            for (NSUInteger j=start; j<=end; ++j) s->fragmentTexture[base+j]=textures[j];
+            forward(self,cmd,textures+start,NSMakeRange(base+start,end-start+1));
+            i=end+1;
+        }
+    } else ((void(*)(id,SEL,id<MTLTexture> const *,NSRange))original(self,cmd))(self,cmd,textures,range);
     for (NSUInteger i=0; i<range.length; ++i) rememberTexture(self,cmd,textures[i],range.location+i);
 }
 static void probeScene(id<MTLCommandBuffer> buffer, NSDictionary *inputs);
@@ -1030,8 +1135,14 @@ static void endEncoder(id self, SEL cmd) {
     objc_setAssociatedObject(self, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
-    ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
+    if (!(bindDedup && s && state && s->pipeline==state))
+        ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
+    if (diagnostics && redundantProbe && s) {
+        ++redundantCounts[PipelineBinds];
+        if (s->seenPipeline==state) ++redundantCounts[PipelineBindsRedundant];
+        s->seenPipeline=state;
+    }
     NSDictionary *description = objc_getAssociatedObject(state, &pipelineKey);
     if (diagnostics && !description) description = @{@"label": [state label] ?: @""};
     if (s) {
@@ -1896,6 +2007,7 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     id encoder = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
     instrumentEncoder(encoder);
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
+    flushRedundantCounts();
     if (prepassTrim && encoder) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) {
         s->trimRole=prepassTrimRole(desc);
         // Diagnostics: report the previous frame's counts at each trimmed prepass.
@@ -2181,6 +2293,9 @@ __attribute__((constructor)) static void start() {
         if (metalFXEnabled) traceConstants = YES;
         // Depth prepass trim (perf/README.md); needs the draw hooks.
         // BG3MFX_PREPASS_TRIM=0 keeps BG3's full prepass for comparison.
+        // Bind dedup; BG3MFX_TEXTURE_DEDUP=0 forwards every bind for comparison.
+        bindDedup = metalFXEnabled && !(getenv("BG3MFX_TEXTURE_DEDUP") && strcmp(getenv("BG3MFX_TEXTURE_DEDUP"),"0") == 0);
+        redundantProbe = diagnostics && metalFXEnabled && getenv("BG3MFX_TRACE_REDUNDANT") && strcmp(getenv("BG3MFX_TRACE_REDUNDANT"),"1") == 0;
         prepassTrim = metalFXEnabled && !(getenv("BG3MFX_PREPASS_TRIM") && strcmp(getenv("BG3MFX_PREPASS_TRIM"),"0") == 0);
         if (diagnostics) {
             constantSamples = [NSMutableDictionary dictionary];
