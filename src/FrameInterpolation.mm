@@ -184,8 +184,10 @@ static thread_local bool presentationThread=false;
 @interface BG3MFXSlotGate : NSObject
 - (BOOL)acquireWithLimit:(NSUInteger)limit timeout:(double)seconds;
 - (void)releaseSlot;
+- (NSUInteger)inFlight;
 @end
 @implementation BG3MFXSlotGate { NSCondition *_condition; NSUInteger _inFlight; }
+- (NSUInteger)inFlight { [_condition lock]; NSUInteger count=_inFlight; [_condition unlock]; return count; }
 - (instancetype)init { if ((self=[super init])) _condition=[NSCondition new]; return self; }
 - (BOOL)acquireWithLimit:(NSUInteger)limit timeout:(double)seconds {
     NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:seconds];
@@ -214,9 +216,12 @@ struct PresentTask {
     BG3MFXTexturePool *realPool, *generatedPool;
     CAMetalLayer *layer;
     uint64_t value;
-    double interval;
+    double interval;           // BG3's work time: its interval minus stand-in waits
+    double cadence;            // BG3's actual interval between frames
     NSArray *handlers;
     __weak BG3MFXStandInDrawable *standIn;
+    CFTimeInterval submitted;  // BG3's commit of this frame, for the frame log
+    unsigned queued;           // stand-ins in flight plus frames waiting here
 };
 
 @implementation BG3MFXFramePresenter {
@@ -228,6 +233,10 @@ struct PresentTask {
     BG3MFXSlotGate *_slots;
     std::atomic<NSUInteger> _drawableIDs;
     std::atomic<double> _standInWait;
+    // Paced presentation (vsync on, or vsync off up to half the refresh rate):
+    // the display paces the pairs, and every extra stand-in only queues another
+    // frame, so BG3 gets one.
+    std::atomic<bool> _singleStandIn;
     // Diagnostics, in seconds; reset by takeTimingSummary.
     std::atomic<double> _idleTime, _drawableTime, _standInTime;
     std::atomic<unsigned> _timedTasks, _immediateTasks;
@@ -281,7 +290,9 @@ struct PresentTask {
     NSUInteger w=(NSUInteger)layer.drawableSize.width, h=(NSUInteger)layer.drawableSize.height;
     if (!w || !h || layer.pixelFormat!=_pixelFormat) return nil;
     CFTimeInterval start=CACurrentMediaTime();
-    BOOL acquired=[_slots acquireWithLimit:std::min<NSUInteger>(std::max<NSUInteger>(limit,2),3) timeout:1];
+    NSUInteger slots=_singleStandIn ? 1 : std::min<NSUInteger>(std::max<NSUInteger>(limit,2),3);
+    BG3MFXFrameLogBuffering((unsigned)limit,(unsigned)slots);
+    BOOL acquired=[_slots acquireWithLimit:slots timeout:1];
     double waited=CACurrentMediaTime()-start;
     _standInWait=_standInWait+waited; _standInTime=_standInTime+waited;
     if (!acquired) return nil;
@@ -308,18 +319,18 @@ struct PresentTask {
     BG3MFXStandInDrawable *standIn=(BG3MFXStandInDrawable *)drawable;
     NSArray *handlers=[standIn takeSubmission];
     if (!handlers) return;
-    // Pace by how long BG3 takes to render, not by time it spent blocked on a
-    // stand-in we still held. Otherwise any slowdown lengthens the schedule,
-    // which holds stand-ins longer and keeps BG3 slow (observed after switching
-    // double- to triple-buffered vsync).
-    double waited=_standInWait.exchange(0);
+    // BG3's work time excludes time blocked on a stand-in we still held: it
+    // shows whether BG3 could render faster than it does.
+    double waited=_standInWait.exchange(0), cadence=interval;
     if (interval>0) interval=fmax(interval-waited,1.0/240);
     uint64_t value=0;
     if (buffer) { value=++_eventValue; [buffer encodeSignalEvent:_event value:value]; }
     BG3MFXTexturePool *generatedPool;
     { std::lock_guard<std::mutex> lock(_mutex); generatedPool=_generated; }
-    PresentTask task{standIn.texture,generated,[standIn pool],generatedPool,standIn.layer,value,interval,handlers,standIn};
-    std::lock_guard<std::mutex> lock(_mutex); _tasks.push_back(std::move(task)); _wake.notify_all();
+    PresentTask task{standIn.texture,generated,[standIn pool],generatedPool,standIn.layer,value,interval,cadence,handlers,standIn,
+        CACurrentMediaTime(),(unsigned)[_slots inFlight]};
+    std::lock_guard<std::mutex> lock(_mutex); task.queued+=(unsigned)_tasks.size();
+    _tasks.push_back(std::move(task)); _wake.notify_all();
 }
 - (NSDictionary *)takeTimingSummary {
     unsigned tasks=_timedTasks.exchange(0);
@@ -347,30 +358,41 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     // GPU at about the same time. To look smooth they must reach the display
     // about half a frame interval apart, generated first.
     //
-    // Vsync on, and vsync off while half the interval spans at least one refresh:
-    // each image is presented after the previous one has been on screen for half
-    // the interval (at least one refresh with vsync on), with
-    // presentDrawable:afterMinimumDuration:. Standalone at 120 Hz, two presents
-    // every 50 ms with display sync off: 118 of 120 shown, every gap exactly
-    // 25 ms (plain presents: 59 of 120 shown); with display sync on at 30 pairs/s,
-    // every gap 16.7 ms (plain presents: alternating 8.3 and 25 ms). Live with
-    // vsync off at about 20 rendered fps, the user found it much smoother than
-    // plain presents, which dropped 20-28% of generated images.
+    // Vsync on, and vsync off while a frame spans at least two refreshes: each
+    // image is presented with presentDrawable:afterMinimumDuration:, which
+    // rounds up to whole refreshes. The frame's whole refreshes are split
+    // between the generated image (the smaller half) and the real one, each
+    // minimum set just under its refresh count. Using half the interval instead
+    // rounded up past the frame time between about 30 and 60 fps: the presenter
+    // fell behind, every buffer filled, and BG3 was dragged to about 31 fps with
+    // about 110 ms from commit to display (live log and a standalone window
+    // test at 120 Hz). Split by whole refreshes, the same test kept the frame
+    // rate with 30-45 ms. Standalone at 120 Hz, two presents every 50 ms with
+    // display sync off: 118 of 120 shown, every gap exactly 25 ms (plain
+    // presents: 59 of 120 shown); live at about 20 rendered fps this was much
+    // smoother than plain presents, which dropped 20-28% of generated images.
     //
-    // Vsync off and faster: afterMinimumDuration: rounds up to whole refreshes
-    // (standalone at 125 pairs/s: exactly 120 images/s, falling behind), so it
-    // would cap the frame rate; presenting both images at once shows the
-    // generated one for a sliver at most (live: very jittery). This thread
-    // presents the generated image when its copy is done, waits half an
-    // interval, then presents the real one, tearing as vsync off does without
-    // Frame Generation. It skips the wait when BG3's next frame is already queued
-    // so it never falls behind.
+    // Vsync off and faster: the minimum durations would cap the frame rate
+    // (standalone at 125 pairs/s: exactly 120 images/s, falling behind), and
+    // presenting both images at once shows the generated one for a sliver at
+    // most (live: very jittery). This thread presents the generated image when
+    // its copy is done, waits half an interval, then presents the real one,
+    // tearing as vsync off does without Frame Generation. It skips the wait
+    // when BG3's next frame is already queued so it never falls behind.
+    //
+    // On the paced paths the display limits the pairs, and extra stand-ins only
+    // queue frames: BG3 gets one stand-in whatever its double/triple buffering.
+    // Live at about 32 fps with BG3 triple-buffered: 47 ms from commit to
+    // display with one stand-in, 107 ms with three, at the same frame rate
+    // (without Frame Generation: 25 ms double, 50 ms triple). Standalone at
+    // 90 fps, 120 Hz, vsync on: 65 ms -> 48 ms. Vsync off above half the
+    // refresh rate keeps BG3's buffering: one stand-in cost frames there.
     //
     // Both copies are committed at once, and the stand-in is released when the
     // real copy completes, before any wait: BG3 never waits for this thread's
     // pacing. (Earlier designs that waited for display held stand-ins and slowed
     // BG3 to about 13 fps.)
-    double smoothed=0;
+    double smoothed=0, smoothedCadence=0; bool fast=false;
     // The display's refresh interval, read on the main thread from the layer's
     // window and refreshed periodically (the window can move between displays).
     auto refresh=std::make_shared<std::atomic<double>>(1.0/120);
@@ -389,8 +411,12 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         if (task.interval>0) {
             double sample=fmin(fmax(task.interval,1.0/240),0.1);
             smoothed=smoothed>0 ? smoothed*0.75+sample*0.25 : sample;
+            sample=fmin(fmax(task.cadence,1.0/240),0.1);
+            smoothedCadence=smoothedCadence>0 ? smoothedCadence*0.75+sample*0.25 : sample;
         }
-        double interval=smoothed>0 ? smoothed : 1.0/60;
+        double work=smoothed>0 ? smoothed : 1.0/60;
+        // Presentation follows BG3's actual frame interval.
+        double interval=smoothedCadence>0 ? smoothedCadence : 1.0/60;
         if (refreshCheck++%120==0) {
             CAMetalLayer *layer=task.layer;
             dispatch_async(dispatch_get_main_queue(),^{
@@ -401,11 +427,25 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         }
         bool synced=task.layer.displaySyncEnabled;
         double frameRefresh=refresh->load();
-        BG3MFXPresentMethod method=synced ? BG3MFXPresentSynced :
-            interval*0.5>=frameRefresh*0.95 ? BG3MFXPresentMinimum : BG3MFXPresentSpaced;
+        // Vsync off and BG3 able to exceed half the refresh rate: it is held at
+        // about half the refresh rate while its work time is shorter. Work time
+        // alone misleads with one stand-in: a GPU-bound BG3 at 32 fps spends
+        // much of each frame waiting for it, so its work time looked fast and
+        // the method and stand-in count flipped every few frames (live: 66 ms,
+        // 2-11% of generated images dropped). Leave only once BG3 is clearly
+        // slower than half the refresh rate.
+        if (interval<2*frameRefresh*1.05 && work<2*frameRefresh*0.95) fast=true;
+        else if (interval>2*frameRefresh*1.15) fast=false;
+        BG3MFXPresentMethod method=synced ? BG3MFXPresentSynced : fast ? BG3MFXPresentSpaced : BG3MFXPresentMinimum;
         bool spaced=method==BG3MFXPresentSpaced;
-        // Each image's minimum on-screen time on the paced paths.
-        double minimum=synced ? fmax(interval*0.5,frameRefresh) : interval*0.5;
+        // Whole refreshes per frame (at least two), split between the generated
+        // and the real image; each minimum just under its count of refreshes.
+        // Rounded down with a margin, so a pair never takes a whole frame: BG3
+        // can always speed up.
+        int refreshes=std::max(2,(int)floor(interval/frameRefresh-0.05));
+        double generatedMinimum=(refreshes/2)*frameRefresh-0.0005;
+        double realMinimum=(refreshes-refreshes/2)*frameRefresh-0.0005;
+        _singleStandIn=!spaced;
         BG3MFXFrameLogMethod(method);
         if (!synced) ++_immediateTasks;
         dispatch_semaphore_t generatedReady=spaced ? dispatch_semaphore_create(0) : nil;
@@ -422,7 +462,7 @@ static void waitUntilMediaTime(CFTimeInterval target) {
                     BG3MFXFrameLogShown(YES,d.presentedTime); if (diagnostic) diagnostic(YES,d.presentedTime,0,interval); }];
                 [cb addCompletedHandler:^(id<MTLCommandBuffer> b){
                     if (generatedReady) dispatch_semaphore_signal(generatedReady); if (b.error && failure) failure(b.error); }];
-                if (!spaced) [cb presentDrawable:generatedDrawable afterMinimumDuration:minimum];
+                if (!spaced) [cb presentDrawable:generatedDrawable afterMinimumDuration:generatedMinimum];
                 [cb commit];
             } else {
                 // BG3 may hold the remaining drawables briefly (for example while
@@ -448,14 +488,16 @@ static void waitUntilMediaTime(CFTimeInterval target) {
             [pool relinquish:real]; [slots releaseSlot]; if (realReady) dispatch_semaphore_signal(realReady);
             if (b.error && failure) failure(b.error); }];
         NSArray *handlers=task.handlers; __weak BG3MFXStandInDrawable *standIn=task.standIn;
+        CFTimeInterval submitted=task.submitted; unsigned queued=task.queued;
         [drawable addPresentedHandler:^(id<MTLDrawable> d){
-            BG3MFXFrameLogShown(NO,d.presentedTime); if (diagnostic) diagnostic(NO,d.presentedTime,0,interval);
+            BG3MFXFrameLogShown(NO,d.presentedTime);
+            if (d.presentedTime>0) BG3MFXFrameLogLatency(d.presentedTime-submitted,queued); if (diagnostic) diagnostic(NO,d.presentedTime,0,interval);
             BG3MFXStandInDrawable *owner=standIn; owner.presentedTime=d.presentedTime;
             for (MTLDrawablePresentedHandler h in handlers) h(owner ?: d);
         }];
         if (!spaced) {
             // A frame without a generated image (menus, loading) shows at once.
-            if (generatedDrawable) [cb presentDrawable:drawable afterMinimumDuration:minimum];
+            if (generatedDrawable) [cb presentDrawable:drawable afterMinimumDuration:realMinimum];
             else [cb presentDrawable:drawable];
             [cb commit];
         } else {

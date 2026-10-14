@@ -1811,23 +1811,37 @@ static BOOL deferPresent(id buffer, SEL cmd, id drawable) {
         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return YES;
 }
-// With Frame Generation off, BG3 presents real drawables itself.
-static void logNativePresent(id drawable) {
+// With Frame Generation off, BG3 presents real drawables itself. Latency is
+// measured from the buffer's commit, as for Frame Generation's stand-ins.
+static char nativePresentKey;
+static void logNativePresent(id buffer, id drawable) {
     if (!BG3MFXFrameLogEnabled()) return;
     BG3MFXFrameLogMethod(BG3MFXPresentNative);
-    [(id<MTLDrawable>)drawable addPresentedHandler:^(id<MTLDrawable> d){ BG3MFXFrameLogShown(NO,d.presentedTime); }];
+    objc_setAssociatedObject(buffer,&nativePresentKey,drawable,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
+// The Frame Generation presenter's own presents pass through these hooks too
+// (they hook every queue's command buffers); they are not BG3 frames.
 static void present(id self, SEL cmd, id drawable) {
+    if([BG3MFXFramePresenter isPresentationThread]) { ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable); return; }
     if(deferPresent(self,cmd,drawable)) return;
-    countPresent(drawable,cmd); logNativePresent(drawable);
+    countPresent(drawable,cmd); logNativePresent(self,drawable);
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable);
 }
 static void presentTimed(id self, SEL cmd, id drawable, double time) {
+    if([BG3MFXFramePresenter isPresentationThread]) { ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time); return; }
     if(deferPresent(self,cmd,drawable)) return;
-    countPresent(drawable,cmd); logNativePresent(drawable);
+    countPresent(drawable,cmd); logNativePresent(self,drawable);
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time);
 }
 static void commit(id self, SEL cmd) {
+    if (id<MTLDrawable> shown=objc_getAssociatedObject(self,&nativePresentKey)) {
+        objc_setAssociatedObject(self,&nativePresentKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        CFTimeInterval committed=CACurrentMediaTime();
+        [shown addPresentedHandler:^(id<MTLDrawable> d){
+            BG3MFXFrameLogShown(NO,d.presentedTime);
+            if (d.presentedTime>0) BG3MFXFrameLogLatency(d.presentedTime-committed,0);
+        }];
+    }
     NSDictionary *request=objc_getAssociatedObject(self,&deferredPresentKey);
     NSDictionary *pair=objc_getAssociatedObject(self,&generatedPairKey);
     objc_setAssociatedObject(self,&deferredPresentKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -1886,6 +1900,7 @@ static id layerNextDrawable(id self, SEL cmd) {
             setLayerDrawableCount(layer,saved.unsignedIntegerValue);
             record(@{@"event":@"frameGenerationDrawableCount",@"restored":saved});
         }
+        BG3MFXFrameLogBuffering((unsigned)layer.maximumDrawableCount,0);
         return ((id(*)(id,SEL))original(self,cmd))(self,cmd);
     }
     // Each rendered frame becomes two presents, which needs three drawables

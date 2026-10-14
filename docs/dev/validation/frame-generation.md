@@ -142,6 +142,47 @@ choppier):
   Frame Generation off, and reported all "working very well". Not yet
   confirmed live; the fixture's layer is unattached, so it does not measure
   display timing.
+- Input delay (October 13, live, VSync on, no limiter, frame log): BG3 rendered
+  about 36 fps and real frames reached the display about 110 ms (p90) after
+  commit. A standalone window test (`build/experiments/lag.mm`: a game thread
+  with two stand-ins, a presenter thread, 120 Hz) reproduced it: with half the
+  interval as the minimum, frames at 36-50 fps were dragged to about 31 fps with
+  107-113 ms, because `afterMinimumDuration:` rounds up past the frame time.
+  Splitting each frame's whole refreshes between the images kept the rate with
+  30-45 ms (without Frame Generation: about 22 ms synced, 7 ms unsynced). With
+  VSync on at 90 fps, the display limits pairs to 60/s and the queue held
+  65 ms; one stand-in cut it to 48 ms at the same rate, while with VSync off at
+  90 fps one stand-in cost frames, so it applies only with VSync on. Not yet
+  confirmed live. The frame log had counted the presenter's own presents as BG3
+  frames; they are now excluded.
+- Buffering (October 13, live, frame log with BG3's buffering, about 32-42 fps):
+  without Frame Generation, 25 ms from commit to display double-buffered and
+  50 ms triple-buffered. With Frame Generation and BG3 triple-buffered, 107 ms
+  (four frames in flight) with three stand-ins and 47 ms (one in flight) with
+  one, at the same frame rate. BG3 now gets one stand-in on every paced path,
+  so its double/triple setting no longer adds queued frames there; the fast
+  vsync-off path keeps BG3's buffering. Live after the change, Triple and
+  Double both ran at 45-47 ms with one frame in flight (smooth). VSync off was
+  not: 66 ms (p90 92-99), 2-11% of generated images dropped, and the stand-in
+  count flipping between 1 and 3. Pacing used BG3's work time (its interval
+  minus stand-in waits); with one stand-in a GPU-bound BG3 at 32 fps spends much
+  of each frame waiting for it, so its work time looked faster than half the
+  refresh rate and the vsync-off method flipped every few frames. Pacing now
+  follows BG3's actual frame interval, rounded down with a margin, and the
+  vsync-off spaced method requires BG3 to be held at about half the refresh
+  rate with a shorter work time. Not yet confirmed live.
+- Generated images above half the refresh rate with VSync off (October 13):
+  live, 25-46% were dropped at 70-85 fps. A window test driving the real
+  presenter (`build/experiments/presenter_waste.mm`, GPU-bound game with three
+  stand-ins) dropped 77-84% windowed and 44-76% full screen, with every real
+  image shown. The presenter skipped its half-interval spacing whenever BG3 had
+  committed another frame, finished or not. Deferring the real image instead
+  kept generated images (0-2% dropped) but dropped 10-35% of real ones: two
+  images per frame exceed the display's refreshes at these rates, so some are
+  lost either way. Kept as is; skipping interpolation above half the refresh
+  rate would save GPU time but turn about 118 shown images into 80-90 at the
+  switch. An apparent 30 fps cap in a window came from low power mode, not the
+  presenter: rerun without it, windowed ran at 68-110 fps.
 - `MTL_CAPTURE_ENABLED=1` slows the whole session (Temporal measured 23-34 fps
   instead of about 55), so do not combine capture-enabled launches with pacing
   or frame-rate comparisons. A GPU profile of plain Temporal at 3840x2160 output

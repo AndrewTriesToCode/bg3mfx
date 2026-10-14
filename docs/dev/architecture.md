@@ -118,12 +118,18 @@ and real images about half of BG3's smoothed frame interval apart:
 
 | Case | Presentation |
 | --- | --- |
-| VSync on | `presentDrawable:afterMinimumDuration:` with half the interval, at least one refresh |
-| VSync off, BG3 at or below half the refresh rate | `afterMinimumDuration:` with half the interval |
+| VSync on | `presentDrawable:afterMinimumDuration:`, the frame's whole refreshes (at least two) split between the images |
+| VSync off, a frame spans at least two refreshes | The same |
 | VSync off, faster | Generated image when its copy finishes, a half-interval wait on the worker, then the real image; uncapped and tearing |
 
-`afterMinimumDuration:` rounds up to whole refreshes, so it would cap the
-vsync-off fast case. The refresh interval is read on the main thread from the
+`afterMinimumDuration:` rounds up to whole refreshes, so each minimum is set
+just under its count of refreshes: half the interval rounded up past the frame
+time and let the presenter fall behind. It would also cap the vsync-off fast
+case. On the paced paths (the first two rows) BG3 gets one stand-in instead of
+its two or three, whatever its double/triple buffering: the display paces the
+pairs, and extra stand-ins only queue frames. The fast vsync-off path keeps
+BG3's own buffering. The frame log records BG3's requested buffering and the
+stand-ins allowed. The refresh interval is read on the main thread from the
 layer's window. The stand-in is released when the real copy completes, before
 any wait, and the worker skips the wait when BG3's next frame is already
 queued. Frames without a generated image are presented at once. Only the generated scene goes through an extra

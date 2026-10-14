@@ -9,16 +9,25 @@
 
 namespace {
 std::atomic<unsigned> rendered{0}, shown[2], dropped[2], missing[2], methods[4];
+std::atomic<unsigned> bg3Buffers{0}, standInLimit{0};  // latest values
 std::mutex timesLock;
 std::vector<double> times;  // presented times of shown images since the last report
+std::vector<double> latencies;  // commit-to-display latencies of real frames
+std::vector<unsigned> queues;   // frames in flight at each of those commits
 dispatch_source_t reportTimer;  // keeps the 2 s report timer alive
 double lastReport;              // start of the current report window
 
 void report() {
     double now = CACurrentMediaTime(), span = now - lastReport; lastReport = now;
     if (span <= 0) return;
-    std::vector<double> taken;
-    { std::lock_guard<std::mutex> lock(timesLock); taken.swap(times); }
+    std::vector<double> taken, latency; std::vector<unsigned> queued;
+    { std::lock_guard<std::mutex> lock(timesLock); taken.swap(times); latency.swap(latencies); queued.swap(queues); }
+    std::sort(latency.begin(), latency.end());
+    double latencyAverage = 0; for (double value : latency) latencyAverage += value;
+    if (!latency.empty()) latencyAverage = latencyAverage * 1000 / latency.size();
+    double latencyP90 = latency.empty() ? 0 : latency[latency.size() * 9 / 10] * 1000;
+    double queueAverage = 0; for (unsigned value : queued) queueAverage += value;
+    if (!queued.empty()) queueAverage /= queued.size();
     std::sort(taken.begin(), taken.end());
     std::vector<double> gaps;
     for (size_t i = 1; i < taken.size(); ++i) gaps.push_back((taken[i] - taken[i-1]) * 1000);
@@ -33,9 +42,9 @@ void report() {
     int method = int(std::max_element(counts, counts + 4) - counts);
     unsigned presented = real + generated + lost;
     os_log(os_log_create("com.bg3mfx", "frames"),
-        "bg3mfx frames: rendered %.1f/s, shown real %.1f/s, generated %.1f/s, dropped %.0f%%, method %{public}s, gap %.1f ms (p90 %.1f ms)",
+        "bg3mfx frames: rendered %.1f/s, shown real %.1f/s, generated %.1f/s, dropped %.0f%%, method %{public}s, gap %.1f ms (p90 %.1f ms), latency %.1f ms (p90 %.1f ms), in flight %.1f, BG3 buffers %u, stand-ins %u",
         rendered.exchange(0) / span, real / span, generated / span, presented ? 100.0 * lost / presented : 0.0,
-        counts[method] ? names[method] : "none", average, p90);
+        counts[method] ? names[method] : "none", average, p90, latencyAverage, latencyP90, queueAverage, bg3Buffers.load(), standInLimit.load());
 }
 }
 
@@ -61,6 +70,14 @@ void BG3MFXFrameLogShown(BOOL generated, CFTimeInterval time) {
     if (time == 0) { ++dropped[kind]; return; }
     ++shown[kind];
     std::lock_guard<std::mutex> lock(timesLock); times.push_back(time);
+}
+void BG3MFXFrameLogBuffering(unsigned bg3, unsigned standIns) {
+    if (!BG3MFXFrameLogEnabled()) return;
+    bg3Buffers = bg3; standInLimit = standIns;
+}
+void BG3MFXFrameLogLatency(CFTimeInterval seconds, unsigned queued) {
+    if (!BG3MFXFrameLogEnabled() || seconds <= 0) return;
+    std::lock_guard<std::mutex> lock(timesLock); latencies.push_back(seconds); queues.push_back(queued);
 }
 void BG3MFXFrameLogMethod(BG3MFXPresentMethod method) {
     if (BG3MFXFrameLogEnabled() && method >= 0 && method < 4) ++methods[method];
