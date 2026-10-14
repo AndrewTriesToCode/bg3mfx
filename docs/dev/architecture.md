@@ -229,6 +229,10 @@ does not alter the app bundle.
 - `src/TemporalJitter.*`: guarded Temporal sample selection and ARM64 preservation.
 - `src/CodePatch.*`: shared in-memory code patching (header-padding branch
   islands, branch range checks, all-or-nothing page protection).
+- `src/Trace.mm` also holds the depth prepass trim (on by default;
+  `BG3MFX_PREPASS_TRIM=0` disables it): vertex-only opaque prepass draws are skipped and
+  their G-buffer draws write depth; see `classifyPrepassTrim` and
+  `PrepassTrimDraw`.
 - `src/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
   (on by default; `BG3MFX_SINGLE_SHADOW_STAGE=0` disables it); see
   [`perf/README.md`](../../perf/README.md).
