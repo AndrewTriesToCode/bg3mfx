@@ -40,6 +40,19 @@ driver time on BG3's render thread down about 25% per frame (texture binds
 −72%), but this scene is now mostly GPU-limited, so little of it shows as
 frame rate; CPU-heavier scenes should gain more.
 
+## Hook overhead, second round
+
+Per-encoder diagnostic tables are compiled out of the quiet runtime; pipeline
+binds use a per-thread pipeline-info cache invalidated whenever a pipeline is
+created or deallocated; encoder setup and end touch only the associated
+objects an encoder actually set (a per-encoder bitmask, with a full clear
+whenever the state is unknown); and the per-thread caches share one
+thread-local block, with `original()`'s fast path inlined. `make test` passes
+with the defaults, with bind filtering off, and with bind filtering and the
+prepass trim off. Live (Ultra, windowed, October 14): no measurable frame-rate
+change against the previous commit (83.2 vs 83.2 fps, interleaved runs), as
+that scene is mostly GPU-limited. The user saw no artifacts.
+
 ## Frame Generation (initial integration)
 
 Frame Generation is the "MetalFX Frame Generation" checkbox and combines with

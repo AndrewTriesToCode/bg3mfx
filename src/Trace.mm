@@ -128,14 +128,19 @@ struct CompositionDraw {
     TrimPipeline trimPipeline;
     TrimRole trimRole;
     __unsafe_unretained id depthState;
+#ifndef BG3MFX_NO_TRACE
     // Diagnostics (BG3MFX_TRACE_REDUNDANT=1): every binding BG3 has made in
     // this encoder, to count binds that repeat what is already bound.
     __unsafe_unretained id seenTexture[64];
     __unsafe_unretained id seenBuffer[2][32];
     NSUInteger seenOffset[2][32];
     __unsafe_unretained id seenPipeline, seenDepth;
+#endif
     // Bind dedup: fragment textures this encoder has actually forwarded.
     __unsafe_unretained id fragmentTexture[64];
+    // Per-encoder associated objects our code has set (EncoderAssociation
+    // bits; only ever accumulate), so encoder setup and end skip the others.
+    uint16_t associations;
 }
 @end
 @implementation BG3MFXEncoderState
@@ -150,26 +155,65 @@ struct CompositionDraw {
     TrimPipeline trim;
 }
 @end
+// BG3 binds about 960 pipelines per frame from a few hundred long-lived ones.
+// A small per-thread cache avoids the associated-object lookup. Each info is
+// an associated object of its pipeline, so it is released exactly when the
+// pipeline is: its dealloc, like every hooked pipeline creation, bumps the
+// generation. A cache entry therefore never outlives its pipeline, even if
+// the address is reused by a pipeline created through a path we do not hook.
+static std::atomic<unsigned> pipelineGeneration{1};
 @implementation BG3MFXPipelineInfo
+- (void)dealloc { pipelineGeneration.fetch_add(1, std::memory_order_release); }
 @end
+struct PipelineCacheEntry { const void *pipeline; void *info; unsigned generation; };
+struct OriginalCacheEntry { Class cls; SEL selector; IMP imp; unsigned generation; };
+// Every per-thread hook cache lives in one thread-local block, so a hooked
+// call resolves one thread-local address (a _tlv_get_addr call) instead of
+// one per cache. Nothing in it is shared between threads.
+struct HookThreadCache {
+    const void *encoder;          // last encoder looked up and its state
+    void *state;
+    PipelineCacheEntry pipelines[64];
+    OriginalCacheEntry originals[256];
+};
+static thread_local HookThreadCache hookCache;
+static inline void *pipelineInfoPointer(__unsafe_unretained id state) {
+    unsigned generation = pipelineGeneration.load(std::memory_order_acquire);
+    PipelineCacheEntry &entry = hookCache.pipelines[((uintptr_t)(__bridge const void *)state >> 4) & 63];
+    if (entry.pipeline == (__bridge const void *)state && entry.generation == generation)
+        return entry.info;
+    __unsafe_unretained BG3MFXPipelineInfo *info = objc_getAssociatedObject(state, &pipelineKey);
+    entry = {(__bridge const void *)state, (__bridge void *)info, generation};
+    return (__bridge void *)info;
+}
 static char encoderStateKey;
 // Encoders are used one at a time on a thread, so remember the last lookup.
 // instrumentEncoder refreshes and endEncoder clears it, so a recycled encoder
 // address never returns a previous encoder's state.
-static thread_local __unsafe_unretained id cachedEncoder;
-static thread_local __unsafe_unretained BG3MFXEncoderState *cachedState;
 // Returns a plain pointer: ARC would otherwise retain and release the state
 // around every hooked call. The encoder keeps its state alive; callers hold it
 // unretained through the encoderState macro below.
 static inline __attribute__((always_inline)) void *encoderStatePointer(__unsafe_unretained id encoder) {
     if (!encoder) return nullptr;
-    if (encoder == cachedEncoder) return (__bridge void *)cachedState;
+    HookThreadCache &cache = hookCache;
+    if ((__bridge const void *)encoder == cache.encoder) return cache.state;
     __unsafe_unretained BG3MFXEncoderState *state = objc_getAssociatedObject(encoder,&encoderStateKey);
-    cachedEncoder = encoder; cachedState = state;
+    cache.encoder = (__bridge const void *)encoder; cache.state = (__bridge void *)state;
     return (__bridge void *)state;
 }
 #define encoderState(encoder) ((__bridge BG3MFXEncoderState *)encoderStatePointer(encoder))
-static void forgetEncoder(id encoder) { if (encoder == cachedEncoder) { cachedEncoder = nil; cachedState = nil; } }
+enum EncoderAssociation : uint16_t {
+    AssocTAAInputs = 1, AssocFSRInputs = 2, AssocComposition = 4, AssocPostprocess = 8,
+    AssocSuppressed = 16, AssocBindings = 32, AssocAttachments = 64, AssocWaterfall = 128, AssocAll = 0xffff,
+};
+static inline void noteAssociation(__unsafe_unretained id encoder, uint16_t bit) {
+    if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(encoder)) s->associations |= bit;
+}
+// An encoder without our state may carry anything: treat every key as set.
+static inline uint16_t encoderAssociations(__unsafe_unretained BG3MFXEncoderState *s) { return s ? s->associations : AssocAll; }
+static void forgetEncoder(id encoder) {
+    if ((__bridge const void *)encoder == hookCache.encoder) { hookCache.encoder = nullptr; hookCache.state = nullptr; }
+}
 // Encoders from paths not instrumented have no state; field reads through a
 // nil object pointer would crash, unlike messages to nil.
 static id<MTLCommandBuffer> encoderBuffer(id encoder) { __unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder); return s ? s->buffer : nil; }
@@ -267,7 +311,16 @@ static char temporalPassHistoryKey;
 #endif
 static BOOL spatialFailed;
 static BOOL temporalFailed;
-static IMP original(__unsafe_unretained id object, SEL selector);
+static std::atomic<unsigned> originalsGeneration{1};
+static IMP originalSlow(Class concrete, SEL selector, unsigned generation, OriginalCacheEntry &entry);
+// The original implementation of a hooked method, from this thread's cache.
+static inline __attribute__((always_inline)) IMP original(__unsafe_unretained id object, SEL selector) {
+    Class concrete = object_getClass(object);
+    unsigned generation = originalsGeneration.load(std::memory_order_acquire);
+    OriginalCacheEntry &entry = hookCache.originals[((uintptr_t)concrete >> 4 ^ (uintptr_t)selector >> 2) & 255];
+    if (entry.cls == concrete && entry.selector == selector && entry.generation == generation) return entry.imp;
+    return originalSlow(concrete, selector, generation, entry);
+}
 
 static EncoderStage bindingStage(SEL cmd) {
     static SEL vertex[]={@selector(setVertexBuffer:offset:atIndex:),@selector(setVertexBuffers:offsets:withRange:),
@@ -299,6 +352,9 @@ static NSMutableDictionary *constantBindings(id encoder) {
 // Diagnostics: count binds that repeat the encoder's current binding. Called
 // before forwarding; compute bindings are not counted.
 static void countBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> const *buffers, const NSUInteger *offsets, NSRange range, bool offsetOnly) {
+#ifdef BG3MFX_NO_TRACE
+    (void)self; (void)cmd; (void)buffers; (void)offsets; (void)range; (void)offsetOnly;
+#else
     if (!diagnostics || !redundantProbe) return;
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
     EncoderStage stage=bindingStage(cmd);
@@ -312,8 +368,12 @@ static void countBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> con
         if (same) ++redundantCounts[BufferBindsRedundant];
         s->seenBuffer[stage][index]=buffer; s->seenOffset[stage][index]=offsets[i];
     }
+#endif
 }
 static void countTextures(__unsafe_unretained id self, SEL cmd, id<MTLTexture> const *textures, NSRange range) {
+#ifdef BG3MFX_NO_TRACE
+    (void)self; (void)cmd; (void)textures; (void)range;
+#else
     if (!diagnostics || !redundantProbe) return;
     static SEL one=@selector(setFragmentTexture:atIndex:), many=@selector(setFragmentTextures:withRange:);
     if (cmd!=one && cmd!=many) return;
@@ -329,6 +389,7 @@ static void countTextures(__unsafe_unretained id self, SEL cmd, id<MTLTexture> c
     }
     ++redundantCounts[TextureCalls];
     if (callSame) ++redundantCounts[TextureCallsRedundant];
+#endif
 }
 static void flushRedundantCounts() {
     static unsigned long lastFrame;
@@ -440,7 +501,7 @@ static void captureWaterfall(id encoder, NSDictionary *draw) {
     if (indexBuffer) bindings[@"index"]=@{@"buffer":indexBuffer,@"offset":draw[@"indexOffset"] ?: @0};
     NSMutableDictionary *snapshots=[NSMutableDictionary dictionary];
     NSMutableArray *copies=objc_getAssociatedObject(encoder,&waterfallCopiesKey);
-    if (!copies) { copies=[NSMutableArray array]; objc_setAssociatedObject(encoder,&waterfallCopiesKey,copies,OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+    if (!copies) { copies=[NSMutableArray array]; objc_setAssociatedObject(encoder,&waterfallCopiesKey,copies,OBJC_ASSOCIATION_RETAIN_NONATOMIC); noteAssociation(encoder,AssocWaterfall); }
     for (NSString *slot in bindings) {
         BOOL index=[slot isEqualToString:@"index"];
         NSUInteger slotIndex=[slot componentsSeparatedByString:@":"].lastObject.integerValue;
@@ -494,14 +555,7 @@ static void finishWaterfallCopies(id<MTLCommandBuffer> commandBuffer, NSArray *c
 #endif
 // Every hook calls this; a locked map search per call was measurable on BG3's
 // render thread. Cache per thread; any change to originals() bumps the generation.
-static std::atomic<unsigned> originalsGeneration{1};
-static IMP original(__unsafe_unretained id object, SEL selector) {
-    struct Entry { Class cls; SEL selector; IMP imp; unsigned generation; };
-    static thread_local Entry cache[256];
-    Class concrete = object_getClass(object);
-    unsigned generation = originalsGeneration.load(std::memory_order_acquire);
-    Entry &entry = cache[((uintptr_t)concrete >> 4 ^ (uintptr_t)selector >> 2) & 255];
-    if (entry.cls == concrete && entry.selector == selector && entry.generation == generation) return entry.imp;
+static IMP originalSlow(Class concrete, SEL selector, unsigned generation, OriginalCacheEntry &entry) {
     std::lock_guard<std::recursive_mutex> lock(guard());
     for (Class cls = concrete; cls; cls = class_getSuperclass(cls)) {
         auto it = originals().find({cls, selector});
@@ -605,11 +659,13 @@ static id depthStencilStateHook(id self, SEL cmd, MTLDepthStencilDescriptor *des
 static void setDepthStencilHook(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
     if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(self)) {
-        if (diagnostics && redundantProbe) {
+#ifndef BG3MFX_NO_TRACE
+        if (redundantProbe) {
             ++redundantCounts[DepthBinds];
             if (s->seenDepth==state) ++redundantCounts[DepthBindsRedundant];
             s->seenDepth=state;
         }
+#endif
         s->depthState = state;
     }
 }
@@ -679,6 +735,7 @@ static void rememberTexture(__unsafe_unretained id self, SEL cmd, __unsafe_unret
         if (!bindings) {
             bindings = [NSMutableDictionary dictionary];
             objc_setAssociatedObject(self, &bindingsKey, bindings, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            noteAssociation(self,AssocBindings);
         }
         if (t) bindings[slot] = texture(t); else [bindings removeObjectForKey:slot];
         if (t) record(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": pipelineDescription(self) ?: @{}, @"index": @(index), @"texture": texture(t)});
@@ -996,24 +1053,32 @@ static BOOL copyTemporalAAColor(id<MTLCommandBuffer> buffer, NSDictionary *input
 }
 static void endEncoder(id self, SEL cmd) {
     id<MTLCommandBuffer> commandBuffer = encoderBuffer(self);
-    NSDictionary *probeInputs = objc_getAssociatedObject(self, &taaInputsKey);
-    NSDictionary *fsrInputs = objc_getAssociatedObject(self, &fsrInputsKey);
-    NSDictionary *temporalInputs = objc_getAssociatedObject(self, &taaInputsKey);
-    NSDictionary *postprocess = objc_getAssociatedObject(self,&temporalPostprocessKey);
     __unsafe_unretained BG3MFXEncoderState *encoderRecord = encoderState(self);
+    // Only keys this encoder may hold are read and cleared (most hold none).
+    uint16_t associations = encoderAssociations(encoderRecord);
+    NSDictionary *probeInputs = associations & AssocTAAInputs ? objc_getAssociatedObject(self, &taaInputsKey) : nil;
+    NSDictionary *fsrInputs = associations & AssocFSRInputs ? objc_getAssociatedObject(self, &fsrInputsKey) : nil;
+    NSDictionary *temporalInputs = probeInputs;
+    NSDictionary *postprocess = associations & AssocPostprocess ? objc_getAssociatedObject(self,&temporalPostprocessKey) : nil;
     // A recognized pass followed by an unrecognized draw in the same encoder, or
     // an encoder of only unrecognized draws, overwrites its target: drop any
     // scene association for it (the per-draw logic this replaces did the same).
     if (encoderRecord && encoderRecord->lastDrawOther && metalFXEnabled && encoderRecord->colorTarget) {
         if (sceneTracked(encoderScalingMode(self),commandBuffer)) postprocess = @{@"target":encoderRecord->colorTarget};
     }
-    NSDictionary *composition=objc_getAssociatedObject(self,&frameCompositionKey);
-    objc_setAssociatedObject(self,&frameCompositionKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSDictionary *composition=nil;
+    if (associations & AssocComposition) {
+        composition=objc_getAssociatedObject(self,&frameCompositionKey);
+        objc_setAssociatedObject(self,&frameCompositionKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 #ifndef BG3MFX_NO_TRACE
-    NSArray *waterfallCopies=[objc_getAssociatedObject(self,&waterfallCopiesKey) copy];
-    objc_setAssociatedObject(self,&waterfallCopiesKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSArray *waterfallCopies=nil;
+    if (associations & AssocWaterfall) {
+        waterfallCopies=[objc_getAssociatedObject(self,&waterfallCopiesKey) copy];
+        objc_setAssociatedObject(self,&waterfallCopiesKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 #endif
-    BOOL replaceTAA = [objc_getAssociatedObject(self,&temporalSuppressedKey) boolValue];
+    BOOL replaceTAA = associations & AssocSuppressed ? [objc_getAssociatedObject(self,&temporalSuppressedKey) boolValue] : NO;
 #ifndef BG3MFX_NO_TRACE
     if (getenv("BG3MFX_TRACE_TEMPORAL_CHAIN") && commandBuffer && sceneTracked(encoderScalingMode(self),commandBuffer)) {
         NSMutableArray *history = objc_getAssociatedObject(commandBuffer,&temporalPassHistoryKey);
@@ -1030,10 +1095,10 @@ static void endEncoder(id self, SEL cmd) {
     // The driver may recycle this encoder immediately when MetalFX work starts.
     // Consume the request before any nested Metal call, including creation paths
     // displaced by later instrumentation which no longer run instrumentEncoder.
-    objc_setAssociatedObject(self, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (associations & AssocFSRInputs) objc_setAssociatedObject(self, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (encoderRecord) encoderRecord->buffer = nil;
-    objc_setAssociatedObject(self, &temporalSuppressedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &temporalPostprocessKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (associations & AssocSuppressed) objc_setAssociatedObject(self, &temporalSuppressedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (associations & AssocPostprocess) objc_setAssociatedObject(self, &temporalPostprocessKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     record(@{@"event": @"encoderEnd", @"pipeline": pipelineDescription(self) ?: @{},
              @"bindings": objc_getAssociatedObject(self, &bindingsKey) ?: @{},
              @"attachments": objc_getAssociatedObject(self, &attachmentsKey) ?: @{}});
@@ -1144,21 +1209,25 @@ static void endEncoder(id self, SEL cmd) {
     if(composition && commandBuffer) encodeGeneratedPair(commandBuffer,composition);
     if (sceneProbe && probeInputs && commandBuffer) probeScene(commandBuffer,probeInputs);
     if (encoderRecord) for (auto &texture:encoderRecord->textures) texture=nil;
-    objc_setAssociatedObject(self, &taaInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // Nested Metal work above may have set keys again: use the current bits.
+    associations = encoderAssociations(encoderRecord);
+    if (associations & AssocTAAInputs) objc_setAssociatedObject(self, &taaInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (encoderRecord) encoderRecord->colorTarget=nil;
     forgetEncoder(self);
-    objc_setAssociatedObject(self, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (associations & AssocFSRInputs) objc_setAssociatedObject(self, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
     if (!(bindDedup && s && state && s->pipeline==state))
         ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
-    if (diagnostics && redundantProbe && s) {
+#ifndef BG3MFX_NO_TRACE
+    if (redundantProbe && s) {
         ++redundantCounts[PipelineBinds];
         if (s->seenPipeline==state) ++redundantCounts[PipelineBindsRedundant];
         s->seenPipeline=state;
     }
-    __unsafe_unretained BG3MFXPipelineInfo *info = objc_getAssociatedObject(state, &pipelineKey);
+#endif
+    __unsafe_unretained BG3MFXPipelineInfo *info = state ? (__bridge BG3MFXPipelineInfo *)pipelineInfoPointer(state) : nil;
     NSDictionary *description = info ? info->description : nil;
     if (diagnostics && !description) description = @{@"label": [state label] ?: @""};
     if (s) {
@@ -1235,6 +1304,7 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
         BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
         info->description = description; info->kind = classifyPipeline(fragment);
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        pipelineGeneration.fetch_add(1, std::memory_order_release);
         classifyPrepassTrim(desc, state);
     }
     record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
@@ -1268,6 +1338,7 @@ static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *d
         BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
         info->description = description; info->kind = classifyPipeline(fragment);
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        pipelineGeneration.fetch_add(1, std::memory_order_release);
         classifyPrepassTrim(desc, state);
     }
     record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
@@ -1282,6 +1353,7 @@ static id computePipeline(id self, SEL cmd, id<MTLFunction> function, NSError **
         BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
         info->description = description;
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        pipelineGeneration.fetch_add(1, std::memory_order_release);
     }
     record(@{@"event": @"computePipeline", @"pipeline": description, @"success": @(state != nil)});
     return state;
@@ -1467,6 +1539,7 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
         if (!buffer || !sceneTracked(mode,buffer) || !taaTarget || taaTarget.pixelFormat != MTLPixelFormatRG11B10Float) return;
         spatialSeed = @{@"color":taaTarget,@"taaColor":taaTarget,@"nativeTAA":taaTarget};
         objc_setAssociatedObject(encoder, &taaInputsKey, spatialSeed, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        noteAssociation(encoder,AssocTAAInputs);
         // Frame Generation also needs this frame's depth, motion and camera,
         // validated exactly as for Temporal. Without them the frame still
         // renders and upscales; it just cannot be paired.
@@ -1505,6 +1578,7 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
         NSMutableDictionary *inputs = [spatialSeed mutableCopy];
         [inputs addEntriesFromDictionary:@{@"depth": depth, @"motion": motion, @"camera": camera, @"temporal": temporal, @"reset":@(resetMotion)}];
         objc_setAssociatedObject(encoder, &taaInputsKey, inputs, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        noteAssociation(encoder,AssocTAAInputs);
         return;
     }
     objc_setAssociatedObject(encoder, &taaInputsKey,
@@ -1512,6 +1586,7 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
           @"nativeTAAPreserved":@(!knownUpscaledTAA(taaTarget)),
           @"depth": depth, @"motion": motion, @"camera": camera, @"temporal": temporal, @"reset":@(resetMotion)},
         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    noteAssociation(encoder,AssocTAAInputs);
 }
 static id<MTLBuffer> probeReadback(id<MTLCommandBuffer> buffer, id<MTLTexture> outputTexture) {
     NSUInteger row = outputTexture.width * 8; // RGBA16Float, aligned for these scene dimensions.
@@ -1685,6 +1760,7 @@ static void captureFrameComposition(id encoder, const CompositionDraw &call) {
     if(s->hasViewport) request[@"viewport"]=[NSData dataWithBytes:&s->viewport length:sizeof(s->viewport)];
     if(s->hasScissor) request[@"scissor"]=[NSData dataWithBytes:&s->scissor length:sizeof(s->scissor)];
     objc_setAssociatedObject(encoder,&frameCompositionKey,request,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    noteAssociation(encoder,AssocComposition);
 }
 static void bindViewport(__unsafe_unretained id self, SEL cmd, MTLViewport v) {
     ((void(*)(id,SEL,MTLViewport))original(self,cmd))(self,cmd,v);
@@ -1734,6 +1810,7 @@ static void drawInputs(id encoder, const CompositionDraw &call) {
                 if ([fragment isEqualToString:@"FSR_Tonemap"]) next[@"tonemap"] = @YES;
             }
             objc_setAssociatedObject(encoder,&temporalPostprocessKey,next,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            noteAssociation(encoder,AssocPostprocess);
         }
     }
     if (diagnostics || [fragment isEqualToString:@"PPTAA_PS"] || [fragment isEqualToString:@"LinearizeDepth"] || [fragment isEqualToString:@"VelocityBufferCamera_PS"])
@@ -1751,6 +1828,7 @@ static BOOL suppressTemporalTAA(id encoder) {
     if (![state[@"fragment"] isEqualToString:@"PPTAA_PS"] || !objc_getAssociatedObject(encoder,&taaInputsKey)) return NO;
     if (!knownUpscaledTAA(encoderTarget(encoder))) return NO;
     objc_setAssociatedObject(encoder,&temporalSuppressedKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    noteAssociation(encoder,AssocSuppressed);
     record(@{@"event":@"temporalNativeTAADrawSkipped",@"pipeline":state});
     return YES;
 }
@@ -1882,6 +1960,7 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
             objc_setAssociatedObject(self,&fsrInputsKey,
                 @{@"input":temporal ? source : spatialColor,@"encodedInput":source,@"scaled":scaled,@"mode":@(mode),
                   @"nativeTAA":frame[@"nativeTAA"]},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            noteAssociation(self,AssocFSRInputs);
             suppressNative = YES;
         } else if ([pipelineName isEqualToString:@"FSR_RCAS"]) {
             // The fallback frame keeps BG3's own sharpening pass too.
@@ -1889,6 +1968,7 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
             if (pending && !pending[@"destination"] && pending[@"scaled"] == textures[@"0"] && textures[@"2"]) {
                 NSMutableDictionary *complete = [pending mutableCopy]; complete[@"destination"] = textures[@"2"];
                 objc_setAssociatedObject(self,&fsrInputsKey,complete,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                noteAssociation(self,AssocFSRInputs);
                 suppressNative = YES;
             } else {
                 if (temporal) failTemporal(@"Unexpected native FSR sharpening resources or dispatch sequence.");
@@ -1944,19 +2024,26 @@ static void markEncoderClassInstrumented(Class cls) {
     }
 }
 static void instrumentEncoder(id encoder) {
-    objc_setAssociatedObject(encoder, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(encoder,&frameCompositionKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    // Drivers recycle encoder objects: start each one with fresh state.
+    // Drivers recycle encoder objects: start each one with fresh state, and
+    // drop whatever the previous user of this object left. Its state records
+    // which keys were set; an object never seen before is cleared in full.
+    uint16_t stale = AssocAll;
+    if (encoder) {
+        __unsafe_unretained BG3MFXEncoderState *previous = objc_getAssociatedObject(encoder,&encoderStateKey);
+        if (previous) stale = previous->associations;
+    }
+    if (stale & AssocFSRInputs) objc_setAssociatedObject(encoder, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (stale & AssocComposition) objc_setAssociatedObject(encoder,&frameCompositionKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (encoder) {
         BG3MFXEncoderState *state = [BG3MFXEncoderState new];
         objc_setAssociatedObject(encoder,&encoderStateKey,state,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        cachedEncoder = encoder; cachedState = state;
+        hookCache.encoder = (__bridge const void *)encoder; hookCache.state = (__bridge void *)state;
     }
-    objc_setAssociatedObject(encoder, &bindingsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(encoder, &attachmentsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(encoder, &taaInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(encoder, &temporalPostprocessKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(encoder, &temporalSuppressedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (stale & AssocBindings) objc_setAssociatedObject(encoder, &bindingsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (stale & AssocAttachments) objc_setAssociatedObject(encoder, &attachmentsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (stale & AssocTAAInputs) objc_setAssociatedObject(encoder, &taaInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (stale & AssocPostprocess) objc_setAssociatedObject(encoder, &temporalPostprocessKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (stale & AssocSuppressed) objc_setAssociatedObject(encoder, &temporalSuppressedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (!encoder || encoderClassInstrumented(object_getClass(encoder))) return;
     if (traceConstants) {
         hook(encoder,"setFragmentBuffer:offset:atIndex:",(IMP)bindBuffer);
@@ -2042,6 +2129,7 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
         [colors addObject:texture(desc.colorAttachments[i].texture)];
     NSDictionary *attachments = @{@"color": colors, @"depth": texture(desc.depthAttachment.texture)};
     if (encoder) objc_setAssociatedObject(encoder, &attachmentsKey, attachments, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    noteAssociation(encoder,AssocAttachments);
         record(@{@"event": @"renderPass", @"color": colors, @"depth": attachments[@"depth"]});
         // Cascade shadow maps are Depth16 arrays; record who opens each pass
         // (main-executable offsets, symbolized offline with atos).
