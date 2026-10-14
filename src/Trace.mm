@@ -81,7 +81,7 @@ enum PipelineKind : uint8_t {
 enum TrimPipeline : uint8_t { TrimNone, TrimPrepassOpaque, TrimGBufferOpaque };
 enum TrimRole : uint8_t { RoleNone, RolePrepass, RoleGBuffer };
 static bool prepassTrim;
-static char pipelineTrimKey, depthReplacementKey;
+static char depthReplacementKey;
 static std::atomic<unsigned> prepassTrimSkipped{0}, prepassTrimSwapped{0};
 // Bind dedup: BG3 rebinds about 27 fragment texture slots per call when about
 // two change (92% of slots repeat the current binding), and re-sets the bound
@@ -141,19 +141,34 @@ struct CompositionDraw {
 @implementation BG3MFXEncoderState
 - (instancetype)init { if ((self=[super init])) mode=-1; return self; }
 @end
-static char encoderStateKey, pipelineKindKey;
+// Everything a pipeline bind needs, classified once at creation: one
+// associated-object lookup per setRenderPipelineState instead of three.
+@interface BG3MFXPipelineInfo : NSObject {
+@public
+    __strong NSDictionary *description;
+    PipelineKind kind;
+    TrimPipeline trim;
+}
+@end
+@implementation BG3MFXPipelineInfo
+@end
+static char encoderStateKey;
 // Encoders are used one at a time on a thread, so remember the last lookup.
 // instrumentEncoder refreshes and endEncoder clears it, so a recycled encoder
 // address never returns a previous encoder's state.
 static thread_local __unsafe_unretained id cachedEncoder;
 static thread_local __unsafe_unretained BG3MFXEncoderState *cachedState;
-static BG3MFXEncoderState *encoderState(__unsafe_unretained id encoder) {
-    if (!encoder) return nil;
-    if (encoder == cachedEncoder) return cachedState;
-    BG3MFXEncoderState *state = objc_getAssociatedObject(encoder,&encoderStateKey);
+// Returns a plain pointer: ARC would otherwise retain and release the state
+// around every hooked call. The encoder keeps its state alive; callers hold it
+// unretained through the encoderState macro below.
+static inline __attribute__((always_inline)) void *encoderStatePointer(__unsafe_unretained id encoder) {
+    if (!encoder) return nullptr;
+    if (encoder == cachedEncoder) return (__bridge void *)cachedState;
+    __unsafe_unretained BG3MFXEncoderState *state = objc_getAssociatedObject(encoder,&encoderStateKey);
     cachedEncoder = encoder; cachedState = state;
-    return state;
+    return (__bridge void *)state;
 }
+#define encoderState(encoder) ((__bridge BG3MFXEncoderState *)encoderStatePointer(encoder))
 static void forgetEncoder(id encoder) { if (encoder == cachedEncoder) { cachedEncoder = nil; cachedState = nil; } }
 // Encoders from paths not instrumented have no state; field reads through a
 // nil object pointer would crash, unlike messages to nil.
@@ -532,7 +547,7 @@ static void classifyPrepassTrim(MTLRenderPipelineDescriptor *desc, id state) {
         return set;
     };
     auto mark = [](id pipeline, TrimPipeline value) {
-        objc_setAssociatedObject(pipeline, &pipelineTrimKey, @(value), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (__unsafe_unretained BG3MFXPipelineInfo *info = objc_getAssociatedObject(pipeline, &pipelineKey)) info->trim = value;
     };
     if (gbuffer) {
         [states(gbufferStates, stem) addObject:state];
@@ -587,7 +602,6 @@ static id depthStencilStateHook(id self, SEL cmd, MTLDepthStencilDescriptor *des
     }
     return state;
 }
-static BG3MFXEncoderState *encoderState(__unsafe_unretained id encoder);
 static void setDepthStencilHook(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
     if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(self)) {
@@ -650,10 +664,11 @@ static void group(id self, SEL cmd, NSString *value) {
 static void rememberTexture(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLTexture> t, NSUInteger index) {
     (void)cmd; // Only diagnostic builds include the selector in event records.
     if (!diagnostics) {
-        int mode = encoderScalingMode(self);
         // Metal permits textures to be bound before pipeline state. Retain the
-        // three required slots independently of shader identification.
-        if ((!metalFXEnabled && mode != 2) || index > 2) return;
+        // three required slots independently of shader identification. The
+        // index test comes first: BG3 binds about 30,000 slots per frame.
+        if (index > 2) return;
+        if (!metalFXEnabled && encoderScalingMode(self) != 2) return;
     }
     if ((sceneProbe || metalFXEnabled) && index < EncoderSlots)
         if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(self)) s->textures[index]=t;
@@ -1143,12 +1158,13 @@ static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained i
         if (s->seenPipeline==state) ++redundantCounts[PipelineBindsRedundant];
         s->seenPipeline=state;
     }
-    NSDictionary *description = objc_getAssociatedObject(state, &pipelineKey);
+    __unsafe_unretained BG3MFXPipelineInfo *info = objc_getAssociatedObject(state, &pipelineKey);
+    NSDictionary *description = info ? info->description : nil;
     if (diagnostics && !description) description = @{@"label": [state label] ?: @""};
     if (s) {
         s->pipeline=state; s->description=description;
-        s->kind=(PipelineKind)[objc_getAssociatedObject(state,&pipelineKindKey) unsignedCharValue];
-        if (prepassTrim) s->trimPipeline=(TrimPipeline)[objc_getAssociatedObject(state,&pipelineTrimKey) unsignedCharValue];
+        s->kind=info ? info->kind : PipelineOther;
+        s->trimPipeline=info && prepassTrim ? info->trim : TrimNone;
     }
     record(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": description});
 }
@@ -1216,8 +1232,9 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
     if (waterfall) { NSMutableDictionary *expanded=[description mutableCopy]; expanded[@"vertexLayout"]=waterfall; description=expanded; }
 #endif
     if (state) {
-        objc_setAssociatedObject(state, &pipelineKey, description, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(state, &pipelineKindKey, @(classifyPipeline(fragment)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
+        info->description = description; info->kind = classifyPipeline(fragment);
+        objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         classifyPrepassTrim(desc, state);
     }
     record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
@@ -1248,8 +1265,9 @@ static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *d
     if (waterfall) { NSMutableDictionary *expanded=[description mutableCopy]; expanded[@"vertexLayout"]=waterfall; description=expanded; }
 #endif
     if (state) {
-        objc_setAssociatedObject(state, &pipelineKey, description, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(state, &pipelineKindKey, @(classifyPipeline(fragment)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
+        info->description = description; info->kind = classifyPipeline(fragment);
+        objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         classifyPrepassTrim(desc, state);
     }
     record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
@@ -1260,7 +1278,11 @@ static id computePipeline(id self, SEL cmd, id<MTLFunction> function, NSError **
     NSString *name = function.name;
     NSDictionary *description = (diagnostics || [name isEqualToString:@"FSR"] || [name isEqualToString:@"FSR_RCAS"] ||
         [name isEqualToString:@"CAS"]) ? @{@"compute": name ?: @""} : nil;
-    if (state) objc_setAssociatedObject(state, &pipelineKey, description, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (state) {
+        BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
+        info->description = description;
+        objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     record(@{@"event": @"computePipeline", @"pipeline": description, @"success": @(state != nil)});
     return state;
 }
