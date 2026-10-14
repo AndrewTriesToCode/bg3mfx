@@ -188,7 +188,12 @@ reproduction with the full measurements is kept outside this repository for an
 Apple report. A live windowed-mode drag created one per frame
 until BG3 hung inside scaler creation with about 1,000 `ANEServicesThread`s
 (October 13). A size with no scaler now runs BG3's native FSR until it holds for
-0.3 s; the session's first scaler is created at once.
+0.3 s; the session's first scaler is created at once. The cache keeps every
+settled size: its former six-entry bound evicted by `NSDictionary` key order,
+which could drop the scaler just added, so a steady size recreated one every
+frame (about 1,000 in 35 s live, after nine window sizes) and hung BG3 the same
+way. `temporal-hook-smoke` resizes through nine sizes, returns to each, and
+checks that every size creates exactly one scaler.
 
 MetalFX consumes BG3's textures directly wherever it accepts their format and
 usage, avoiding per-frame conversion passes (about 0.7 ms each for Temporal and

@@ -584,6 +584,7 @@ static BOOL upscaleSpatial(id<MTLCommandBuffer> buffer, NSDictionary *inputs) {
     if (!encoded) failSpatial(error.localizedDescription ?: @"MetalFX could not encode the spatial frame.");
     return encoded;
 }
+static std::atomic<unsigned> temporalScalersCreated{0};
 static NSMutableDictionary *temporalUpscalerCache() {
     static NSMutableDictionary *value;
     if (!value) value = [NSMutableDictionary dictionary];
@@ -689,11 +690,13 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
             upscaler.gpuFailureHandler=^(NSError *gpuError) {
                 failTemporal(gpuError.localizedDescription ?: @"Metal 4 could not complete temporal scaling commands.");
             };
+            temporalScalersCreated.fetch_add(1);
             record(@{@"event":@"temporalScalerCreated",@"api":upscaler.usesMetal4 ? @"metal4" : @"metal3"});
             std::lock_guard<std::recursive_mutex> lock(guard());
+            // Keep every settled size. Evicting freed nothing (the scaler
+            // leaks), and a bounded cache could evict the scaler it had just
+            // added, recreating it every frame until the ANE was exhausted.
             temporalUpscalerCache()[key] = upscaler;
-            // Retain only a small set of recent window/quality configurations.
-            if (temporalUpscalerCache().count > 6) [temporalUpscalerCache() removeObjectForKey:temporalUpscalerCache().allKeys.firstObject];
         }
     }
     #ifndef BG3MFX_NO_TRACE
@@ -2034,6 +2037,10 @@ __attribute__((constructor)) static void start() {
 extern "C" NSDictionary *BG3MFXStandaloneGeneratedPair(id<MTLCommandBuffer> buffer) {
     if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return nil;
     return objc_getAssociatedObject(buffer,&generatedPairKey);
+}
+extern "C" NSUInteger BG3MFXStandaloneTemporalScalersCreated(void) {
+    if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return 0;
+    return temporalScalersCreated.load();
 }
 extern "C" NSUInteger BG3MFXStandalonePresentedPairs(void) {
     if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return 0;

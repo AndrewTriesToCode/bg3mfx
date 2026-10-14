@@ -158,6 +158,76 @@ int main(int argc, char **argv) {
                     fprintf(stderr,"Temporal hook mismatch frame %d: %f != %f\n",frame,p[(y*512+x)*4+ch],expected[ch]);return 11;
                 }
         }
+        // A window resized through more sizes than any cache bound must keep
+        // one scaler per size: on macOS 27 scalers leak, and recreating one
+        // every frame exhausted the ANE and hung BG3.
+        auto created = (NSUInteger(*)(void))dlsym(runtime,"BG3MFXStandaloneTemporalScalersCreated");
+        if (!created) return 13;
+        // Returns whether MetalFX replaced BG3's native FSR for the frame.
+        auto resizedFrame = [&](NSUInteger size) -> int {
+            id<MTLTexture> sColor=texture(device,size,MTLPixelFormatRG11B10Float,rw);
+            id<MTLTexture> sMotion=texture(device,size,MTLPixelFormatRG16Float,rw|MTLTextureUsageRenderTarget);
+            id<MTLTexture> sDepth=texture(device,size,MTLPixelFormatDepth32Float_Stencil8,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
+            id<MTLTexture> sLinear=texture(device,size,MTLPixelFormatR32Float,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
+            id<MTLTexture> sTAA=texture(device,size,MTLPixelFormatRG11B10Float,rw|MTLTextureUsageRenderTarget);
+            id<MTLTexture> sTonemapped=texture(device,size,MTLPixelFormatRG11B10Float,rw|MTLTextureUsageRenderTarget);
+            id<MTLTexture> sScaled=texture(device,size*2,MTLPixelFormatRG11B10Float,rw);
+            id<MTLTexture> sOutput=texture(device,size*2,MTLPixelFormatRG11B10Float,rw);
+            uint32_t sDimensions[2]={uint32_t(size),uint32_t(size)}; memcpy((char *)viewport+16,sDimensions,8);
+            *(uint32_t *)count.contents=0;
+            if (!select(3)) return -1;
+            id<MTLCommandBuffer> b=[queue commandBufferWithUnretainedReferences];
+            id<MTLComputeCommandEncoder> c=[b computeCommandEncoder];
+            [c setComputePipelineState:compute[0]]; [c setTexture:sColor atIndex:0]; [c setTexture:sMotion atIndex:1];
+            [c dispatchThreads:MTLSizeMake(size,size,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)]; [c endEncoding];
+            MTLRenderPassDescriptor *pass=[MTLRenderPassDescriptor new];
+            pass.depthAttachment.texture=sDepth; pass.depthAttachment.loadAction=MTLLoadActionClear;
+            pass.depthAttachment.storeAction=MTLStoreActionStore; pass.depthAttachment.clearDepth=0.5;
+            id<MTLRenderCommandEncoder> r=[b renderCommandEncoderWithDescriptor:pass]; [r endEncoding];
+            auto draw=[&](id<MTLTexture> target, id<MTLRenderPipelineState> state, NSArray *sources, BOOL constants) {
+                MTLRenderPassDescriptor *p=[MTLRenderPassDescriptor new]; p.colorAttachments[0].texture=target;
+                p.colorAttachments[0].loadAction=MTLLoadActionClear; p.colorAttachments[0].storeAction=MTLStoreActionStore;
+                id<MTLRenderCommandEncoder> e=[b renderCommandEncoderWithDescriptor:p];
+                for (NSUInteger i=0;i<sources.count;++i) if (sources[i]!=NSNull.null) [e setFragmentTexture:sources[i] atIndex:i];
+                if (constants) {
+                    [e setFragmentBytes:camera length:sizeof(camera) atIndex:11];
+                    [e setFragmentBytes:temporal length:sizeof(temporal) atIndex:8];
+                    [e setFragmentBytes:viewport length:sizeof(viewport) atIndex:9];
+                }
+                [e setRenderPipelineState:state]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3]; [e endEncoding];
+            };
+            draw(sLinear,render[0],@[sDepth],NO);
+            draw(sMotion,render[2],@[],YES);
+            draw(sTAA,render[1],@[sColor,NSNull.null,sMotion],YES);
+            draw(sTonemapped,render[3],@[sTAA],NO);
+            c=[b computeCommandEncoder];
+            [c setTexture:sTonemapped atIndex:0]; [c setTexture:sScaled atIndex:1]; [c setComputePipelineState:compute[1]];
+            [c setBuffer:count offset:0 atIndex:0];
+            [c dispatchThreads:MTLSizeMake(size*2,size*2,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];
+            [c setTexture:sScaled atIndex:0]; [c setTexture:sOutput atIndex:2]; [c setComputePipelineState:compute[2]];
+            [c dispatchThreads:MTLSizeMake(size*2,size*2,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)]; [c endEncoding];
+            [b commit]; [b waitUntilCompleted];
+            if (b.status!=MTLCommandBufferStatusCompleted) return -1;
+            return *(uint32_t *)count.contents==0;
+        };
+        const NSUInteger sizes[]={160,176,192,208,224,240,272,288,304};
+        for (NSUInteger size : sizes) {
+            NSUInteger before=created(); int replaced=0;
+            // A new size runs natively until it has held long enough to settle.
+            for (int attempt=0; attempt<6 && created()==before; ++attempt) {
+                if ((replaced=resizedFrame(size))<0) return 14;
+                if (created()==before) [NSThread sleepForTimeInterval:0.35];
+            }
+            if (created()!=before+1 || !replaced) { fprintf(stderr,"No Temporal scaler for %lux%lu\n",size,size); return 15; }
+            for (int frame=0; frame<3; ++frame) if (resizedFrame(size)!=1) return 16;
+            if (created()!=before+1) { fprintf(stderr,"Temporal scaler recreated at a steady %lux%lu\n",size,size); return 17; }
+        }
+        // Returning to any earlier size reuses its scaler on the first frame.
+        NSUInteger total=created();
+        for (NSUInteger size : sizes) if (resizedFrame(size)!=1 || created()!=total) {
+            fprintf(stderr,"Temporal scaler recreated when returning to %lux%lu\n",size,size); return 18;
+        }
         puts("Spatial/Temporal switching, retained native AA on an unscaled preview, new-target warmup, and HDR postprocessing passed four-frame pixel checks; native FSR dispatch count zero.");
+        printf("Nine settled resizes created one Temporal scaler each and reused all of them on return.\n");
     }
 }
