@@ -288,7 +288,8 @@ static void record(NSDictionary *event) {
     BOOL important = [kind hasPrefix:@"nativeMenu"] || [kind isEqualToString:@"nativeUpscalingApplied"] ||
         [kind isEqualToString:@"nativeQualityChanged"] || [kind hasPrefix:@"waterfall"] ||
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
-        [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"];
+        [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
+        [kind isEqualToString:@"shadowPassStack"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
@@ -627,7 +628,7 @@ static BOOL temporalParameters(NSDictionary *inputs, BG3MFXFrameParameters *para
     // BG3's constants describe the sample displacement, not MetalFX's
     // image/projection displacement. Depth registration and the analytic
     // reconstruction regression establish the opposite sign in both axes.
-    BG3MFXApplyNativeJitter(&p, temporal[52], temporal[53]);
+    BG3MFXApplyTemporalJitter(&p, temporal[52], temporal[53]);
     // Inspected BG3 camera/object shaders emit current minus previous in
     // framebuffer pixels. MetalFX needs previous minus current displacement.
     p.motionScaleX = p.motionScaleY = -1;
@@ -1313,7 +1314,7 @@ static void probeScene(id<MTLCommandBuffer> buffer, NSDictionary *inputs) {
     const float *camera = (const float *)[inputs[@"camera"] bytes];
     const float *temporal = (const float *)[inputs[@"temporal"] bytes];
     BG3MFXFrameParameters p = {};
-    BG3MFXApplyNativeJitter(&p, temporal[52], temporal[53]);
+    BG3MFXApplyTemporalJitter(&p, temporal[52], temporal[53]);
     p.motionScaleX = p.motionScaleY = -1;
     p.depthReversed = YES; p.reset = YES;
     float nearPlane = camera[48], farPlane = camera[49];
@@ -1762,6 +1763,45 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     NSDictionary *attachments = @{@"color": colors, @"depth": texture(desc.depthAttachment.texture)};
     if (encoder) objc_setAssociatedObject(encoder, &attachmentsKey, attachments, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         record(@{@"event": @"renderPass", @"color": colors, @"depth": attachments[@"depth"]});
+        // Cascade shadow maps are Depth16 arrays; record who opens each pass
+        // (main-executable offsets, symbolized offline with atos).
+        static const bool shadowStacks = getenv("BG3MFX_TRACE_SHADOW_STACKS") != nullptr;
+        static std::atomic<unsigned> shadowStackCount{0};
+        id<MTLTexture> depth = desc.depthAttachment.texture;
+        if (shadowStacks && depth.pixelFormat == MTLPixelFormatDepth16Unorm &&
+            depth.textureType == MTLTextureType2DArray && shadowStackCount++ < 3000) {
+            NSMutableArray *stack = [NSMutableArray array];
+            for (NSNumber *address in [NSThread callStackReturnAddresses]) {
+                Dl_info info = {};
+                void *pc = (void *)address.unsignedLongValue;
+                if (dladdr(pc, &info) && info.dli_fname && strstr(info.dli_fname, "MacOS/Baldur"))
+                    [stack addObject:[NSString stringWithFormat:@"0x%lx", (unsigned long)((char *)pc - (char *)info.dli_fbase + 0x100000000)]];
+            }
+            // In BG3 4.1.1.7631656, CascadedShadowBufferStage::Submit
+            // (0x105d41044-0x105d4116c) saves x20 at [fp-0x10]: the slot of
+            // GameRenderView::FinishRecording's stage array being visited.
+            // Walk the frame chain to it to identify the stage and its view.
+            [[maybe_unused]] uintptr_t slot = 0, stage = 0, view = 0;
+            for (uintptr_t *fp = (uintptr_t *)__builtin_frame_address(0); fp && !((uintptr_t)fp & 7); fp = (uintptr_t *)fp[0]) {
+                Dl_info info = {};
+                uintptr_t lr = fp[1] & 0x0000000fffffffffULL;
+                if (!dladdr((void *)lr, &info) || !info.dli_fname || !strstr(info.dli_fname, "MacOS/Baldur")) continue;
+                uintptr_t unslid = lr - (uintptr_t)info.dli_fbase + 0x100000000;
+                if (unslid > 0x105d41044 && unslid < 0x105d4116c) {
+                    uintptr_t *submitFrame = (uintptr_t *)fp[0];
+                    if (submitFrame) {
+                        slot = submitFrame[-2];
+                        if (slot && !(slot & 7)) stage = *(uintptr_t *)slot;
+                        if (stage && !(stage & 7)) view = ((uintptr_t *)stage)[1];
+                    }
+                    break;
+                }
+            }
+            record(@{@"event": @"shadowPassStack", @"frame": @(frames), @"buffer": @((uintptr_t)(__bridge void *)self),
+                @"slot": @(slot), @"stage": @(stage), @"view": @(view),
+                @"slice": @(desc.depthAttachment.slice), @"load": @(desc.depthAttachment.loadAction),
+                @"width": @(depth.width), @"stack": stack});
+        }
     }
     if ((sceneProbe || metalFXEnabled) && encoder) {
         if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) { state->buffer=self; state->colorTarget=desc.colorAttachments[0].texture; }
@@ -2007,7 +2047,7 @@ __attribute__((constructor)) static void start() {
         if (metalFXEnabled && [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) {
             NSError *menuError = nil;
             if (!BG3MFXInstallNativeMenu(menuReport,&menuError))
-                failFeature([menuError.domain isEqualToString:@"BG3MFXNativeJitter"],menuError.localizedDescription);
+                failFeature([menuError.domain isEqualToString:@"BG3MFXTemporalJitter"],menuError.localizedDescription);
         }
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
         record(@{@"event": @"start", @"mode": metalFXEnabled ? @"metalfx-menu" : @"diagnostic", @"device": device.name ?: @"unavailable",

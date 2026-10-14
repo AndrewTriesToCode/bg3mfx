@@ -3,6 +3,18 @@
 Updated October 12, 2026. This page is the active record. Detailed dated notes
 are archived under [`history/`](history/).
 
+## Duplicate shadow stage fix
+
+BG3 builds its game view with two identical cascaded-shadow stages; the first
+one's shadow maps are overwritten before anything reads them.
+`ShadowDuplicateFix` removes the first whenever bg3mfx runs;
+`BG3MFX_SINGLE_SHADOW_STAGE=0` keeps both for comparison. Live on
+October 13 (quiet runtime, Ultra, Upscaling Off, windowed): 73.9 → 86.0 fps,
+HUD GPU time 14.0 → 11.75 ms, in-game shadow passes 10 → 5 per frame (probe
+trace), and the user saw no difference in shadows. No GPU capture was taken
+with the fix on. Analysis and method:
+[`perf/README.md`](../../../perf/README.md).
+
 ## Frame Generation (initial integration)
 
 Frame Generation is the "MetalFX Frame Generation" checkbox and combines with

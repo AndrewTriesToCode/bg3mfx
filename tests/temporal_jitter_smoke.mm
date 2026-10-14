@@ -1,6 +1,7 @@
 // Test-only native-layout fixtures; no BG3 code or assets are linked.
 #define BG3MFX_JITTER_TEST 1
-#import "../src/NativeJitter.mm"
+#import "../src/TemporalJitter.mm"
+#import "../src/CodePatch.mm"
 #include <cstdio>
 #include <vector>
 static int mode=3;
@@ -26,10 +27,10 @@ int main() {
             put(frame,8,uint32_t(i));
             uint64_t native=bits(halton(i%8+1,2),halton(i%8+1,3));
             uint64_t expected=changed ? bits(halton(i%phases+1,2),halton(i%phases+1,3)) : native;
-            if(BG3MFXNativeJitterSample(view.data(),native)!=expected) return false;
+            if(BG3MFXTemporalJitterSample(view.data(),native)!=expected) return false;
             // A same-frame menu/quality change cannot split projection and motion.
             int saved=mode;mode=0;
-            if(BG3MFXNativeJitterSample(view.data(),native)!=expected) return false;
+            if(BG3MFXTemporalJitterSample(view.data(),native)!=expected) return false;
             mode=saved;
         }
         return true;
@@ -56,17 +57,17 @@ int main() {
     auto *section=reinterpret_cast<section_64 *>(segment+1);
     section->addr=fixture+vm_page_size*2;section->size=16;
     uintptr_t padding=fixture+vm_page_size;
-    if(headerPadding(header,0,192)!=padding) return 10;
+    if(BG3MFXHeaderPadding(header,0,192)!=padding) return 10;
     *reinterpret_cast<uint8_t *>(padding)=1;
-    if(headerPadding(header,0,192)) return 11;
+    if(BG3MFXHeaderPadding(header,0,192)) return 11;
     *reinterpret_cast<uint8_t *>(padding)=0;
     section->addr=padding+128;
-    if(headerPadding(header,0,192)) return 12;
+    if(BG3MFXHeaderPadding(header,0,192)) return 12;
     section->addr=fixture+vm_page_size*2;segment->cmdsize=8;
-    if(headerPadding(header,0,192)) return 13;
+    if(BG3MFXHeaderPadding(header,0,192)) return 13;
     vm_deallocate(mach_task_self(),fixture,vm_page_size*3);
-    if(!branchReaches(0x20000000,0x18000000) || branchReaches(0x20000000,0x28000000) ||
-       branchReaches(0x20000000,0x20000001)) return 14;
+    if(!BG3MFXBranchReaches(0x20000000,0x18000000) || BG3MFXBranchReaches(0x20000000,0x28000000) ||
+       BG3MFXBranchReaches(0x20000000,0x20000001)) return 14;
     // Independent executable test islands have no dependency on BG3 mappings.
     auto allocateTestIsland=[](uintptr_t near) {
         near &= ~(uintptr_t(vm_page_size)-1);

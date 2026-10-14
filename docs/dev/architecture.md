@@ -52,14 +52,14 @@ and writes straight into BG3's final upscaler target when that target has the
 usage MetalFX requires (BG3's does); otherwise it writes a pooled output that is
 copied into the target. The current motion scale is −1, −1 and depth is reversed, based
 on inspected BG3 shader conventions. History is reset when the selected scaling
-mode changes or input resources become invalid. `NativeJitter.mm` substitutes
+mode changes or input resources become invalid. `TemporalJitter.mm` substitutes
 Halton (2,3) samples at three guarded native loads: projection, camera constants,
 and velocity history. Only Temporal views with an enabled native FSR stage use
 14/18/24/32 phases for Ultra Quality/Quality/Balanced/Performance. A frame-local
 choice keeps all three consumers consistent during settings changes. BG3's
 previous projection/jitter storage remains responsible for motion compensation;
 the shared eight-sample table is unchanged for other views and modes.
-`BG3MFXApplyNativeJitter` converts BG3's sample displacement to MetalFX's
+`BG3MFXApplyTemporalJitter` converts BG3's sample displacement to MetalFX's
 image displacement: X is negated and Y retains the native Y-up sign. The old
 adapter supplied the opposite displacement in both framebuffer axes, preventing
 correct temporal reconstruction. The analytic reconstruction test and captured
@@ -226,7 +226,12 @@ does not alter the app bundle.
 ## Code map
 
 - `src/NativeMenu.mm`: settings menu, custom mode persistence, HUD checkbox.
-- `src/NativeJitter.*`: guarded Temporal sample selection and ARM64 preservation.
+- `src/TemporalJitter.*`: guarded Temporal sample selection and ARM64 preservation.
+- `src/CodePatch.*`: shared in-memory code patching (header-padding branch
+  islands, branch range checks, all-or-nothing page protection).
+- `src/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
+  (on by default; `BG3MFX_SINGLE_SHADOW_STAGE=0` disables it); see
+  [`perf/README.md`](../../perf/README.md).
 - `src/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.
 - `src/SpatialUpscaler.*` and `src/TemporalUpscaler.*`: BG3-specific inputs,

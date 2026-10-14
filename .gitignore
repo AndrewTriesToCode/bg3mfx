@@ -40,3 +40,4 @@ __pycache__/
 .vscode/
 .idea/
 xcuserdata/
+perf/data/

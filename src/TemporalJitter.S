@@ -49,7 +49,7 @@ ldr x0, [x19, #8]
 mov x0, x20
 .endif
 fmov x1, d\reg
-bl _BG3MFXNativeJitterSample
+bl _BG3MFXTemporalJitterSample
 str x0, [sp, #(256+\reg*16)]
 ldp q0, q1, [sp, #256]
 ldp q2, q3, [sp, #288]

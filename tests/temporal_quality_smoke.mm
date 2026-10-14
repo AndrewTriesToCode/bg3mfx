@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
                 [inputs[1] replaceRegion:MTLRegionMake2D(0,0,w,h) mipmapLevel:0 withBytes:depth.data() bytesPerRow:w*4];
                 [inputs[2] replaceRegion:MTLRegionMake2D(0,0,w,h) mipmapLevel:0 withBytes:motion.data() bytesPerRow:w*4];
                 BG3MFXFrameParameters p={};
-                BG3MFXApplyNativeJitter(&p,jx,-jy);
+                BG3MFXApplyTemporalJitter(&p,jx,-jy);
                 if (legacyJitter) { p.jitterX=-p.jitterX; p.jitterY=-p.jitterY; }
                 p.motionScaleX=p.motionScaleY=motionSign; p.depthReversed=YES;
                 id<MTLCommandBuffer> b=[queue commandBuffer];
