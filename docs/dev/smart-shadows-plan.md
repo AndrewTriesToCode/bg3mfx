@@ -60,28 +60,75 @@ Shadow cost is mostly fragment work, so it scales with pixel count.
     renders at full resolution.
   - Without texel snapping, old shadow edges ghost. That would kill the idea.
 
+## Vista pass
+
+The 5th pass is BG3's vista shadow job (`CascadedShadowBufferStage`,
+`ShadowStageJob` at stage+0x21a0). After the four cascades it draws distant
+terrain sectors, culled by `VistaShadowCullStage`, into the near cascade (c0
+slice, depth `loadAction` Load) so far hills still shadow the play area. c0 is
+cleared every frame, so the 394 vista draws are redrawn every frame: 0.45 ms
+GPU (0.35 fragment, 0.10 vertex) plus CPU culling and recording. Draws are
+static only (no characters or hair); 0.24 ms of it is wind foliage.
+
+An earlier session found the engine's own off switch: four checks of one flag
+(`ldr wN, [xN, #0x38]`) gate the vista cull, recording, wait and submit, at
+0x105d41144 (Submit), 0x105d43680 (FinishRecording), 0x105d42564 and
+0x105d42850 (StartRecording). That opt-in `BG3MFX_SKIP_VISTA_SHADOWS`
+experiment was backed out as a quality trade, but the sites are reusable.
+
+Three ways to make it cheaper, which combine:
+
+- **Lower resolution (build first).** Render the vista draws into a 1024² or
+  512² depth texture of our own instead of the c0 slice, then merge into c0
+  with a min-depth pass (take the nearest depth of each low-resolution texel's
+  neighbours so shadows stay conservative, never leaking light). Distant
+  blockers get wide PCSS penumbrae and are coarse HLOD geometry, so the loss
+  should be hard to see. c0's own content keeps full resolution. No history,
+  so it works every frame with a moving camera and does not depend on texel
+  snapping. Estimate: ~0.2 ms saved at 1024², ~0.25 ms at 512² (vertex 0.10
+  ms unchanged; merge 0.03–0.05 ms).
+- **Interleaved.** The vista is the ideal interleaving target: everything in
+  it is static, so the 4-frame stipple on moving content never applies. It
+  needs its own persistent full-resolution vista layer, because c0 is cleared
+  and holds moving content: scatter each frame's quarter-resolution samples
+  into that layer, then min-merge it into c0. Same per-frame cost as low
+  resolution plus the scatter, and it converges to full resolution. When the
+  history is invalid (c0 moved without texel snapping, or its depth range
+  changed), fill missing texels from the current low-resolution samples, so
+  the worst case equals the low-resolution option. Only worth it if low
+  resolution shows artifacts in the comparison.
+- **Cache.** Keep the vista layer while c0's matrix and depth range repeat,
+  and take the engine's skip path on those frames: saves ~0.4 ms GPU plus the
+  CPU cull and recording. c0 follows the camera most closely, so the hit rate
+  depends on step 1. Frozen wind on distant vista foliage is effectively
+  invisible.
+
+Validate in a scene where a distant hill or cliff shadows the play area (for
+example a valley at sunset).
+
 ## Plan
 
 1. **Probe (diagnostic runtime only).** Log each cascade's light
-   view-projection every frame. The user plays a couple of minutes, mixing
-   still camera, panning and zooming, launched from their own Terminal at
-   nice 0. Answer:
+   view-projection and depth range every frame, including c0 for the vista.
+   The user plays a couple of minutes, mixing still camera, panning and
+   zooming, launched from their own Terminal at nice 0. Answer:
    - Do cascades move in whole-texel steps?
-   - How often does scale change?
-   - How often are c2/c3 identical frame to frame? This also answers the
-     static-cache alternative.
-2. **Interleaved rendering behind an env var**, for c1 onward:
+   - How often does scale or depth range change?
+   - How often are c0, c2 and c3 identical frame to frame? This answers the
+     vista cache and the static-cache alternative.
+2. **Low-resolution vista behind an env var.** The smallest piece: one pass,
+   no history. A/B against full resolution with a shadow comparison; then
+   consider interleaving or caching it.
+3. **Interleaved rendering behind an env var**, for c1 onward:
    - Redirect the cascade's depth attachment to a quarter-resolution texture
      and shrink its viewport.
    - Add the sub-texel offset to the cascade matrix in its constants, as
      MetalFX Temporal already does for camera jitter.
    - Compute pass scatters into the full-resolution slice and shifts the
      history on cascade moves; resets on scale change.
-   - The 5th pass loads an existing slice, so its quarter-resolution target
-     must keep that slice's samples.
    - Validate with a GPU capture plus a side-by-side shadow comparison, and
      live fps from the user's HUD.
-3. **"Smart Shadows" setting.** Prefer a checkbox under the Shadows dropdown
+4. **"Smart Shadows" setting.** Prefer a checkbox under the Shadows dropdown
    so it combines with every shadow quality, like Frame Generation does with
    Upscaling Type. A dropdown entry would have to imply a fixed base quality.
    - Persistent across restarts.
@@ -97,5 +144,5 @@ Shadow cost is mostly fragment work, so it scales with pixel count.
   splitting out by shader name, and distant trees would sway while their
   shadows stay still. The user declined static caching earlier; the probe in
   step 1 would show how often it could hit.
-- **Dropping foliage or the 5th (vista) pass from far cascades.** Saves
+- **Dropping foliage from far cascades, or skipping the vista pass.** Saves
   0.24–0.8 ms; a visible quality tradeoff, declined.
