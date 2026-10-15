@@ -49,6 +49,8 @@ std::string trigger;
 intptr_t gameSlide;
 double ticksToMs;
 std::atomic<bool> armed;
+// Kept alive for the process; ARC would otherwise release and stop it.
+dispatch_source_t triggerTimer;
 
 // Render thread only.
 std::map<Key, Segment> segments;
@@ -228,12 +230,12 @@ BOOL BG3MFXInstallSubmitOpcodeProbe(intptr_t slide, const char *triggerPath, NSE
     if (result != BG3MFXCodePatchResult::Patched) return fail(@"Could not install the Submit opcode probe.");
     // Arm when the trigger file appears; the render thread starts recording at
     // its next Submit.
-    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
-    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, NSEC_PER_SEC / 4);
-    dispatch_source_set_event_handler(timer, ^{
+    triggerTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    dispatch_source_set_timer(triggerTimer, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, NSEC_PER_SEC / 4);
+    dispatch_source_set_event_handler(triggerTimer, ^{
         if (!armed && access(trigger.c_str(), F_OK) == 0) armed = true;
     });
-    dispatch_resume(timer);
+    dispatch_resume(triggerTimer);
     os_log(os_log_create("com.bg3mfx", "submit"), "bg3mfx submit: probe installed, trigger %{public}s", trigger.c_str());
     return YES;
 }
