@@ -3,6 +3,7 @@
 #import "ShadowDuplicateFix.h"
 #import "LuaJumpFix.h"
 #import "ServerPacingProbe.h"
+#import "SubmitOpcodeProbe.h"
 #import "ThreadIdling.h"
 #import "DynamicWorkers.h"
 #import <MetalFX/MetalFX.h>
@@ -476,6 +477,13 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
         NSError *pacingError = nil;
         if (!BG3MFXInstallServerPacingProbe(slide,&pacingError))
             event(@{@"event":@"serverPacingSkipped",@"reason":pacingError.localizedDescription ?: @""});
+    }
+    // Opt-in: count the commands BG3's render thread replays per pass
+    // (src/SubmitOpcodeProbe.h).
+    if (getenv("BG3MFX_TRACE_SUBMIT_OPCODES") && *getenv("BG3MFX_TRACE_SUBMIT_OPCODES")) {
+        NSError *submitError = nil;
+        if (!BG3MFXInstallSubmitOpcodeProbe(slide,getenv("BG3MFX_TRACE_SUBMIT_OPCODES"),&submitError))
+            event(@{@"event":@"submitOpcodeProbeSkipped",@"reason":submitError.localizedDescription ?: @""});
     }
     void **table = at<void **>(0x1087ac1a0);
     if (table[4] != at<void *>(0x103288fb8) || table[7] != at<void *>(0x103290180)) { errorOut(error,@"The Video menu callback was already modified."); return NO; }

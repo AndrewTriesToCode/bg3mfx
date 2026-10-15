@@ -257,9 +257,15 @@ does not alter the app bundle.
 - `src/ServerPacingProbe.*`: opt-in measurement
   (`BG3MFX_TRACE_SERVER_PACING=1`, both runtimes) of the server tick's work,
   CPU time and limiter, logged to category `pacing`.
+- `src/SubmitOpcodeProbe.*`: opt-in measurement
+  (`BG3MFX_TRACE_SUBMIT_OPCODES=/abs/trigger`, both runtimes) of the commands
+  `rf::RendererCommandBuffer::Submit` replays on the render thread, per caller,
+  command buffer and pass. Creating the trigger file records 5 s and writes
+  `<trigger>.tsv`; category `submit` logs the result.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
-  pacing probe `0x800`, thread idling `0x9a0` and `0x9c0` (offsets from
-  `0x100004000`). Each install checks its range is still zero.
+  pacing probe `0x800`, thread idling `0x9a0` and `0x9c0`, Submit probe `0xa00`
+  and `0xa40` (offsets from `0x100004000`). Each install checks its range is
+  still zero.
 - `src/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.
 - `src/SpatialUpscaler.*` and `src/TemporalUpscaler.*`: BG3-specific inputs,
