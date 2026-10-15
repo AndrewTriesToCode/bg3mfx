@@ -137,6 +137,14 @@ example a valley at sunset).
    - Add a line to AGENTS.md "Active scope", which today covers only the HUD
      and MetalFX features.
 
+## Later tuning (only after the 4-frame version is validated)
+
+- More frames per full update for distant passes (c2 N=8, c3 and vista
+  N=16): ~0.2–0.3 ms more, at the cost of longer smear on moving shadows
+  and slower recovery after a cascade reset. Vertex work is the floor.
+- Draw characters and hair at full resolution every frame on top of the
+  interleaved layer, to remove their stipple.
+
 ## Alternatives considered
 
 - **Static cache for far cascades.** Freezing wind there makes caching
