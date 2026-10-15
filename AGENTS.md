@@ -49,6 +49,11 @@ Halton jitter (14/18/24/32 phases); native and auxiliary views retain eight.
 
 - Keep Steam running.
 - Skip the launcher and intro if possible.
+- Launch BG3 at nice 0, as a player's launch runs. A launching shell's nice
+  value is inherited (agent background shells can run at nice 5), and lowering
+  it needs root. Check `ps -o nice= -p $$` before launching; if it is not 0,
+  ask the user to launch from their own Terminal. Confirm the running game with
+  `ps -o nice= -p <BG3 PID>`.
 - Give user instructions on how to interface with app to get the data you need. Do not control the app.
 
 ## Local installation
