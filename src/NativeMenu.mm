@@ -1,6 +1,10 @@
 #import "NativeMenu.h"
 #import "TemporalJitter.h"
 #import "ShadowDuplicateFix.h"
+#import "LuaJumpFix.h"
+#import "ServerPacingProbe.h"
+#import "ThreadIdling.h"
+#import "DynamicWorkers.h"
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -444,6 +448,34 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
         NSError *shadowError = nil;
         if (!BG3MFXInstallShadowDuplicateFix(slide,report,&shadowError))
             event(@{@"event":@"shadowDuplicateFixSkipped",@"reason":shadowError.localizedDescription ?: @""});
+    }
+    // Skip the signal-mask system calls in BG3's Lua error handling
+    // (src/LuaJumpFix.mm). A mismatch leaves BG3 unchanged. BG3MFX_LUA_JUMP_FIX=0
+    // keeps setjmp/longjmp for comparison.
+    if (!(getenv("BG3MFX_LUA_JUMP_FIX") && strcmp(getenv("BG3MFX_LUA_JUMP_FIX"),"0") == 0)) {
+        NSError *luaError = nil;
+        if (!BG3MFXInstallLuaJumpFix(slide,report,&luaError))
+            event(@{@"event":@"luaJumpFixSkipped",@"reason":luaError.localizedDescription ?: @""});
+    }
+    // Optimized thread idling: BG3's job system and frame limiter sleep instead
+    // of spinning (src/ThreadIdling.mm). A mismatch leaves BG3 unchanged.
+    // BG3MFX_OPTIMIZED_IDLING=0 keeps BG3's spinning for comparison.
+    if (!(getenv("BG3MFX_OPTIMIZED_IDLING") && strcmp(getenv("BG3MFX_OPTIMIZED_IDLING"),"0") == 0)) {
+        NSError *idlingError = nil;
+        if (!BG3MFXInstallThreadIdling(slide,report,&idlingError))
+            event(@{@"event":@"threadIdlingSkipped",@"reason":idlingError.localizedDescription ?: @""});
+    }
+    // Dynamic worker core prioritization: render workers on the lower-tier
+    // cores while that costs no frame rate (src/DynamicWorkers.mm).
+    // BG3MFX_DYNAMIC_WORKERS=0 keeps BG3's placement.
+    if (!(getenv("BG3MFX_DYNAMIC_WORKERS") && strcmp(getenv("BG3MFX_DYNAMIC_WORKERS"),"0") == 0))
+        BG3MFXInstallDynamicWorkers(report);
+    // Opt-in: time BG3's server tick, its CPU time and its limiter
+    // (src/ServerPacingProbe.h).
+    if (getenv("BG3MFX_TRACE_SERVER_PACING") && strcmp(getenv("BG3MFX_TRACE_SERVER_PACING"),"1") == 0) {
+        NSError *pacingError = nil;
+        if (!BG3MFXInstallServerPacingProbe(slide,&pacingError))
+            event(@{@"event":@"serverPacingSkipped",@"reason":pacingError.localizedDescription ?: @""});
     }
     void **table = at<void **>(0x1087ac1a0);
     if (table[4] != at<void *>(0x103288fb8) || table[7] != at<void *>(0x103290180)) { errorOut(error,@"The Video menu callback was already modified."); return NO; }
