@@ -5,6 +5,7 @@
 #include <mach/mach_time.h>
 #include <os/log.h>
 #include <pthread.h>
+#include <sys/syslimits.h>
 #include <unistd.h>
 #include <algorithm>
 #include <atomic>
@@ -45,7 +46,9 @@ struct Segment {
 };
 using Key = std::tuple<uintptr_t, uintptr_t, unsigned>;
 
-std::string trigger;
+// Trace.mm's constructor installs the probe before this file's C++
+// initializers run, so globals here must not need dynamic initialization.
+char trigger[PATH_MAX];
 intptr_t gameSlide;
 double ticksToMs;
 std::atomic<bool> armed;
@@ -53,7 +56,7 @@ std::atomic<bool> armed;
 dispatch_source_t triggerTimer;
 
 // Render thread only.
-std::map<Key, Segment> segments;
+std::map<Key, Segment> *segments;
 uint64_t recordStart, submits, otherSubmits, otherOps;
 uintptr_t caller, commandBuffer;
 unsigned segmentIndex;
@@ -82,7 +85,7 @@ void endSegment(uint64_t now) {
 
 void beginSegment(uint8_t kind, int32_t argument, uint64_t now) {
     endSegment(now);
-    Segment &s = segments[Key(caller, commandBuffer, segmentIndex++)];
+    Segment &s = (*segments)[Key(caller, commandBuffer, segmentIndex++)];
     s.kind = kind;
     s.argument = argument;
     ++s.calls;
@@ -99,7 +102,7 @@ std::string summary(double seconds) {
         "caller\tbuffer\tsegment\tkind\targument\tcalls\tms/call\twork/call\tbefore\tbetween\tafter\n",
         seconds, submits, otherSubmits, otherOps);
     out += line;
-    for (auto &[key, s] : segments) {
+    for (auto &[key, s] : *segments) {
         snprintf(line, sizeof line, "0x%lx\t0x%lx\t%u\t%u\t%d\t%llu\t%.4f\t%.1f", std::get<0>(key), std::get<1>(key), std::get<2>(key),
             s.kind, s.argument, s.calls, s.ticks * ticksToMs / s.calls, double(s.work) / s.calls);
         out += line;
@@ -122,9 +125,9 @@ void finish(uint64_t now) {
     endSegment(now);
     BG3MFXSubmitProbeRecording = 0;
     double seconds = (now - recordStart) * ticksToMs / 1000;
-    std::string text = summary(seconds), path = trigger + ".tsv";
-    segments.clear();
-    unlink(trigger.c_str());
+    std::string text = summary(seconds), path = std::string(trigger) + ".tsv";
+    segments->clear();
+    unlink(trigger);
     armed = false;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         FILE *file = fopen(path.c_str(), "w");
@@ -145,7 +148,7 @@ extern "C" void BG3MFXSubmitEntry(uint8_t *buffer, uintptr_t returnAddress) {
         if (!armed.load(std::memory_order_relaxed)) return;
         // The trigger is deleted when a recording ends; the timer may have
         // seen it just before.
-        if (access(trigger.c_str(), F_OK) != 0) { armed = false; return; }
+        if (access(trigger, F_OK) != 0) { armed = false; return; }
         recordStart = now;
         submits = otherSubmits = otherOps = 0;
         BG3MFXSubmitProbeRecording = 1;
@@ -212,12 +215,14 @@ BOOL BG3MFXInstallSubmitOpcodeProbe(intptr_t slide, const char *triggerPath, NSE
     if (!BG3MFXBranchReaches(entry, entryIsland) || !BG3MFXBranchReaches(opcode, opcodeIsland) ||
         !BG3MFXBranchReaches(entryIsland + 36, entry + 4) || !BG3MFXBranchReaches(opcodeIsland + 36, opcode + 4))
         return fail(@"Submit probe islands are out of range.");
-    trigger = triggerPath;
+    if (strlen(triggerPath) >= sizeof trigger) return fail(@"The Submit probe trigger path is too long.");
+    strlcpy(trigger, triggerPath, sizeof trigger);
+    segments = new std::map<Key, Segment>;
     gameSlide = slide;
     mach_timebase_info_data_t timebase;
     mach_timebase_info(&timebase);
     ticksToMs = double(timebase.numer) / timebase.denom / 1e6;
-    unlink(trigger.c_str());
+    unlink(trigger);
     auto result = BG3MFXPatchCode({{entryIsland, islandBytes}, {opcodeIsland, islandBytes}, {entry, 4}, {opcode, 4}}, [&] {
         writeIsland(entryIsland, reinterpret_cast<uintptr_t>(BG3MFXSubmitEntryWrapper), entryInstruction, entry + 4);
         writeIsland(opcodeIsland, reinterpret_cast<uintptr_t>(BG3MFXSubmitOpcodeWrapper), opcodeInstruction, opcode + 4);
@@ -233,9 +238,9 @@ BOOL BG3MFXInstallSubmitOpcodeProbe(intptr_t slide, const char *triggerPath, NSE
     triggerTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
     dispatch_source_set_timer(triggerTimer, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, NSEC_PER_SEC / 4);
     dispatch_source_set_event_handler(triggerTimer, ^{
-        if (!armed && access(trigger.c_str(), F_OK) == 0) armed = true;
+        if (!armed && access(trigger, F_OK) == 0) armed = true;
     });
     dispatch_resume(triggerTimer);
-    os_log(os_log_create("com.bg3mfx", "submit"), "bg3mfx submit: probe installed, trigger %{public}s", trigger.c_str());
+    os_log(os_log_create("com.bg3mfx", "submit"), "bg3mfx submit: probe installed, trigger %{public}s", trigger);
     return YES;
 }
