@@ -97,6 +97,45 @@ on. A brief full-screen flash when switching borderless ↔ windowed happens
 with the fix off too; it was softer in Dark Mode, which suggests the window
 background showing during the resize.
 
+## Shader costs (Ultra capture, before the shadow fix)
+
+From `gpudebug`'s per-shader ranking (`/performance/shaders`; vertex 28%,
+fragment 57%, compute 14% of the frame):
+
+- **Skinning is already done once per frame in compute.** `SkinningCompute`
+  (175 dispatches, 0.14 ms) runs in the first compute encoder with the blend
+  shapes; the character materials' vertex shaders read its output. The TBDR
+  notes' "re-skinned in every pass" was an inference and is wrong, so
+  pre-skinning is not an opportunity. Character vertex work across all passes
+  is 1.24 ms (shadows 0.61, velocity 0.24, prepass 0.21, G-buffer 0.19), about
+  0.93 ms after the shadow fix; hair is the heaviest character material.
+- **HLOD (distant merged meshes) vertex work** is about 1.9 ms across prepass,
+  G-buffer and shadows: most of the prepass-trim estimate in the TBDR notes.
+- **Alpha-tested foliage in the shadow maps is the single most expensive
+  shader**: `Shared_Atmosphere_ATM_Wind_Vertex_RGB_AlphaTest_2S_Translucency_..._DEPS`
+  fragment, 2.80 ms (17%) over both duplicate sets.
+
+Shadow cost per cascade in the set that remains after the fix (ms,
+`tools/encoder_draw_costs.py 9 16.2617 re28=c0 re29=c1 re30=c2 re31=c3 re32=c0load`;
+profile costs overlap, so treat as approximate):
+
+| | c0 | c1 | c2 | c3 | 5th pass (loads c0) | Total |
+| --- | --- | --- | --- | --- | --- | --- |
+| Foliage, alpha-tested | 0.02 | 0.52 | 0.60 | 0.18 | 0.24 | 1.56 |
+| Tileset cutouts | — | 0.06 | 0.15 | 0.12 | 0.10 | 0.43 |
+| Other alpha-test | 0.08 | 0.08 | 0.09 | 0.05 | 0.04 | 0.34 |
+| Hair | 0.08 | 0.06 | 0.06 | 0.06 | — | 0.26 |
+| HLOD | — | — | — | 0.16 | 0.03 | 0.19 |
+| Everything else | 0.01 | 0.04 | 0.11 | 0.07 | 0.07 | 0.29 |
+| All | 0.19 | 0.77 | 1.00 | 0.64 | 0.48 | 3.07 |
+
+Foliage is half the shadow cost and sits in the middle cascades, not the far
+one; the near cascade has almost none at this overhead camera. Skipping
+foliage only in c3 would save about 0.18 ms; c2 and c3 together about 0.8 ms,
+at the price of mid-distance grass shadows. That would be a quality option,
+not a free fix. Why a fifth pass adds 371 draws into slice 0 is not yet known.
+The split depends on scene and camera.
+
 ## Settings sweep (HUD fps, 8 s each, baseline Ultra 67.4)
 
 | Change | fps | Δ |
@@ -131,6 +170,90 @@ Noise is about ±2 fps. The Mac build has no God Rays option.
 
 Once the GPU is relieved, the render thread is the next limit.
 
+## CPU power and heat (October 14, 2026)
+
+Lower City, Ultra, Upscaling Off, Frame Cap off, 95–96 fps throughout; M5
+Pro (6 Super + 12 Performance cores). CPU power and per-tier time are BG3's
+own, from `proc_pid_rusage` (`tools/procpower.c`); per-thread CPU is from
+`proc_pidinfo` (`tools/threadcpu.c`).
+
+| Build | CPU power | CPU | On Super cores |
+|---|---:|---:|---:|
+| BG3 as shipped (with the renderer fixes above) | 23.7 W | 715% | 67% |
+| Optimized thread idling | ~11 W | ~350% | 85% |
+| + dynamic worker core prioritization | 7.4 W | ~420% | 42% |
+
+`sample` misleads here: it records a thread's stack while the thread waits for
+a core and counts `swtch_pri` yields as waiting. It showed the scheduler thread
+4% busy (it used 88% of a core) and `ServerWorker` 99% busy in its systems.
+
+### Optimized thread idling (`src/ThreadIdling.mm`)
+
+BG3 spins wherever it waits:
+
+- `WorkerThreadWorker::DoWork` polls the job queues for 500 µs (its budget,
+  set in `Init` when there are more than 3 cores) before sleeping.
+- `WorkerThreadScheduler::DoWork` yield-spins for 101 µs after every wake;
+  workers signal it each time they go idle, so it ran 88% of a Super core.
+- `GameClock::CapFrame`, the server's 30 Hz tick limiter and the client frame
+  cap, never sleeps: with more than 1 ms left it runs queued worker jobs or
+  yields, then spins the last 1 ms. The server pacing probe
+  (`BG3MFX_TRACE_SERVER_PACING=1`) showed each tick does about 9 ms of work and
+  spends about 24 ms in `CapFrame`; ticks were exactly 30 per second.
+- `WorkerThreadBatch::WaitForCompletion` yields until another thread finishes
+  the batch (the render thread's `cthread_yield` time above).
+
+The patch removes the worker and scheduler windows, makes `CapFrame` sleep
+250 µs when no job is queued (it still runs queued jobs, which matters on
+Macs with few cores, and keeps its 1 ms spin), and blocks batch waiters after
+50 µs on BG3's own completion event. Live A/B steps (same fps each): worker
+and scheduler spins 23.7 → 14.0 W; `CapFrame` 14.0 → ~11.9 W; batch waits
+≈ −1 W. Server ticks stayed at 30.0/s with a 33.4 ms worst interval; the in-game
+Frame Cap now idles between frames.
+
+### Dynamic worker core prioritization (`src/DynamicWorkers.mm`)
+
+BG3 sets thread priorities by hand (QoS changes fail with `EPERM`), so
+everything runs on the Super cores. Darwin background
+(`setpriority(PRIO_DARWIN_THREAD)`, applied by each thread for itself when it
+next blocks) moves a thread to the Performance tier at lower clocks: a test
+loop ran 2.9× slower at 1/22 the power.
+
+| Thread group | In background | Kept |
+|---|---|---|
+| `WT/High` + scheduler | 11.0 → 7.9 W at the same fps when GPU-bound; −6 to −25% fps in CPU-bound scenes | dynamic |
+| `WT/Low` | no measurable saving; dialogue lines started late (Darwin background also throttles disk reads) | normal |
+| `ServerWorker` | its sleeping limiter woke late: 27.5–28 ticks/s | normal |
+| main, `GameThread`, audio | frame and audio critical paths | normal |
+
+The frame threads wait on `WT/High` 12–14% of the time even at normal
+priority, so their waiting is no signal. Instead a trial alternates
+normal/background in 1 s windows and keeps background while it reaches 95% of
+normal's frame rate (trial noise is about 2%); a 1 s frame rate below 85% of
+the trial's returns to normal at once. Trials repeat every 30 s, backing off to
+60 s while normal wins, and pause while BG3 is not the active app. With a frame
+cap or vsync both sides reach the cap, so background wins.
+
+### Lua error handling (`src/LuaJumpFix.mm`)
+
+BG3's Lua 5.4 was built without `LUA_USE_POSIX`, so each protected call uses
+`setjmp`, which saves the signal mask and alternate stack with two system calls.
+Redirecting `luaD_rawrunprotected` and `luaD_throw` to `_setjmp`/`_longjmp`
+removed `sigprocmask`/`__sigaltstack` from the server thread (3.5% of its
+samples) and cut its protected Lua call time by 14%.
+
+### Ruled out
+
+- Culling: timed at its seven `Scene::Cull` sites and the render thread's
+  waits; it finishes on the workers before the render thread needs it.
+- Server tick cap or sleep: the tick is already capped at 30 Hz; it only
+  looked saturated because of `CapFrame`'s spin.
+- Lua and AI speed-ups: the AI's Lua is about 2 ms of the 9 ms tick, off the
+  frame path; Lua GC tuning trades memory for CPU.
+- Pre-skinning (BG3 skins once in compute), memoryless or TBDR attachment
+  changes, foliage shadow cuts beyond resolution, the room-trigger mask and
+  velocity passes.
+
 ## Tools
 
 - `tools/hudfps.sh [seconds]`: mean/min fps from the Metal HUD log.
@@ -138,3 +261,15 @@ Once the GPU is relieved, the render thread is the next limit.
 - `tools/pass_map.py SESSION CB [--watch texN ...]`: per-encoder shaders,
   attachments, cost, and reads of watched textures.
 - `tools/categorize.py TSV FRAME_MS`.
+- `tools/encoder_draw_costs.py SESSION FRAME_MS ENC[=LABEL] ...`: per-encoder
+  draw cost grouped by material (foliage, hair, characters, tilesets, HLOD).
+- `tools/shadow_stacks.py TRACE`: shadow-pass stacks and stage identity from a
+  `BG3MFX_TRACE_SHADOW_STACKS=1` trace.
+- `tools/foliage_shadows.py SESSION FRAME_MS CB TREE_ENC=PROFILE_ENC ...`:
+  foliage order and costliest foliage draws in the cascade shadow passes.
+- `tools/procpower.c PID [seconds] [samples]`: a process's CPU use, power and
+  Super-core share (`xcrun clang -O2 tools/procpower.c -o procpower`; no root).
+- `tools/threadcpu.c PID [seconds]`: CPU use per named thread, as consumed
+  rather than sampled.
+- Dynamic worker decisions: `log stream --predicate 'subsystem == "com.bg3mfx"
+  AND category == "threads"'`.
