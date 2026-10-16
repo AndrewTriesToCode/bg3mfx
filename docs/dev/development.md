@@ -41,6 +41,26 @@ python3 tools/launch/bg3mfx.py launch-trace
 # Or pass --output /absolute/path/to/new-trace.jsonl
 ```
 
+The unmodded Steam app bundle is at
+`/Users/acw/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app`.
+The parent folder is spelled `Baldurs` (no apostrophe); the `.app` filename has
+one. To launch that bundle with Metal HUD logging enabled while Steam is
+running, use:
+
+```sh
+open --env MTL_HUD_ENABLED=1 \
+  --env MTL_HUD_LOG_ENABLED=1 \
+  --env SteamAppId=1086940 \
+  --env SteamGameId=1086940 \
+  -a "/Users/acw/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app" \
+  --args -NoLauncher 1
+```
+
+This launches the Steam-installed bundle without injecting the bg3mfx runtime.
+Keep live scene navigation under user control.
+See the [baseline capture procedure](baseline-captures.md) for collecting
+GPU traces, CPU samples, Metal HUD logs, and power estimates.
+
 Add `BG3MFX_FRAME_LOG=1` (quiet or diagnostic runtime) to log BG3's actual
 rendered rate, the real and generated images that reached the display, drops,
 the presentation method, and the gaps between shown images every 2 s:

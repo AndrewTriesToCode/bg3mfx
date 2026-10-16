@@ -22,8 +22,14 @@
   and measured or estimated improvement. Keep the source map in
   [architecture](docs/dev/architecture.md) and active findings in
   [validation](docs/dev/validation/README.md) current when implementations move.
-- Build outputs go in `build/bin/`; new traces, captures, and other diagnostic
-  evidence go under `build/evidence/`. Keep profiling data and downloaded
+- Build outputs go in `build/bin/`; new transient traces, captures, and other
+  diagnostic evidence go under `build/evidence/`. Store retained baseline
+  evidence for any feature directly under `build/analysis/baseline/`. Put
+  feature-specific investigation artifacts that are not baseline evidence in
+  sibling folders under `build/analysis/` matching `src/features/` names. Put
+  generated current-analysis artifacts under the sibling
+  `build/analysis/current/`; every generation there must cover all features,
+  not just the feature currently being investigated. Keep downloaded
   references under ignored `build/` paths. Do not distribute game executables,
   extracted assets, captures, or credentials.
 
@@ -63,7 +69,7 @@
 ## Local installation
 
 The Steam app is
-`/Users/acw/Library/Application Support/Steam/steamapps/common/Baldur's Gate 3/Baldur's Gate 3.app`.
+`/Users/acw/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app`.
 Do not modify its bytes for this development phase; the launch helper leaves the
 bundle unchanged. The previous authorization for app-bundle patching is retained
 for a future patcher phase, but this cleanup removes that implementation from
