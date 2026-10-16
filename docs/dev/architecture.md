@@ -3,9 +3,11 @@
 ## User-visible settings
 
 `NativeMenu.mm` adds a persistent Show Metal HUD checkbox at the top of General
-and appends MetalFX Spatial and MetalFX Temporal to BG3's existing Upscaling Type
-combo. The native Off and AMD FSR 1.0 entries remain owned by BG3. The native
-quality combo supplies Ultra Quality, Quality, Balanced, and Performance.
+and appends the “MetalFX Spatial” and “MetalFX Temporal” choices to BG3's existing
+Upscaling Type combo. These implement **MetalFX Spatial Upscaling** and
+**MetalFX Temporal Upscaling**. The native Off and AMD FSR 1.0 entries remain
+owned by BG3. The native quality combo supplies Ultra Quality, Quality,
+Balanced, and Performance.
 
 BG3's settings code accepts only Off and FSR as upscaling types. Selecting a
 MetalFX type temporarily invokes BG3's FSR setup callback to retain its quality
@@ -220,54 +222,153 @@ and on again retries. Encoding and GPU failures after it starts still close BG3.
 adds JSONL traces, shader reflection, and opt-in captures. Diagnostics are not
 part of the rendering feature contract and are compiled out of the quiet build.
 Both builds retain the interception and lifetime work required to integrate with
-BG3. `tools/bg3mfx.py` supports only inspection and launch-time injection; it
+BG3. `tools/launch/bg3mfx.py` supports only inspection and launch-time injection; it
 does not alter the app bundle.
+
+## Repository layout
+
+- `src/features/<feature>/`: feature implementations and a README describing
+  behavior, integration, measured results, and validation limits.
+- `src/common/gpu/`: reusable MetalFX encoding and GPU resource ownership.
+- `src/common/native/`: shared guarded code patching and the canonical supported-build manifest.
+- `src/integration/menu/`: native settings and feature installation.
+- `src/integration/renderer/`: shared Metal interception and scene tracking.
+  Feature modules own prepass classification/draw decisions and bind filtering;
+  this layer owns hook installation, shared encoder state, and original-method dispatch.
+  HUD settings still use the shared menu/layer integration.
+- `src/integration/diagnostics/`: runtime probes; standalone probes and analysis
+  programs live under `tools/probes/` and `tools/analysis/`.
+- `src/launcher/` and `packaging/homebrew/`: the player launcher and formula.
+- `tests/`: feature, common, integration, and launcher checks. Python package
+  markers keep recursive discovery working with `make test-python`.
+- `tools/launch/`, `tools/reference/`, `tools/release/`, and `tools/build/`: development
+  launch, licensed-reference downloads, release maintenance, and scoped cleanup.
+- `build/bin/`: disposable compiled launchers, libraries, tests, and probes.
+- `build/evidence/<date>-<experiment>/`: retained captures, traces, and pixel-test
+  images. New diagnostic traces and temporal quality runs use dated folders.
+- Other existing `build/` paths are retained historical artifacts and downloaded
+  references, including `build/profiling/` (formerly `perf/data/`). Cleanup never
+  removes these. Never place game assets in tracked folders.
+- `docs/dev/performance.md`: renderer and CPU performance measurements.
+
+Use source-root include paths (for example `common/gpu/GPUResources.h`) with
+`-Isrc`. Both runtime variants share the Makefile's source and header lists;
+`make install` still installs only the player launcher and quiet runtime.
+
+## Supported native build
+
+[`SupportedBuild.h`](../../src/common/native/SupportedBuild.h) is the single
+source for the supported Steam version, universal-executable SHA-256, ARM64
+runtime UUID, unslid native addresses, native object-layout offsets, and reserved
+branch-island ranges. Addresses and offsets are grouped by feature. The player
+launcher compiles its identity constants from this header; the source-tree
+Python helper reads its version and hash from the same definitions.
+
+The runtime still checks the ARM64 UUID before installing native hooks, and each
+installer retains its instruction, resource-shape, branch-range, and zero-byte
+checks. Centralizing values does not expand the supported build. Compile-time
+checks reject overlapping, misaligned, empty, overflowing, or out-of-padding
+island reservations; a synthetic guard test includes negative cases. Native
+fixtures keep independent layouts/expected instructions to catch drift.
 
 ## Code map
 
-- `src/NativeMenu.mm`: settings menu, custom mode persistence, HUD checkbox.
-- `src/TemporalJitter.*`: guarded Temporal sample selection and ARM64 preservation.
-- `src/CodePatch.*`: shared in-memory code patching (header-padding branch
+- `src/integration/menu/NativeMenu.mm`: settings menu, custom mode persistence, HUD checkbox.
+- `src/features/metalfx-temporal-upscaling/TemporalJitter.*`: guarded Temporal sample selection and ARM64 preservation.
+- `src/common/native/CodePatch.*`: shared in-memory code patching (header-padding branch
   islands, branch range checks, all-or-nothing page protection).
-- `src/Trace.mm` also holds the depth prepass trim (on by default;
-  `BG3MFX_PREPASS_TRIM=0` disables it): vertex-only opaque prepass draws are skipped and
-  their G-buffer draws write depth; see `classifyPrepassTrim` and
-  `PrepassTrimDraw`.
-- `src/Trace.mm` also filters redundant binds (on by default;
-  `BG3MFX_TEXTURE_DEDUP=0` disables it): fragment texture slots and pipelines
+- `src/features/depth-prepass/DepthPrepass.*` implements Depth Prepass Optimization (on by default;
+  `BG3MFX_DEPTH_PREPASS_OPTIMIZATION=0` disables it): vertex-only opaque prepass draws are skipped and
+  their G-buffer draws write depth. `Trace.mm` supplies the hook bridge;
+  `BG3MFXClassifyPrepass` and `BG3MFXPrepassDraw` own the feature decisions.
+- `src/features/render-thread-optimizations/BindFilter.h` filters redundant binds (on by default;
+  `BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0` disables it): fragment texture slots and pipelines
   already bound in the encoder are not forwarded to the driver. The diagnostic
   runtime counts BG3's redundant binds with `BG3MFX_TRACE_REDUNDANT=1`.
-- `src/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
-  (on by default; `BG3MFX_SINGLE_SHADOW_STAGE=0` disables it); see
-  [`perf/README.md`](../../perf/README.md).
-- `src/ThreadIdling.*`: optimized thread idling (on by default;
-  `BG3MFX_OPTIMIZED_IDLING=0` disables it). BG3's idle workers, job scheduler,
+- `src/features/shadows/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
+  (on by default; `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` disables it); see
+  [`docs/dev/performance.md`](performance.md).
+- `src/features/shadows/VistaShadows.*`: opt-in half-resolution rendering for the identified
+  vista submission (`BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA=1`). It redirects only the supported
+  two-slice atlas pass to a private half-size Depth16 texture, seeds Load from
+  the selected native slice, and max-merges only draw-covered rectangles back
+  into that slice. In the diagnostic runtime,
+  `BG3MFX_SHADOWS_VISTA_ONLY=1` also hides non-vista Depth16 shadow draws for a
+  vista-only image comparison. `BG3MFX_VISTA_COMPARE=1` alternates full and
+  half resolution in 10-second periods; quiet runtime ignores it. All options
+  are off by default; see
+  [`smart-shadows-plan.md`](smart-shadows-plan.md).
+- `src/features/thread-idling/ThreadIdling.*`: CPU Thread Idling (on by default;
+  `BG3MFX_CPU_THREAD_IDLING=0` disables it). BG3's idle workers, job scheduler,
   frame limiter (`GameClock::CapFrame`, the server tick and client frame cap)
   and batch waits sleep instead of spinning.
-- `src/DynamicWorkers.*`: dynamic worker core prioritization (on by default;
-  `BG3MFX_DYNAMIC_WORKERS=0` disables it). Puts the `WT/High` workers and the
+- `src/features/dynamic-worker-prioritization/DynamicWorkers.*`: Dynamic Worker Prioritization (on by default;
+  `BG3MFX_DYNAMIC_WORKER_PRIORITIZATION=0` disables it). Puts the `WT/High` workers and the
   job scheduler in Darwin background while frame-rate trials show it costs no
   frame rate. It changes no BG3 code: threads apply their placement when they
   next block in an interposed `semaphore_wait`/`semaphore_timedwait`, and the
   present hooks in `Trace.mm` count frames. Decisions are logged to subsystem
   `com.bg3mfx`, category `threads`.
-- `src/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
+- `src/features/lua-jump-fix/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
   avoiding two system calls per protected call (on by default;
-  `BG3MFX_LUA_JUMP_FIX=0` disables it).
-- `src/ServerPacingProbe.*`: opt-in measurement
+  `BG3MFX_LUA_SYSTEM_CALL_ELIMINATION=0` disables it).
+- `src/integration/diagnostics/ServerPacingProbe.*`: opt-in measurement
   (`BG3MFX_TRACE_SERVER_PACING=1`, both runtimes) of the server tick's work,
   CPU time and limiter, logged to category `pacing`.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
-  pacing probe `0x800`, thread idling `0x9a0` and `0x9c0` (offsets from
+  pacing probe `0x800`, thread idling `0x9a0` and `0x9c0`, vista `0xb00` (offsets from
   `0x100004000`). Each install checks its range is still zero.
-- `src/Trace.mm`: Metal hooks, exact texture association, pass replacement,
+- `src/integration/renderer/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.
-- `src/SpatialUpscaler.*` and `src/TemporalUpscaler.*`: BG3-specific inputs,
+- `src/features/metalfx-spatial-upscaling/SpatialUpscaler.*` and `src/features/metalfx-temporal-upscaling/TemporalUpscaler.*`: BG3-specific inputs,
   conversions, and destinations for each scaler.
-- `src/MetalFXPipeline.*`: backend MetalFX scaler setup and encoding.
-- `src/GPUResources.*`: texture pools and the reusable Metal 4 submission bridge.
-- `src/FrameInterpolation.*`: frame interpolation, stand-in drawables, and the
+- `src/common/gpu/MetalFXPipeline.*`: backend MetalFX scaler setup and encoding.
+- `src/common/gpu/GPUResources.*`: texture pools and the reusable Metal 4 submission bridge.
+- `src/features/metalfx-frame-generation/FrameInterpolation.*`: frame interpolation, stand-in drawables, and the
   presentation worker.
-- `tests/*_smoke.mm`: synthetic Metal pixel and hook regressions.
-- `tools/bg3mfx.py`: guarded, bundle-preserving development launch.
+- `tests/features/`, `tests/common/`, and `tests/integration/`: synthetic Metal pixel and hook regressions.
+- `tools/launch/bg3mfx.py`: guarded, bundle-preserving development launch.
 - `docs/dev/validation/`: current status and dated evidence.
+
+## Shadow Rendering Optimizations: vista-shadow probe and prototype
+
+The diagnostic runtime supports `BG3MFX_TRACE_SHADOWS=1`, a read-only probe
+for Depth16 array passes. It requests vertex and fragment reflection for
+Depth16 pipelines and snapshots reflected camera buffers at the first draw.
+Only shared buffers and captured setBytes data are readable; missing reflection
+or private buffers are reported without guessing a layout. Pass records include
+texture identity, slice, mip, load action, viewport and presentation-frame counter.
+It records for 180 seconds after the first matching pass. Probe observations
+alone do not identify native passes. The live baseline
+`build/shadow-baseline-20261015-195731.jsonl` identifies the native submit as
+`CascadedShadowBufferStage::Submit` at stage+0x21a0 (`0x105d41154+slide`),
+replaying through `0x106429f40+slide`. It targets a two-slice Depth16 atlas at
+1024² or 2048², with partial 128²/256² Load tiles and occasional Clear passes.
+The separate four-slice 2048² cascade array is outside this hook's scope; the
+stage+0x2670 job draws a mountain. The earlier saved-capture association of
+replay `re30` and resource 491's four-slice array with the vista was incorrect
+and is superseded by this live baseline.
+
+The supported executable UUID is checked before installing the vista hook.
+The patch also checks the exact seven-instruction submit context, native target
+prologue, branch reach and a zeroed 16-byte branch island. Descriptor/setup
+failure preserves the native pass. Install failure stops launch with an error.
+For Load, the prototype seeds the reduced target from the selected native
+slice with a 2×2 max reduction, halves viewport/scissor and slope bias, then
+replaces only the draw-covered viewport/scissor rectangles using clamped max
+reduction. Max merging assumes reversed depth; the saved capture's
+`GreaterEqual` state does not verify the corrected atlas target. The next live
+trace can record `shadowProbeSample.depthState` for that check. It
+supports the two-slice Load and Clear descriptors observed in the live
+baseline; untouched Load regions and the sibling slice remain intact. Pools
+return textures on command-buffer completion. `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA` defaults
+off. The full history transform remains unverified, and the prototype does not
+use history or jitter. This baseline verifies the hook target and descriptor
+shape, not the corrected reduced rendering, image quality, or performance. No
+new live reduced-path validation has been done. FULL/HALF comparison periods
+can reuse cached atlas tiles across switches and are not guaranteed clean A/B
+references. Probe state, sampling, vista-only suppression and comparison
+timing are compiled out of the quiet runtime. See
+[probe instructions](smart-shadows-probe.md),
+[prototype plan](smart-shadows-plan.md), and
+[dated probe record](validation/smart-shadows-probe.md).

@@ -1,5 +1,11 @@
 # Temporal image-quality plan
 
+Current implementation: [architecture](architecture.md#renderer-flow) and
+[`TemporalUpscaler.mm`](../../src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm).
+Current findings and acceptance status are in the
+[validation index](validation/README.md); this plan retains investigation steps
+for remaining image-quality questions.
+
 October 11 update: [the jitter diagnosis](validation/temporal-jitter-diagnosis.md)
 establishes and corrects the native-to-MetalFX displacement signs. The quiet
 runtime is rebuilt. Analytic and captured-input comparisons improve; the user
@@ -9,10 +15,11 @@ The hypotheses below describe the audit, not additional changes to make blindly.
 
 ## Goal and test case
 
-Improve MetalFX Temporal's reconstruction of thin geometry and foliage, at the
-same input/output dimensions as the current implementation. The user reports
-that Temporal is stable but looks bad. Spatial's colors, setting persistence,
-and performance improvement over Off are accepted from the user's play; further
+Continue assessing MetalFX Temporal reconstruction of thin geometry and
+foliage. The user reports that quality-dependent jitter improved the tested
+scene and “looks good now”; this plan retains evidence and focused checks for
+other scenes and materials. Spatial's colors, setting persistence, and
+performance improvement over Off are accepted from the user's play; further
 Spatial or settings-persistence testing is outside this investigation.
 
 Use the user's latest save and its saved camera position for the displayed
@@ -30,7 +37,9 @@ visual acceptance case.
   versus Spatial Balanced with native TAA, both using 1760×1100 input and
   2992×1870 output.
 - Sixteen consecutive captured frames contain finite HDR, depth, and motion;
-  requested resets are false and the original eight-sample jitter cycle repeats.
+  requested resets are false. Current upscaled Temporal views use
+  quality-dependent 14/18/24/32-phase Halton jitter; native and auxiliary views
+  retain eight phases.
   Finite output and successful encoding do not prove good reconstruction.
 - Inspected camera and one alpha-tested material shader emit current-minus-
   previous pixel displacement with jitter compensation. Negating those vectors
@@ -40,9 +49,9 @@ visual acceptance case.
   grading, and outline passes, before `FSR_Tonemap`. Depth, motion, and jitter
   are captured earlier at the TAA stage. The native TAA draw is replaced by a
   copy of the current color. This placement needs an image-quality audit.
-- Temporal scaler history is currently cached by GPU and dimensions, without a
-  view or command-queue identifier. Cross-view reuse is a hypothesis to verify,
-  not a demonstrated cause.
+- The active scaler and history lifecycle is implemented in
+  [`TemporalUpscaler.mm`](../../src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm).
+  Cross-view reuse remains a hypothesis to verify, not a demonstrated cause.
 - Auto exposure is disabled, pre-exposure is fixed at 1, and native RCAS is
   skipped. The inherited Upscaling Sharpness slider does not affect MetalFX.
 - A prior native-jitter sequence triggered an Apple MetalFX shader-validation
@@ -118,9 +127,11 @@ Record shader-validation status separately from image-quality and stability
 results. If supplied data is correct but MetalFX still fails, retain a minimal
 local reproducer and state the remaining framework limitation.
 
-Preserve BG3's original jitter table, native Off/FSR behavior, and independent
-Spatial AA. Temporal continues to replace TAA. No FSR fallback, per-frame history
-reset, or unrelated renderer/menu repair is part of the solution.
+Preserve native Off/FSR behavior and independent Spatial AA. Temporal continues
+to replace TAA. Keep quality-dependent Temporal sampling and native/auxiliary
+eight-phase behavior described in the [architecture](architecture.md#renderer-flow).
+No per-frame history reset or unrelated renderer/menu repair is part of this
+image-quality investigation.
 
 ## References
 

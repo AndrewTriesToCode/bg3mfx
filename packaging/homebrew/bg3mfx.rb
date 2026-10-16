@@ -1,5 +1,5 @@
-# Homebrew formula for BG3 MetalFX. Copy to Formula/bg3mfx.rb in
-# github.com/AndrewTriesToCode/homebrew-brews; tools/update-formula.sh fills
+# Homebrew formula for BG3MFX. Copy to Formula/bg3mfx.rb in
+# github.com/AndrewTriesToCode/homebrew-brews; tools/release/update-formula.sh fills
 # in url and sha256 for each tagged release.
 class Bg3mfx < Formula
   desc "MetalFX upscaling and frame generation for Baldur's Gate 3 on Steam"
@@ -23,7 +23,7 @@ class Bg3mfx < Formula
       Start Baldur's Gate 3 (Steam version) with MetalFX:
         bg3mfx
 
-      To add "BG3 MetalFX" to your Applications folder (and to Steam with
+      To add "BG3MFX" to your Applications folder (and to Steam with
       Games > Add a Non-Steam Game to My Library):
         bg3mfx install-app
 

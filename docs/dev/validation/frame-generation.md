@@ -1,8 +1,8 @@
 # Frame Generation integration
 
-October 11, 2026. The first live test exposed a presentation failure. A live
-audit traced it to BG3's present ordering; a deferred-present fix passes
-offscreen fixtures but has not been tested in the game.
+Current implementation: [architecture](../architecture.md#frame-generation).
+This document retains dated design iterations and measurements. Its live
+acceptance status is maintained in the [validation index](README.md).
 
 ## Scope
 

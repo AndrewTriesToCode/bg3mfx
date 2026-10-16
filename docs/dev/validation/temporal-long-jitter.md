@@ -1,5 +1,10 @@
 # Quality-dependent Temporal jitter
 
+Current implementation: [`TemporalJitter.mm`](../../../src/features/metalfx-temporal-upscaling/TemporalJitter.mm)
+and [architecture](../architecture.md#renderer-flow). This page records
+the dated implementation investigation; current status is in the
+[validation index](README.md).
+
 October 11, 2026. The user authorized increasing Temporal's eight-phase jitter
 sequence to match upscale quality. Counts are 14/18/24/32 for Ultra Quality,
 Quality, Balanced, and Performance, approximating `ceil(8 * scale²)` using

@@ -1,5 +1,10 @@
 # Inventory anti-aliasing correction
 
+Current implementation: [`TemporalUpscaler.mm`](../../../src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm)
+and [architecture](../architecture.md#renderer-flow). This page records
+the inventory-view AA regression and its validation; see the [validation
+index](README.md) for current status.
+
 October 11, 2026. The user reported inventory character shimmer only with
 Temporal selected. Spatial with native TAA did not show it.
 

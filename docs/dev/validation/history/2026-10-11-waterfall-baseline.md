@@ -1,5 +1,10 @@
 # Waterfall baseline reproduction — October 11, 2026
 
+**Archive notice:** This is a dated pristine-game observation, not current
+renderer guidance. See the [architecture](../../architecture.md) and
+[validation index](../README.md) for active implementation and status. Local
+logs, captures, and references below may no longer exist.
+
 The user manually navigated pristine BG3 PID 2060 to the waterfall area.
 `build/game-waterfall-pristine.log` then repeatedly reported both original
 waterfall foam vertex shader faults:
@@ -23,7 +28,7 @@ Diagnostic buffer readbacks in ignored `build/waterfall-capture/` contain an
 color green is zero. The original Mac shader divides by this channel in its
 foam displacement calculation. This is a strong cause candidate; no shader
 repair or visual equivalence has been verified. Local extracted shaders and
-captures must not be distributed. `tools/analyze_waterfall_capture.py` checks
+captures must not be distributed. `tools/analysis/analyze_waterfall_capture.py` checks
 layout/index coverage and reports the zero-green vertices without changing data.
 
 The downloaded Windows executables do not contain the waterfall material shader

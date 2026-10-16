@@ -1,5 +1,11 @@
 # Wilderness Temporal quality investigation — October 11, 2026
 
+**Archive notice:** This report describes the implementation and evidence on
+October 11. Its descriptions of the active jitter sequence were superseded;
+see the [architecture](../../architecture.md) and
+[validation index](../README.md) for current behavior. Referenced local capture
+paths are historical and may no longer exist.
+
 Superseded for jitter interpretation by the
 [controlled reconstruction diagnosis](../temporal-jitter-diagnosis.md).
 The same-sign depth-gradient fit below describes sample displacement, not
@@ -25,8 +31,16 @@ Both runtime libraries built; eight Python tests passed. Synthetic Temporal conv
 
 PID 3662 quit normally (exit 0) after selecting Off (trace confirms nativeType 0). TAA, HUD and windowed 2992×1870 were retained. Honour Mode may autosave on normal quit; no explicit Save commands, quest actions or dialogue choices were issued. Do not claim absence of save writes.
 
-No image-quality fix is established. The reduced Halton sampling amplitude was removed at the user's request; the current runtime uses BG3's original jitter table. That pattern previously reproduced a MetalFX BBR shader-validation fault, so current Temporal validation remains unresolved. Animated alpha-tested foliage motion and precise pixel registration still need controlled reconstruction tests. Do not flip vectors or reset every frame based only on visual suspicion.
+At the time of this report, no image-quality fix was established. The reduced
+Halton sampling amplitude had been removed at the user's request, and the
+runtime then used BG3's original jitter table. That pattern had previously
+reproduced a MetalFX BBR shader-validation fault. Later quality-dependent jitter
+and displacement corrections are documented in the
+[current validation index](../README.md); this report's result is historical.
 
-## Current Temporal jitter behavior
+## Behavior after the October 11 workaround removal
 
-The runtime now always retains BG3's exact original Halton samples, including at startup and across menu switches. Removing the workaround restores native sampling but does not resolve the previously observed MetalFX validation fault.
+At that point, the runtime retained BG3's original Halton samples at startup and
+across menu switches. This behavior was later superseded by quality-dependent
+sampling for upscaled Temporal views; native and auxiliary views retain eight
+phases.

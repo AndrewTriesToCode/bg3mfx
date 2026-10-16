@@ -1,5 +1,10 @@
 # Metal 4 Temporal integration and neural implementation audit
 
+Current implementation: [architecture](../architecture.md#renderer-flow)
+and [`TemporalUpscaler.mm`](../../../src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm).
+This audit records the dated API investigation; current validation status is in
+the [validation index](README.md).
+
 October 11, 2026. Local device: Apple M5 Pro, macOS 27.0.1 (26A434).
 
 ## What the public APIs establish
@@ -62,7 +67,7 @@ The quiet runtime compiles that override out and always chooses by capability.
 
 ## Offscreen evidence
 
-`tests/temporal_api_compare.mm` compares identical analytic geometry, depth,
+`tests/features/metalfx-temporal-upscaling/temporal_api_compare.mm` compares identical analytic geometry, depth,
 motion, jitter, exposure and reset values through both public APIs at 1.5×/2×,
 with stationary and moving scenes over three full jitter cycles. The settled
 RGBA16Float outputs are byte-identical in all four cases. The comparison was
@@ -125,6 +130,6 @@ on selection, would be needed for a stronger claim.
 Repeat the optional offscreen comparison:
 
 ```sh
-make build/temporal-api-compare
-build/temporal-api-compare build/temporal-quality/api-comparison
+make build/bin/temporal-api-compare
+build/bin/temporal-api-compare build/evidence/DATE-temporal-api-comparison
 ```

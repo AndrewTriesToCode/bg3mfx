@@ -1,5 +1,9 @@
 # Mac camera and scene input investigation
 
+This is a build-specific research snapshot, not the active implementation
+guide. Current renderer behavior and source locations are in the
+[architecture](../architecture.md) and [validation index](../validation/README.md).
+
 Observed on the pristine ARM64 executable with SHA-256
 `d81e0420d9158e6e58c55af62e8490366768d7376a92868d3bf55d05d561519b`.
 Diagnostics were injected at launch, preserving the app's original signature.
@@ -67,7 +71,7 @@ conversion if its format, usage, dimensions, and lifetime are suitable.
 ## Reproduction and remaining integration
 
 Launch with `BG3MFX_TRACE_CONSTANTS=1`, then run
-`python3 tools/analyze_camera_trace.py build/game-shader-layout.jsonl`.
+`python3 tools/analysis/analyze_camera_trace.py build/game-shader-layout.jsonl`.
 The analyzer uses reflected field offsets and reports projection depth checks.
 Current local evidence is in `game-shader-layout.jsonl`,
 `camera-shader-layout-report.json`, `VelocityBufferCamera_PS.ll`, and

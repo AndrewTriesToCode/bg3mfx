@@ -1,15 +1,16 @@
-// bg3mfx: starts Steam's Baldur's Gate 3 with the BG3 MetalFX runtime.
+// bg3mfx: starts Steam's Baldur's Gate 3 with the BG3MFX runtime.
 //
 // The game is never modified. The launcher finds the Steam copy, checks that
 // it is the build the runtime was validated against, and starts it through
 // LaunchServices with the runtime injected (DYLD_INSERT_LIBRARIES), so BG3
 // keeps its own identity and permissions. From a terminal it prints messages;
-// as "BG3 MetalFX.app" (see install-app) it has no window and shows alerts.
+// as "BG3MFX.app" (see install-app) it has no window and shows alerts.
 #import <AppKit/AppKit.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <mach-o/dyld.h>
 #include <stdlib.h>
+#include "common/native/SupportedBuild.h"
 
 #ifndef BG3MFX_VERSION
 #define BG3MFX_VERSION "dev"
@@ -21,10 +22,10 @@ static NSString *const SteamBundleID = @"com.valvesoftware.steam";
 static NSString *const SteamAppID = @"1086940";
 // Baldur's Gate 3 4.1.1.7631656 (Steam), universal executable. The runtime's
 // native hooks are specific to this build.
-static NSString *const SupportedSHA256 = @"d81e0420d9158e6e58c55af62e8490366768d7376a92868d3bf55d05d561519b";
-static NSString *const SupportedVersion = @"4.1.1.7631656";
+static NSString *const SupportedSHA256 = @BG3MFX_SUPPORTED_SHA256;
+static NSString *const SupportedVersion = @BG3MFX_SUPPORTED_VERSION;
 static NSString *const RememberedGameKey = @"GamePath";
-static NSString *const AppName = @"BG3 MetalFX";
+static NSString *const AppName = @"BG3MFX";
 
 static BOOL appMode;
 
@@ -111,7 +112,7 @@ static NSString *findGame(void) {
 static NSString *chooseGame(void) {
     if (!appMode) return nil;
     tell(@"Baldur's Gate 3 wasn't found in your Steam libraries.",
-         @"Choose \"Baldur's Gate 3.app\" in your Steam library folder. BG3 MetalFX will remember it.", nil);
+         @"Choose \"Baldur's Gate 3.app\" in your Steam library folder. BG3MFX will remember it.", nil);
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     panel.allowedContentTypes = @[[UTType typeWithIdentifier:@"com.apple.application-bundle"]];
     panel.message = @"Choose Baldur's Gate 3.app";
@@ -168,7 +169,7 @@ static BOOL ensureSteam(BOOL dryRun) {
     if (dryRun) { say(@"Steam: not running (would be started)."); return YES; }
     NSURL *steam = [NSWorkspace.sharedWorkspace URLForApplicationWithBundleIdentifier:SteamBundleID];
     if (!steam) {
-        tell(@"Steam isn't installed.", @"BG3 MetalFX supports the Steam version of Baldur's Gate 3.", nil);
+        tell(@"Steam isn't installed.", @"BG3MFX supports the Steam version of Baldur's Gate 3.", nil);
         return NO;
     }
     say(@"Starting Steam...");
@@ -211,7 +212,7 @@ static int launch(NSString *appOverride, BOOL dryRun) {
     NSString *digest = executable ? sha256(executable) : nil;
     if (![digest isEqualToString:expected]) {
         NSString *detail = [NSString stringWithFormat:
-            @"This copy is version %@. BG3 MetalFX %s supports version %@. A game update usually needs a BG3 MetalFX update.",
+            @"This copy is version %@. BG3MFX %s supports version %@. A game update usually needs a BG3MFX update.",
             gameVersion(app), BG3MFX_VERSION, SupportedVersion];
         if (appMode) {
             if (tell(@"This version of Baldur's Gate 3 isn't supported yet.", detail, @[@"Play Without MetalFX", @"Cancel"]) == 0 && !dryRun)
@@ -222,11 +223,11 @@ static int launch(NSString *appOverride, BOOL dryRun) {
     }
     NSString *runtime = runtimePath();
     if (![NSFileManager.defaultManager isReadableFileAtPath:runtime]) {
-        tell(@"The BG3 MetalFX runtime is missing.", [@"Reinstall BG3 MetalFX. Expected: " stringByAppendingString:runtime], nil);
+        tell(@"The BG3MFX runtime is missing.", [@"Reinstall BG3MFX. Expected: " stringByAppendingString:runtime], nil);
         return 1;
     }
     if (running(GameBundleID) && !dryRun) {
-        tell(@"Baldur's Gate 3 is already running.", @"Quit the game, then start it with BG3 MetalFX.", nil);
+        tell(@"Baldur's Gate 3 is already running.", @"Quit the game, then start it with BG3MFX.", nil);
         return 1;
     }
     if (!ensureSteam(dryRun)) return 1;
@@ -320,7 +321,7 @@ static void usage(void) {
     printf("bg3mfx %s: MetalFX upscaling and frame generation for Baldur's Gate 3 (Steam)\n\n"
            "Usage:\n"
            "  bg3mfx                 Start Baldur's Gate 3 with MetalFX\n"
-           "  bg3mfx install-app     Add \"BG3 MetalFX\" to ~/Applications\n"
+           "  bg3mfx install-app     Add \"BG3MFX\" to ~/Applications\n"
            "  bg3mfx --version       Show the version\n\n"
            "Options:\n"
            "  --game PATH            Use this Baldur's Gate 3.app\n"

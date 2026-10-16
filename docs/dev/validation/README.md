@@ -1,23 +1,73 @@
 # Current validation status
 
-Updated October 14, 2026. This page is the active record. Detailed dated notes
+Updated October 15, 2026. This page is the active record. Detailed dated notes
 are archived under [`history/`](history/).
 
-## Duplicate shadow stage fix
+## Shadow Rendering Optimizations
+
+This feature combines default-on duplicate shadow-stage elimination with an
+opt-in, experimental lower-resolution vista-shadow path.
+
+### Lower-resolution vista experiment
+
+An opt-in half-resolution vista prototype is implemented behind
+`BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA=1`, disabled by default. The live native baseline
+(`build/shadow-baseline-20261015-195731.jsonl`) establishes that the guarded
+stage+0x21a0 `CascadedShadowBufferStage::Submit` targets a two-slice Depth16
+atlas at 1024² or 2048², using partial 128²/256² Load regions and occasional
+Clear passes. The separate four-slice 2048² cascade array is outside this
+submission's scope, so its near cascade remains native. The earlier association
+of saved capture replay `re30` and resource 491's four-slice array with the
+vista was incorrect and is superseded by the live baseline.
+
+For Load, the prototype seeds a private half-size target from the selected
+native atlas slice using max reduction over each 2×2 footprint. It halves
+viewport, scissor and slope bias, then replaces only draw-covered
+viewport/scissor rectangles in the original slice with clamped max-reduced
+depth. It supports two-slice Load and Clear descriptors. Untouched Load regions
+and the sibling slice remain intact. Max merging assumes reversed depth; the
+saved capture's `GreaterEqual` state does not verify the corrected atlas
+target. A new live trace can record `shadowProbeSample.depthState` to confirm
+its compare and depth-write state. Descriptor/setup failure leaves the native
+submission intact. Hook installation checks the supported UUID, exact
+seven-instruction call context and target prologue, and unused 16-byte island;
+install failure is a launch error.
+
+This baseline verifies the hook target and descriptor shape. It does not
+validate the corrected reduced rendering, image quality or performance; no new
+live reduced-path validation has been done. In FULL/HALF diagnostic comparison,
+atlas tiles can persist across mode switches, so successive 10-second periods
+are not guaranteed clean, independent A/B references and cannot establish a
+performance benefit. Vista-only diagnostic mode requires
+`smartVistaIsolationArmed`; frames before arming can still contain other
+shadows. Keep the feature opt-in. Follow the user-operated validation procedure
+in the [Shadow Rendering Optimizations plan](../smart-shadows-plan.md).
+
+Offscreen validation of the corrected atlas path passed: two-slice redirection,
+clearing and replacing an old blocker, adjacent-depth preservation, sibling
+slice isolation, in-flight resource ownership, deferred encoder completion,
+and vista-only native/reduced modes. The full `make test` suite passed;
+after adding the shader-read eligibility guard, all eight vista smoke modes
+passed again with Metal API validation enabled against the final libraries
+(`build/vista-atlas-metal-validation.log`). `make test-python` passed 19 tests
+after the October 15 test-layout update.
+These are synthetic/offscreen results, not displayed-game acceptance.
+
+### Duplicate shadow-stage elimination
 
 BG3 builds its game view with two identical cascaded-shadow stages; the first
 one's shadow maps are overwritten before anything reads them.
 `ShadowDuplicateFix` removes the first whenever bg3mfx runs;
-`BG3MFX_SINGLE_SHADOW_STAGE=0` keeps both for comparison. Live on
+`BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` keeps both for comparison. Live on
 October 13 (quiet runtime, Ultra, Upscaling Off, windowed): 73.9 → 86.0 fps,
 HUD GPU time 14.0 → 11.75 ms, in-game shadow passes 10 → 5 per frame (probe
 trace), and the user saw no difference in shadows. No GPU capture was taken
 with the fix on. Analysis and method:
-[`perf/README.md`](../../../perf/README.md).
+[`docs/dev/performance.md`](../performance.md).
 
-## Depth prepass trim
+## Depth Prepass Optimization
 
-Whenever bg3mfx runs (`BG3MFX_PREPASS_TRIM=0` disables it), opaque draws whose prepass pipeline has no
+Whenever bg3mfx runs (`BG3MFX_DEPTH_PREPASS_OPTIMIZATION=0` disables it), opaque draws whose prepass pipeline has no
 fragment function are skipped in the depth prepass, and their G-buffer draws
 write depth (`GreaterEqual`) instead of testing `Equal`, as BG3's terrain
 does. Live on October 14, with the shadow fix (quiet runtime, Ultra, Upscaling
@@ -30,13 +80,13 @@ skips only vertex-only prepass draws and leaves a discarding material's
 Equal test intact, and that bind filtering forwards a changed texture slot;
 negative controls (no depth swap, a dropped texture change) fail it.
 
-## Redundant bind filtering
+## Render Thread Optimizations
 
 BG3 calls `setFragmentTextures:withRange:` about 1,130 times per frame over
 about 30,000 slots; 92% of those slots already hold the same texture, and 12%
 of pipeline binds repeat the bound pipeline (diagnostic counters, October 14).
 The runtime forwards only changed slot runs and new pipelines
-(`BG3MFX_TEXTURE_DEDUP=0` disables it). `make test` passes with it on. Live,
+(`BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0` disables it). `make test` passes with it on. Live,
 quiet runtime with the shadow fix and prepass trim (Ultra, Upscaling Off,
 windowed): 83.1 → 84.0 fps at about 10.7 ms GPU time. CPU samples show
 driver time on BG3's render thread down about 25% per frame (texture binds
@@ -56,17 +106,17 @@ prepass trim off. Live (Ultra, windowed, October 14): no measurable frame-rate
 change against the previous commit (83.2 vs 83.2 fps, interleaved runs), as
 that scene is mostly GPU-limited. The user saw no artifacts.
 
-## CPU power: optimized thread idling, dynamic worker core prioritization, Lua
+## CPU power: thread idling, worker core prioritization, and Lua
 
 Live on October 14 (quiet runtime, Ultra, Upscaling Off, Frame Cap off, Lower
-City, M5 Pro), measured with `perf/tools/procpower.c`. BG3's CPU power fell
+City, M5 Pro), measured with `tools/analysis/procpower.c`. BG3's CPU power fell
 from 23.7 W to 7.4 W at the same 95–96 fps; server ticks stayed at 30.0/s
 (the server pacing probe's worst interval 33.4–34.6 ms). Steps and method:
-[`perf/README.md`](../../../perf/README.md).
+[`docs/dev/performance.md`](../performance.md).
 
-- Optimized thread idling alone: about 11 W. The in-game Frame Cap now idles
+- CPU Thread Idling alone: about 11 W. The in-game Frame Cap now idles
   between frames (user-confirmed lower CPU with the cap on).
-- Dynamic worker core prioritization: 7.4 W where background costs nothing.
+- Dynamic Worker Prioritization: 7.4 W where background costs nothing.
   Running through Lower City crowds, trials kept the `WT/High` workers at normal
   where background would have cost 6–11% (108.7 vs 102.0, 144.0 vs 128.7 fps),
   and the user saw no stutter at the switches. An earlier version also placed
@@ -82,12 +132,11 @@ from 23.7 W to 7.4 W at the same 95–96 fps; server ticks stayed at 30.0/s
 
 `make test` exercises neither feature: both patch BG3's own code or threads.
 
-## Frame Generation (initial integration)
+## Frame Generation
 
 Frame Generation is the "MetalFX Frame Generation" checkbox and combines with
-every Upscaling Type; clearing it releases the effect. As of October 13, only
-Temporal + Frame Generation has run live. Off, FSR and Spatial with Frame
-Generation are covered synthetically: `frame-generation-hook-smoke` pairs each
+every Upscaling Type; clearing it releases the effect. Off, FSR, Spatial, and
+Temporal have all been exercised live, and `frame-generation-hook-smoke` pairs each
 with a byte-identical generated composition, switches between them, and checks
 that frames without TAA inputs are presented unpaired and pairing resumes. Live,
 Temporal, Spatial and FSR with Frame Generation worked; Off first did not pair
@@ -184,8 +233,10 @@ and slow camera movement, and confirmed "Clearly better and stable" on October
 11. This accepts the correction in that live test case, not every material or
 scene.
 
-`make test` passes with the new reconstruction regression and both rebuilt
-runtime libraries; `make test-python` passes three launch tests. Full Metal
+At the time of the October 11 reconstruction run, `make test` passed with the
+new regression and both runtime libraries; the Python launch tests then numbered
+three. The current `make test-python` suite has 19 tests (see the October 15
+build-maintenance record below). Full Metal
 shader validation still reports invalid threadgroup loads in Apple's private
 `BBRNetAnisoGaussian` kernel, in both the analytic test and captured-input replay.
 Successful completion and finite output do not make those validation runs clean.
@@ -217,17 +268,11 @@ changed.
 
 ## Known issues
 
-- After the jitter correction, the user reports remaining shimmer on grass,
-  foliage, or thin geometry even with the camera still. The correction remains
-  accepted as clearly better and stable; temporal image quality is not fully
-  accepted. Compare Temporal/Balanced, Temporal/Ultra Quality, and
-  Spatial/Balanced with native TAA at the same saved camera before changing
-  renderer behavior. The user reports Ultra Quality reduces the shimmer and
-  Spatial with native TAA does not show it in the tested foliage. Wind
-  deformation motion coverage, alpha-tested visibility, and the previous
-  eight-phase sampling are hypotheses, not established causes. The longer jitter
-  sequence reduces shimmer in the user's tested scene, which they now report
-  looks good. This does not establish every material or scene as artifact-free.
+- The user reports that quality-dependent jitter reduced shimmer and that the
+  tested Temporal/Balanced scene now “looks good.” Earlier reports of foliage
+  shimmer remain useful historical evidence, not a current reproduced defect.
+  No acceptance claim covers every material or scene. Full-scene Metal shader
+  validation remains unresolved below.
 - Inventory character-preview shimmer was introduced by suppressing native TAA
   in a separate view that never reaches MetalFX. The fix preserves native TAA
   unless the exact target has previously fed the upscaling stage. Before/after
@@ -238,18 +283,48 @@ changed.
   to a MetalFX type, even when the renderer uses Balanced resolution. The
   diagnostic runtime showed a correct label in a similar test. This UI behavior
   has not been fixed or cleanly reproduced after the latest menu refactor.
-- Temporal produced more jagged thin reeds than Spatial in a matched Wilderness
-  screenshot comparison. The user also reported poor foliage quality and lower
-  performance. Captured inputs were finite and a 16-frame standalone replay
-  passed full Metal validation, but separate native-jitter input sequences
-  previously triggered an invalid threadgroup load in Apple's private
-  `BBRNetAnisoGaussian` shader. The new longer jitter uses native history handling;
-  there has not been a clean full-scene shader-validation run proving that fault
-  resolved. No jitter workaround or MetalFX shader exclusion is active.
+- Metal shader validation has reported invalid threadgroup loads in Apple's
+  private `BBRNetAnisoGaussian` shader on captured and synthetic sequences.
+  Later replay passed, but there has not been a clean full-scene run proving the
+  fault resolved. No MetalFX shader exclusion is active.
 - A mouse hover could move the help highlight after closing a quality popup; the
   user's reported upward jump has not been reproduced or fixed.
 - The Mac game's waterfall foam shaders report INF/NAN in an uninjected,
   pristine run. This is proven original-game behavior and no repair is included.
+
+## Feature-folder reorganization (October 15, 2026)
+
+The feature/common/integration source layout builds with `make`. Both quiet and
+diagnostic runtimes pass `make test` with GPU access: these are synthetic and
+offscreen pixel/hook checks, not displayed-game acceptance. All 19 Python
+launcher and shadow-analysis tests pass after recursive test discovery updates.
+Optional replay, API-comparison, and probe build targets also succeed. A staged
+`make install` preserves the launcher and quiet-runtime installation paths.
+No live game test was performed for this path-only reorganization.
+
+## Feature extraction and build maintenance (October 15, 2026)
+
+Bind filtering now lives in `src/features/render-thread-optimizations/BindFilter.h`, and
+prepass classification, depth-state replacement, draw decisions, and counters
+live in `src/features/depth-prepass/DepthPrepass.*`. The shared renderer retains
+hook installation, original-method dispatch, and scene tracking. A value audit
+against pre-change snapshots confirmed all centralized native addresses, object
+layouts, and branch-island ranges retain their supported-build values.
+
+`make` builds the quiet runtime and launcher under `build/bin/`. `make test`
+passes with GPU access on both quiet and diagnostic runtimes, including the
+existing native-jitter, vista-context, prepass pixel, and renderer-hook checks.
+New bind-filter checks cover mixed single/bulk calls, nil/unbinding, changed-run
+coalescing, pipeline repeats, and cache bounds. Supported-build guard checks
+include overlap, alignment, empty/bounds, and overflow negative cases. These are
+synthetic/offscreen results; no live game, displayed-image, pacing, or new
+performance acceptance is claimed for the refactor.
+
+All 19 Python tests pass, including cleanup preservation/rejection checks and
+launch defaults. Optional replay, API-comparison, and probe targets build; a
+staged `make install` still installs only the launcher and quiet library at the
+same player paths. New traces and quality images use `build/evidence/`; historical
+artifacts and licensed reference downloads remain untouched by cleanup.
 
 ## Repeatable checks
 

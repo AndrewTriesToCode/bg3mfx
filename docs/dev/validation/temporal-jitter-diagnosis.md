@@ -1,5 +1,10 @@
 # Temporal displacement diagnosis — October 11, 2026
 
+Current adapter implementation: [`TemporalUpscaler.mm`](../../../src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm).
+This page preserves the dated diagnosis and measurements; see the
+[architecture](../architecture.md#renderer-flow) and
+[current validation status](README.md) for active behavior and open issues.
+
 ## Root cause and correction
 
 The integration reported BG3's sampling offset as MetalFX's image/projection
@@ -35,7 +40,8 @@ pass. Repeating with BG3's eight phases also passes (Temporal/bilinear MSE
 fix. The test is part of `make test`. Its legacy negative control exits 7:
 
 ```sh
-BG3MFX_QUALITY_LEGACY_JITTER=1 ./build/temporal-quality-smoke build/temporal-quality/legacy-negative-control
+BG3MFX_QUALITY_LEGACY_JITTER=1 build/bin/temporal-quality-smoke \
+  build/evidence/DATE-temporal-jitter/legacy-negative-control
 ```
 
 Consecutive captured BG3 depth images independently establish the sampling

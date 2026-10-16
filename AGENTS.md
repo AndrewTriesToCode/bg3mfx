@@ -1,35 +1,44 @@
-# BG3 MetalFX project instructions
+# BG3MFX project instructions
 
-## Active scope
+## Product behavior
 
-Keep the project focused on Show Metal HUD, MetalFX Spatial, MetalFX Temporal,
-and MetalFX Frame Generation. Frame Generation is the "MetalFX Frame
-Generation" checkbox (shown only on supported devices), placed after the
-upscaling controls; it combines with every Upscaling Type. Preserve BG3's native
-Off and AMD FSR 1.0 options.
-
-- Keep the HUD checkbox first under General and persistent.
 - Players install with Homebrew (`packaging/homebrew/bg3mfx.rb`, published in
   the `AndrewTriesToCode/homebrew-brews` tap) and start the game with the
   `bg3mfx` launcher (`src/launcher/`), which supports the Steam build only and
   never modifies the game. Keep README.md player-facing; developer material goes
-  in `docs/dev/`. Never edit README.md without first checking with the user.
-- Preserve upscaler quality selection and resolution across startup.
-- Spatial preserves BG3's independent anti-aliasing control. It consumes linear
-HDR after bloom and color grading, before `FSR_Tonemap`.
-- Temporal replaces the
-TAA result, disables the separate anti-aliasing control, and uses BG3's native
-depth, motion, and camera handling. Its upscaled scene uses quality-dependent
-Halton jitter (14/18/24/32 phases); native and auxiliary views retain eight.
+  in `docs/dev/`.
+
+## Repository layout
+
+- `src/features/<feature>/` contains feature-specific runtime code. Keep shared
+  MetalFX/GPU utilities in `src/common/` and renderer, menu, and presentation
+  integration in `src/integration/`.
+- `src/launcher/` contains the Homebrew-installed player launcher.
+- `tests/features/`, `tests/integration/`, `tests/common/`, and
+  `tests/launcher/` follow the code boundaries. `tools/analysis/`, `tools/launch/`,
+  `tools/probes/`, `tools/reference/`, `tools/release/`, and `tools/build/`
+  contain developer tools; they are not installed by Homebrew.
+- Feature folders should include a README describing behavior, implementation,
+  and measured or estimated improvement. Keep the source map in
+  [architecture](docs/dev/architecture.md) and active findings in
+  [validation](docs/dev/validation/README.md) current when implementations move.
+- Build outputs go in `build/bin/`; new traces, captures, and other diagnostic
+  evidence go under `build/evidence/`. Keep profiling data and downloaded
+  references under ignored `build/` paths. Do not distribute game executables,
+  extracted assets, captures, or credentials.
 
 ## Development and tests
 
-- use available skills and capabilities such as gpucapture and gputrace
+- Never edit README.md without first checking with the user.
+- Use available skills and capabilities such as gpucapture and gputrace.
 - `make` builds the quiet runtime and the `bg3mfx` launcher. `make test` runs
   Metal pixel and renderer-hook regressions on both quiet and diagnostic
   libraries. `make test-python` checks the player launcher and the development
   launch helper. Keep synthetic, offscreen, and displayed results
   distinct in reports.
+- `make clean` removes only `build/bin/`; `make clean-evidence` removes only
+  `build/evidence/`. Neither command migrates or removes older data elsewhere
+  under `build/`.
 - The diagnostic runtime may record traces, shader reflection, and captures.
   The quiet runtime compiles those diagnostics out but still has integration
   hooks; do not claim zero overhead.
