@@ -225,7 +225,8 @@ does not alter the app bundle.
 
 ## Code map
 
-- `src/NativeMenu.mm`: settings menu, custom mode persistence, HUD checkbox.
+- `src/NativeMenu.mm`: settings menu, custom mode persistence, HUD checkbox, and
+  guarded first-responder restoration after BG3 reattaches its Metal view.
 - `src/NativeJitter.*`: guarded Temporal sample selection and ARM64 preservation.
 - `src/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.

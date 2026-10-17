@@ -134,6 +134,7 @@ changed.
 | Native Off and FSR | Original settings callbacks and rendering paths remain in use | Off, TAA, native FSR callbacks/dispatches were observed in live menu tests |
 | Metal HUD | Persistent menu checkbox controls the Metal layer overlay | Menu ordering and HUD on/off were visually verified |
 | Error path | Setup and resource failures display a clear error and exit 78. A frame whose FSR input matches no captured scene (transitions) runs BG3's native FSR + RCAS for that frame, logs `metalFXNativeFallback`, and restarts Temporal history | Synthetic invalid-resource regressions pass; the hook fixture checks the unmatched-frame fallback. User reported scene-match closures before this change; not yet retested live |
+| Video Options Menu Fix | Restores `LSMTLView` first responder after BG3 detaches and reattaches it during fullscreen graphics-setting changes | User confirmed the fullscreen Video menu remains responsive after changing settings; modal and windowed paths still need broader checks |
 
 ## Known issues
 

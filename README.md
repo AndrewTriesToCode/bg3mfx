@@ -3,6 +3,10 @@
 Better image quality and up to 2x the frame rate for **Baldur's Gate 3 on Mac**,
 using Apple MetalFX upscaling and frame generation.
 
+## Features
+
+### Upscaling
+
 It adds two new choices to the game's own **Upscaling Type** setting:
 
 | Option | What it does |
@@ -10,12 +14,18 @@ It adds two new choices to the game's own **Upscaling Type** setting:
 | **MetalFX Spatial** | Sharp upscaling from a lower render resolution. Keeps the game's anti-aliasing setting. |
 | **MetalFX Temporal** | Higher-quality upscaling that uses previous frames. Replaces the game's anti-aliasing. |
 
-It also adds two checkboxes:
+### Frame Generation
 
 | Option | What it does |
 | --- | --- |
 | **MetalFX Frame Generation** | An extra generated frame between each pair of rendered frames for smoother motion. Works with any Upscaling Type. |
+
+### Other
+
+| Feature | What it does |
+| --- | --- |
 | **Show Metal HUD** | Apple's on-screen performance overlay. |
+| **Video Options Menu Fix** | Fixes a bug in the base game that can make the video menu unresponsive in fullscreen. |
 
 The game's original **Off** and **AMD FSR 1.0** options still work as before.
 Nothing in your game folder is changed: BG3 MetalFX loads alongside the game

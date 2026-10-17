@@ -3,11 +3,13 @@
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <objc/runtime.h>
 #include <mach/mach.h>
 #include <mach-o/dyld.h>
 #include <atomic>
 #include <cstring>
 #include <cstdlib>
+#include <time.h>
 
 namespace {
 struct View { const char *data; uint32_t size; uint32_t padding; };
@@ -39,11 +41,193 @@ static NSString *const scalingPreference = @"BG3MFXUpscalingType";
 static NSString *const qualityPreference = @"BG3MFXUpscalingQuality";
 static const uint16_t hudID = 0x7f01;
 static const uint16_t frameGenerationID = 0x7f02;
+static IMP originalSetContentView;
+static NSWindow *pendingFocusWindow;
+static NSView *pendingFocusView;
 
 static void event(NSDictionary *value);
 template<class T> T at(uintptr_t address) { return reinterpret_cast<T>(address + slide); }
 template<class T> T &field(void *object, size_t offset) { return *reinterpret_cast<T *>(static_cast<char *>(object) + offset); }
 static void event(NSDictionary *value) { if (reportEvent) reportEvent(value); }
+static bool isGameRenderView(NSView *view) {
+    Class renderViewClass = NSClassFromString(@"LSMTLView");
+    return view && renderViewClass && [view isKindOfClass:renderViewClass];
+}
+static void setContentViewWithFocusRepair(NSWindow *window, SEL selector, NSView *view) {
+    using SetContentView = void (*)(id, SEL, NSView *);
+    auto original = reinterpret_cast<SetContentView>(originalSetContentView);
+    if (!original) return;
+
+    if (NSThread.isMainThread && !view && window.contentView && isGameRenderView(window.contentView) &&
+        window.firstResponder == window.contentView) {
+        // BindSurface removes and reattaches the same render view synchronously.
+        // Keep it alive across the pair, but only try to restore the focus it had.
+        pendingFocusWindow = window;
+        pendingFocusView = window.contentView;
+    } else if (view && pendingFocusWindow != window) {
+        pendingFocusWindow = nil;
+        pendingFocusView = nil;
+    }
+
+    original(window, selector, view);
+
+    if (!view || pendingFocusWindow != window || pendingFocusView != view) return;
+    NSView *restoreView = pendingFocusView;
+    pendingFocusWindow = nil;
+    pendingFocusView = nil;
+
+    NSWindow *modalWindow = NSApp.modalWindow;
+    bool eligible = NSThread.isMainThread && NSApp.isActive && window.isKeyWindow &&
+        !window.attachedSheet && !modalWindow &&
+        (window.firstResponder == window || window.firstResponder == nil);
+    bool restored = eligible && [window makeFirstResponder:restoreView];
+#ifndef BG3MFX_NO_TRACE
+    event(@{@"event":@"nativeMenuFocusRepair", @"attempted":@(eligible),
+        @"restored":@(restored), @"keyWindow":@(window.isKeyWindow),
+        @"active":@(NSApp.isActive)});
+#else
+    (void)restored;
+#endif
+}
+static bool installRenderViewFocusRepair() {
+    Class windowClass = NSClassFromString(@"LSWindow");
+    SEL selector = @selector(setContentView:);
+    Method method = windowClass ? class_getInstanceMethod(windowClass, selector) : nullptr;
+    if (!method || method_getNumberOfArguments(method) != 3) return false;
+    char *returnType = method_copyReturnType(method);
+    char *viewType = method_copyArgumentType(method, 2);
+    bool signatureOK = returnType && returnType[0] == 'v' && viewType && viewType[0] == '@';
+    free(returnType);
+    free(viewType);
+    if (!signatureOK) return false;
+    const char *encoding = method_getTypeEncoding(method);
+    if (!encoding) return false;
+    IMP current = method_getImplementation(method);
+    if (current == reinterpret_cast<IMP>(setContentViewWithFocusRepair)) return true;
+    originalSetContentView = current;
+    if (class_addMethod(windowClass, selector, reinterpret_cast<IMP>(setContentViewWithFocusRepair), encoding))
+        return true; // The original implementation was inherited; the override is local to LSWindow.
+    originalSetContentView = class_replaceMethod(windowClass, selector,
+        reinterpret_cast<IMP>(setContentViewWithFocusRepair), encoding);
+    return originalSetContentView != nullptr;
+}
+// This probe observes the native lifecycle without changing callbacks or input.
+// Compile it out of the player runtime, including the NSEvent monitor.
+#ifndef BG3MFX_NO_TRACE
+static bool menuProbeEnabled() {
+    const char *value = getenv("BG3MFX_MENU_PROBE");
+    return value && strcmp(value,"1") == 0;
+}
+static std::atomic<uint64_t> menuProbeSequence{0};
+static thread_local const char *menuProbeContext = "none";
+static NSString *probePointer(const void *pointer) { return [NSString stringWithFormat:@"%p",pointer]; }
+static NSDictionary *probeControl(void *item) {
+    uint8_t type = field<uint8_t>(item,8);
+    NSMutableDictionary *state = [@{@"pointer":probePointer(item),@"type":@(type),
+        @"id":@(field<uint16_t>(item,0x88)),@"enabled":@(field<uint8_t>(item,0x2c)),
+        @"enabledObservers":@(field<int32_t>(item,0x84))} mutableCopy];
+    if (type == 3) {
+        state[@"value"] = @(field<int32_t>(item,0xd0));
+        state[@"choices"] = @(field<uint32_t>(item,0x9c));
+        state[@"selectedObservers"] = @(field<int32_t>(item,0xcc));
+    } else if (field<uint16_t>(item,0x88) == hudID || field<uint16_t>(item,0x88) == frameGenerationID)
+        state[@"checked"] = @(field<uint8_t>(item,0xa8));
+    return state;
+}
+static NSArray *probeControls(void *manager) {
+    if (!manager) return @[];
+    void **items = field<void **>(manager,0x30);
+    uint32_t count = field<uint32_t>(manager,0x3c);
+    if (!items || count > 256) return @[];
+    NSMutableArray *controls = [NSMutableArray array];
+    bool firstCombo = true;
+    for (uint32_t i=0;i<count;++i) {
+        if (!items[i]) continue;
+        uint8_t type = field<uint8_t>(items[i],8);
+        uint16_t id = field<uint16_t>(items[i],0x88);
+        bool displayCandidate = type == 3 && firstCombo;
+        if (type == 3) firstCombo = false;
+        if (displayCandidate || id == 98 || id == 99 || id == 100 || id == hudID || id == frameGenerationID) {
+            NSMutableDictionary *state = [probeControl(items[i]) mutableCopy];
+            state[@"index"] = @(i);
+            // BG3's first native combo is Display Mode; no unverified ID needed.
+            if (displayCandidate) state[@"role"] = @"firstNativeCombo";
+            [controls addObject:state];
+        }
+    }
+    return controls;
+}
+static void menuProbe(const char *phase, void *manager, const void *item, bool snapshot) {
+    if (!menuProbeEnabled()) return;
+    struct timespec now{};
+    clock_gettime(CLOCK_MONOTONIC,&now);
+    NSMutableDictionary *state = [@{@"event":@"nativeMenuProbeCallback",@"phase":@(phase),
+        @"sequence":@(menuProbeSequence.fetch_add(1)+1),
+        @"monotonicSeconds":@(double(now.tv_sec)+double(now.tv_nsec)/1e9),
+        @"mainThread":@(NSThread.isMainThread),@"context":@(menuProbeContext),
+        @"manager":probePointer(manager),@"item":probePointer(item)} mutableCopy];
+    if (item) state[@"control"] = probeControl(const_cast<void *>(item));
+    if (snapshot) state[@"controls"] = probeControls(manager);
+    event(state);
+}
+struct MenuProbeScope {
+    const char *name, *previous;
+    void *manager;
+    const void *item;
+    bool snapshot;
+    MenuProbeScope(const char *name, void *manager, const void *item=nullptr, bool snapshot=true)
+        : name(name), previous(menuProbeContext), manager(manager), item(item), snapshot(snapshot) {
+        if (menuProbeEnabled()) {
+            menuProbe(name,manager,item,snapshot);
+            menuProbeContext = name;
+        }
+    }
+    ~MenuProbeScope() {
+        if (menuProbeEnabled()) {
+            menuProbe("exit",manager,item,snapshot);
+            menuProbeContext = previous;
+        }
+    }
+};
+static NSEvent *probeInput(NSEvent *input) {
+    if (!menuProbeEnabled()) return input;
+    struct timespec now{};
+    clock_gettime(CLOCK_MONOTONIC,&now);
+    NSWindow *window = input.window;
+    event(@{@"event":@"nativeMenuProbeInput",@"sequence":@(menuProbeSequence.fetch_add(1)+1),
+        @"monotonicSeconds":@(double(now.tv_sec)+double(now.tv_nsec)/1e9),
+        @"eventType":@(input.type),@"active":@(NSApp.active),
+        @"window":probePointer((__bridge void *)window),
+        @"keyWindow":@(window.isKeyWindow),@"mainWindow":@(window.isMainWindow),
+        @"firstResponderClass":window.firstResponder ? NSStringFromClass(window.firstResponder.class) : @"none"});
+    // No characters, key codes, coordinates, or event replacement.
+    return input;
+}
+static void installMenuProbeMonitor() {
+    if (!menuProbeEnabled()) return;
+    // The constructor can precede NSApplication creation. Install when its main
+    // run loop starts; never initialize AppKit or inspect windows off-thread.
+    dispatch_async(dispatch_get_main_queue(),^{
+        static id monitor;
+        if (monitor) return;
+        NSEventMask mask = NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp |
+            NSEventMaskRightMouseDown | NSEventMaskRightMouseUp |
+            NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp |
+            NSEventMaskKeyDown | NSEventMaskKeyUp;
+        monitor = [NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent *(NSEvent *input) {
+            return probeInput(input);
+        }];
+        menuProbe(monitor ? "monitorInstalled" : "monitorUnavailable",nullptr,nullptr,false);
+    });
+}
+#define MENU_PROBE_SCOPE(name, manager, item, snapshot) MenuProbeScope probeScope(name,manager,item,snapshot)
+#define MENU_PROBE(phase, manager, item, snapshot) menuProbe(phase,manager,item,snapshot)
+#define MENU_PROBE_INITIALIZED() probeScope.snapshot = true
+#else
+#define MENU_PROBE_SCOPE(name, manager, item, snapshot)
+#define MENU_PROBE(phase, manager, item, snapshot)
+#define MENU_PROBE_INITIALIZED()
+#endif
 static void errorOut(NSError **error, NSString *message) {
     if (error) *error = [NSError errorWithDomain:@"BG3MFXNativeMenu" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
 }
@@ -90,6 +274,7 @@ static void *findItem(void *manager, uint8_t type, uint16_t id) {
     return nullptr;
 }
 static void setItemEnabled(void *item, uint8_t enabled) {
+    MENU_PROBE_SCOPE("setItemEnabled",nullptr,item,false);
     if (!item || field<uint8_t>(item,0x2c) == enabled) return;
     field<uint8_t>(item,0x2c) = enabled;
     // Match RefreshUIAntiAliasing's EnabledChanged notifications.
@@ -122,6 +307,7 @@ static int taaValue(void *aa) {
 }
 // Select an Anti-Aliasing value through BG3's own callback, and show it.
 static void selectAntiAliasing(void *aa, int value) {
+    MENU_PROBE_SCOPE("selectAntiAliasing",nullptr,aa,false);
     field<int32_t>(aa,0xd0) = value;
     if (auto call = field<void(*)(void *,const void *)>(aa,0x38)) call(static_cast<char *>(aa)+0x38,aa);
     void *observers = field<void *>(aa,0xc0);
@@ -189,6 +375,7 @@ static void restoreCustomQuality(void *manager, int value, BOOL refresh) {
     at<void(*)(void *)>(0x103291ef8)(manager);
 }
 static void qualityChanged(void *storage, const void *item) {
+    MENU_PROBE_SCOPE("qualityChanged",storage ? field<void *>(storage,0x18) : nullptr,item,true);
     int value = item ? field<int32_t>(const_cast<void *>(item),0xd0) : -1;
     int mode = selectedScalingMode.load();
     if (originalQualityCall) originalQualityCall(storage,item);
@@ -205,6 +392,7 @@ static void qualityChanged(void *storage, const void *item) {
     }
 }
 static void applyCombo(void *manager, const void *item) {
+    MENU_PROBE_SCOPE("applyCombo",manager,item,true);
     // Apply() runs again when closing Options. Its virtual ComboItem apply
     // must use the same native resolution setup as the selection callback.
     void *mutableItem = const_cast<void *>(item);
@@ -222,6 +410,7 @@ static void applyCombo(void *manager, const void *item) {
     }
 }
 static void upscaleChanged(void *storage, const void *item) {
+    MENU_PROBE_SCOPE("upscaleChanged",storage ? field<void *>(storage,0x18) : nullptr,item,true);
     if (!originalUpscaleCall || !storage || !item || field<uint16_t>(const_cast<void *>(item),0x88) != 99) {
         if (originalUpscaleCall) originalUpscaleCall(storage,item);
         return;
@@ -293,7 +482,11 @@ static NSArray *comboValues(void *combo, uint32_t count) {
     return values;
 }
 static void menuInit(void *manager) {
+    // Do not inspect the list until BG3 has initialized the manager.
+    MENU_PROBE_SCOPE("menuInit",manager,nullptr,false);
     originalInit(manager);
+    MENU_PROBE_INITIALIZED();
+    MENU_PROBE("originalInitReturned",manager,nullptr,true);
     optionsManager = manager;
     void **items = field<void **>(manager,0x30);
     uint32_t count = field<uint32_t>(manager,0x3c);
@@ -407,6 +600,7 @@ static void menuInit(void *manager) {
     destroyText(temporalName); destroyText(temporalDescription);
     destroyText(hudName); destroyText(hudDescription);
     if (NSThread.isMainThread) applyHUD(); else dispatch_async(dispatch_get_main_queue(),^{ applyHUD(); });
+    MENU_PROBE("initializationComplete",manager,nullptr,true);
     event(@{@"event":@"nativeMenuReady",@"upscalingOptions":@[@"Off",@"AMD FSR 1.0",@"MetalFX Spatial",@"MetalFX Temporal"],
             @"frameGenerationOption":@(frameGeneration),@"frameGeneration":@(frameGenerationChecked.load()),
             @"selectedScalingMode":@(mode),@"hudEnabled":@(hudEnabled)});
@@ -435,6 +629,8 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     }
     if (!supported) { errorOut(error,@"Unsupported BG3 build for native menu integration."); return NO; }
     slide = _dyld_get_image_vmaddr_slide(imageIndex);
+    bool focusRepairInstalled = installRenderViewFocusRepair();
+    event(@{@"event":@"nativeMenuFocusRepairHook", @"installed":@(focusRepairInstalled)});
     if (!BG3MFXInstallNativeJitter(slide,report,error)) return NO;
     void **table = at<void **>(0x1087ac1a0);
     if (table[4] != at<void *>(0x103288fb8) || table[7] != at<void *>(0x103290180)) { errorOut(error,@"The Video menu callback was already modified."); return NO; }
@@ -472,6 +668,9 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     frameGenerationChecked.store([defaults boolForKey:frameGenerationPreference]);
     event(@{@"event":@"nativeMenuStartupMode",@"value":@(startupMode),@"frameGeneration":@(frameGenerationChecked.load())});
     event(@{@"event":@"nativeMenuInstalled"});
+#ifndef BG3MFX_NO_TRACE
+    installMenuProbeMonitor();
+#endif
     return YES;
 }
 

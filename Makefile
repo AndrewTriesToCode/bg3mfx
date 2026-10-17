@@ -43,6 +43,13 @@ build/metal4-bridge-smoke: tests/metal4_bridge_smoke.mm src/MetalFXPipeline.mm s
 build/native-jitter-smoke: tests/native_jitter_smoke.mm tests/native_jitter_wrappers.S src/NativeJitter.mm src/NativeJitter.S src/NativeJitter.h src/NativeMenu.h | build
 	$(CXX) $(CXXFLAGS) tests/native_jitter_smoke.mm src/NativeJitter.S tests/native_jitter_wrappers.S -framework Foundation -o $@
 
+# Native menu probe fixtures do not launch BG3 or require a GPU/window.
+build/native-menu-probe-smoke: tests/native_menu_probe_smoke.mm src/NativeMenu.mm src/NativeMenu.h src/NativeJitter.h | build
+	$(CXX) $(CXXFLAGS) $< $(FRAMEWORKS) -o $@
+
+build/native-menu-probe-quiet-smoke: tests/native_menu_probe_smoke.mm src/NativeMenu.mm src/NativeMenu.h src/NativeJitter.h | build
+	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 $< $(FRAMEWORKS) -o $@
+
 build/metalfx-smoke: tests/metalfx_smoke.mm src/MetalFXPipeline.mm src/GPUResources.mm src/MetalFXPipeline.h src/GPUResources.h | build
 	$(CXX) $(CXXFLAGS) tests/metalfx_smoke.mm src/MetalFXPipeline.mm src/GPUResources.mm $(FRAMEWORKS) -o $@
 
@@ -67,7 +74,7 @@ build/libBG3MetalFX.dylib: src/Trace.mm src/FrameInterpolation.mm src/FrameInter
 build/metalfx-probe: tools/metalfx_probe.m | build
 	xcrun clang -fobjc-arc -mmacosx-version-min=26.0 $< $(FRAMEWORKS) -o $@
 
-test: build/frame-generation-hook-smoke build/frame-interpolation-smoke build/metal4-bridge-smoke build/runtime-smoke build/metalfx-smoke build/temporal-quality-smoke build/native-jitter-smoke build/spatial-upscaler-smoke build/temporal-upscaler-smoke build/spatial-hook-smoke build/temporal-hook-smoke build/libBG3MetalFX.dylib build/libBG3MetalFXTrace.dylib
+test: build/native-menu-probe-smoke build/native-menu-probe-quiet-smoke build/frame-generation-hook-smoke build/frame-interpolation-smoke build/metal4-bridge-smoke build/runtime-smoke build/metalfx-smoke build/temporal-quality-smoke build/native-jitter-smoke build/spatial-upscaler-smoke build/temporal-upscaler-smoke build/spatial-hook-smoke build/temporal-hook-smoke build/libBG3MetalFX.dylib build/libBG3MetalFXTrace.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFX.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFXTrace.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFX.dylib hdr
@@ -77,6 +84,8 @@ test: build/frame-generation-hook-smoke build/frame-interpolation-smoke build/me
 	./build/frame-interpolation-smoke
 	BG3MFX_TEST_DIRECT_INPUTS=1 ./build/frame-interpolation-smoke
 	./build/metal4-bridge-smoke
+	./build/native-menu-probe-smoke
+	./build/native-menu-probe-quiet-smoke
 	./build/native-jitter-smoke
 	./build/metalfx-smoke
 	./build/temporal-quality-smoke build/temporal-quality/regression
