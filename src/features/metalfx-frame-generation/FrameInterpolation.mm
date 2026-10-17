@@ -17,6 +17,22 @@
 static NSError *fgError(NSString *reason) {
     return [NSError errorWithDomain:@"BG3MFXFrameGeneration" code:1 userInfo:@{NSLocalizedDescriptionKey:reason}];
 }
+static NSView *fgViewForLayer(NSView *view, CAMetalLayer *layer) {
+    if (view.layer==layer) return view;
+    for (NSView *child in view.subviews) if (NSView *match=fgViewForLayer(child,layer)) return match;
+    return nil;
+}
+static NSScreen *fgScreenForLayer(CAMetalLayer *layer) {
+    id delegate=layer.delegate;
+    NSWindow *window=[delegate isKindOfClass:NSView.class] ? ((NSView *)delegate).window : nil;
+    if (!window) {
+        for (NSWindow *candidate in NSApp.windows) {
+            if (fgViewForLayer(candidate.contentView,layer)) { window=candidate; break; }
+        }
+    }
+    if (!window) window=NSApp.keyWindow ?: NSApp.mainWindow;
+    return window.screen ?: NSScreen.mainScreen;
+}
 static BG3MFXTexturePool *fgPool(id<MTLDevice> device, NSUInteger w, NSUInteger h, MTLPixelFormat format, MTLTextureUsage usage) {
     auto d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format width:w height:h mipmapped:NO];
     d.storageMode=MTLStorageModePrivate; d.usage=usage;
@@ -182,18 +198,36 @@ static thread_local bool presentationThread=false;
 // Bounds stand-ins in flight. Unlike a semaphore its limit can change per
 // request: BG3's double-buffered vsync allows two, otherwise three.
 @interface BG3MFXSlotGate : NSObject
-- (BOOL)acquireWithLimit:(NSUInteger)limit timeout:(double)seconds;
+- (BOOL)acquireWithPreferredLimit:(NSUInteger)preferred maximumLimit:(NSUInteger)maximum
+                            grace:(double)grace timeout:(double)seconds overflowed:(BOOL *)overflowed;
 - (void)releaseSlot;
 - (NSUInteger)inFlight;
 @end
 @implementation BG3MFXSlotGate { NSCondition *_condition; NSUInteger _inFlight; }
 - (NSUInteger)inFlight { [_condition lock]; NSUInteger count=_inFlight; [_condition unlock]; return count; }
 - (instancetype)init { if ((self=[super init])) _condition=[NSCondition new]; return self; }
-- (BOOL)acquireWithLimit:(NSUInteger)limit timeout:(double)seconds {
+- (BOOL)acquireWithPreferredLimit:(NSUInteger)preferred maximumLimit:(NSUInteger)maximum
+                            grace:(double)grace timeout:(double)seconds overflowed:(BOOL *)overflowed {
+    if (overflowed) *overflowed=NO;
+    NSDate *graceDeadline=[NSDate dateWithTimeIntervalSinceNow:grace];
     NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:seconds];
     [_condition lock];
-    while (_inFlight>=limit) if (![_condition waitUntilDate:deadline]) { [_condition unlock]; return NO; }
-    ++_inFlight; [_condition unlock]; return YES;
+    // Prefer the smaller in-flight limit for lower latency. Give its next
+    // completion a short chance to free a slot; if it does not, borrow one
+    // bounded overflow slot so BG3 can continue encoding instead of blocking.
+    while (_inFlight>=preferred && _inFlight<maximum) {
+        if (![_condition waitUntilDate:graceDeadline]) break;
+    }
+    if (_inFlight<preferred) { ++_inFlight; [_condition unlock]; return YES; }
+    if (_inFlight<maximum) {
+        ++_inFlight; if (overflowed) *overflowed=YES;
+        [_condition unlock]; return YES;
+    }
+    while (_inFlight>=maximum) {
+        if (![_condition waitUntilDate:deadline]) { [_condition unlock]; return NO; }
+    }
+    ++_inFlight; if (overflowed && _inFlight>preferred) *overflowed=YES;
+    [_condition unlock]; return YES;
 }
 - (void)releaseSlot { [_condition lock]; if (_inFlight) --_inFlight; [_condition broadcast]; [_condition unlock]; }
 @end
@@ -233,10 +267,9 @@ struct PresentTask {
     BG3MFXSlotGate *_slots;
     std::atomic<NSUInteger> _drawableIDs;
     std::atomic<double> _standInWait;
-    // Paced presentation (vsync on, or vsync off up to half the refresh rate):
-    // the display paces the pairs, and every extra stand-in only queues another
-    // frame, so BG3 gets one.
-    std::atomic<bool> _singleStandIn;
+    // Paced presentation prefers one stand-in and borrows one overflow slot
+    // only when its short wait expires, keeping latency low without stalling BG3.
+    std::atomic<bool> _preferSingleStandIn;
     // Diagnostics, in seconds; reset by takeTimingSummary.
     std::atomic<double> _idleTime, _drawableTime, _standInTime;
     std::atomic<unsigned> _timedTasks, _immediateTasks;
@@ -266,6 +299,7 @@ struct PresentTask {
     // Stand-ins in flight bound how far BG3 can run ahead of what has actually
     // been shown: BG3's own buffering choice, two or three.
     _slots=[BG3MFXSlotGate new];
+    _preferSingleStandIn.store(true);
     // Worker access is bounded by dealloc's stop/join; do not form a self/thread cycle.
     __unsafe_unretained BG3MFXFramePresenter *owner=self;
     _thread=std::thread([owner]{ [owner run]; }); return self;
@@ -290,9 +324,13 @@ struct PresentTask {
     NSUInteger w=(NSUInteger)layer.drawableSize.width, h=(NSUInteger)layer.drawableSize.height;
     if (!w || !h || layer.pixelFormat!=_pixelFormat) return nil;
     CFTimeInterval start=CACurrentMediaTime();
-    NSUInteger slots=_singleStandIn ? 1 : std::min<NSUInteger>(std::max<NSUInteger>(limit,2),3);
-    BG3MFXFrameLogBuffering((unsigned)limit,(unsigned)slots);
-    BOOL acquired=[_slots acquireWithLimit:slots timeout:1];
+    NSUInteger preferred=_preferSingleStandIn ? 1 : std::min<NSUInteger>(std::max<NSUInteger>(limit,2),3);
+    NSUInteger maximum=_preferSingleStandIn ? 2 : std::min<NSUInteger>(preferred+1,3);
+    BG3MFXFrameLogBuffering((unsigned)limit,(unsigned)maximum);
+    BOOL overflowed=NO;
+    BOOL acquired=[_slots acquireWithPreferredLimit:preferred maximumLimit:maximum grace:0.002 timeout:1
+        overflowed:&overflowed];
+    if (acquired && overflowed) BG3MFXFrameLogStandInOverflow();
     double waited=CACurrentMediaTime()-start;
     _standInWait=_standInWait+waited; _standInTime=_standInTime+waited;
     if (!acquired) return nil;
@@ -322,6 +360,7 @@ struct PresentTask {
     // BG3's work time excludes time blocked on a stand-in we still held: it
     // shows whether BG3 could render faster than it does.
     double waited=_standInWait.exchange(0), cadence=interval;
+    BG3MFXFrameLogBackpressure(waited,cadence);
     if (interval>0) interval=fmax(interval-waited,1.0/240);
     uint64_t value=0;
     if (buffer) { value=++_eventValue; [buffer encodeSignalEvent:_event value:value]; }
@@ -380,9 +419,9 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     // tearing as vsync off does without Frame Generation. It skips the wait
     // when BG3's next frame is already queued so it never falls behind.
     //
-    // On the paced paths the display limits the pairs, and extra stand-ins only
-    // queue frames: BG3 gets one stand-in whatever its double/triple buffering.
-    // Live at about 32 fps with BG3 triple-buffered: 47 ms from commit to
+    // On paced paths, two stand-ins allow BG3 to overlap the next render with
+    // presenter/GPU completion while bounding queued latency. Prior live tests
+    // at about 32 fps with BG3 triple-buffered measured 47 ms from commit to
     // display with one stand-in, 107 ms with three, at the same frame rate
     // (without Frame Generation: 25 ms double, 50 ms triple). Standalone at
     // 90 fps, 120 Hz, vsync on: 65 ms -> 48 ms. Vsync off above half the
@@ -395,7 +434,9 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     double smoothed=0, smoothedCadence=0; bool fast=false;
     // The display's refresh interval, read on the main thread from the layer's
     // window and refreshed periodically (the window can move between displays).
-    auto refresh=std::make_shared<std::atomic<double>>(1.0/120);
+    // A conservative startup fallback; use the window's screen as soon as the
+    // main thread can resolve it. Keep the last valid value during Space moves.
+    auto refresh=std::make_shared<std::atomic<double>>(1.0/60);
     unsigned refreshCheck=0;
     for (;;) { @autoreleasepool {
         PresentTask task;
@@ -417,11 +458,12 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         double work=smoothed>0 ? smoothed : 1.0/60;
         // Presentation follows BG3's actual frame interval.
         double interval=smoothedCadence>0 ? smoothedCadence : 1.0/60;
-        if (refreshCheck++%120==0) {
+        if (refreshCheck++%30==0) {
             CAMetalLayer *layer=task.layer;
             dispatch_async(dispatch_get_main_queue(),^{
-                id view=layer.delegate;
-                NSInteger fps=[view isKindOfClass:NSView.class] ? ((NSView *)view).window.screen.maximumFramesPerSecond : 0;
+                BOOL active=NSApp.isActive;
+                NSInteger fps=fgScreenForLayer(layer).maximumFramesPerSecond;
+                BG3MFXFrameLogDisplayState(active,fps);
                 if (fps>0) refresh->store(1.0/fps);
             });
         }
@@ -445,7 +487,8 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         int refreshes=std::max(2,(int)floor(interval/frameRefresh-0.05));
         double generatedMinimum=(refreshes/2)*frameRefresh-0.0005;
         double realMinimum=(refreshes-refreshes/2)*frameRefresh-0.0005;
-        _singleStandIn=!spaced;
+        BG3MFXFrameLogPacing(synced,frameRefresh,interval,(unsigned)refreshes,generatedMinimum,realMinimum);
+        _preferSingleStandIn=!spaced;
         BG3MFXFrameLogMethod(method);
         if (!synced) ++_immediateTasks;
         dispatch_semaphore_t generatedReady=spaced ? dispatch_semaphore_create(0) : nil;

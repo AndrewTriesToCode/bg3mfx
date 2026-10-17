@@ -63,10 +63,15 @@ GPU traces, CPU samples, Metal HUD logs, and power estimates.
 
 Add `BG3MFX_FRAME_LOG=1` (quiet or diagnostic runtime) to log BG3's actual
 rendered rate, the real and generated images that reached the display, drops,
-the presentation method, and the gaps between shown images every 2 s:
+the presentation method, the gaps between shown images, and Frame Generation's
+sampled refresh rate, source interval, scheduled minimum durations, app active
+state, screen maximum refresh rate, stand-in wait/work time, and overflow-slot
+use every 2 s:
 `log stream --predicate 'subsystem == "com.bg3mfx"'`. With Frame Generation on,
 the Metal HUD's "rendered" figure is unreliable (a trace showed about 19
-rendered fps while the HUD showed about 10); use this log instead.
+rendered fps while the HUD showed about 10); use this log instead. The real and
+generated cadence fields report the measured interval between successive
+presented images of each type.
 
 Add `MTL_HUD_LOG_ENABLED=1` to record the Metal HUD's per-second frame counts in
 the unified log (`/usr/bin/log show --predicate 'category == "Logging"'`). Do

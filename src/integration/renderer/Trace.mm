@@ -2492,6 +2492,11 @@ static void commit(id self, SEL cmd) {
     if (id<MTLDrawable> shown=objc_getAssociatedObject(self,&nativePresentKey)) {
         objc_setAssociatedObject(self,&nativePresentKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         CFTimeInterval committed=CACurrentMediaTime();
+        if (BG3MFXFrameLogEnabled()) {
+            [(id<MTLCommandBuffer>)self addCompletedHandler:^(id<MTLCommandBuffer> done){
+                BG3MFXFrameLogGPU(done.GPUStartTime,done.GPUEndTime,committed,CACurrentMediaTime());
+            }];
+        }
         [shown addPresentedHandler:^(id<MTLDrawable> d){
             BG3MFXFrameLogShown(NO,d.presentedTime);
             if (d.presentedTime>0) BG3MFXFrameLogLatency(d.presentedTime-committed,0);
@@ -2556,7 +2561,11 @@ static id layerNextDrawable(id self, SEL cmd) {
             record(@{@"event":@"frameGenerationDrawableCount",@"restored":saved});
         }
         BG3MFXFrameLogBuffering((unsigned)layer.maximumDrawableCount,0);
-        return ((id(*)(id,SEL))original(self,cmd))(self,cmd);
+        BOOL logWait=BG3MFXFrameLogEnabled();
+        CFTimeInterval waitStart=logWait ? CACurrentMediaTime() : 0;
+        id drawable=((id(*)(id,SEL))original(self,cmd))(self,cmd);
+        if (logWait) BG3MFXFrameLogDrawableWait(CACurrentMediaTime()-waitStart);
+        return drawable;
     }
     // Each rendered frame becomes two presents, which needs three drawables
     // (Apple's frame interpolation guidance). BG3 only renders into stand-ins

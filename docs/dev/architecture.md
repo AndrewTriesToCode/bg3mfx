@@ -112,9 +112,11 @@ composes; with the CAS forward, Off + Frame Generation works live.
 Presentation follows Apple's present-thread model. While Frame Generation is on, a
 `CAMetalLayer nextDrawable` hook gives BG3 stand-in drawables backed by three
 pooled textures; BG3 renders, composes UI, and "presents" into them unchanged,
-and blocks like a real drawable when all three are in flight. BG3 presents before
-encoding `CombineUI`, so the stand-in present is resolved at `commit`, which also
-signals a shared event. The worker in `FrameInterpolation.*` acquires real
+and waits briefly for a preferred slot. On paced paths it prefers one stand-in
+for lower latency, then borrows one bounded overflow slot if the previous slot
+has not finished copying. BG3 presents before encoding `CombineUI`, so the
+stand-in present is resolved at `commit`, which also signals a shared event.
+The worker in `FrameInterpolation.*` acquires real
 drawables itself and waits for that event on the GPU. It spaces the generated
 and real images about half of BG3's smoothed frame interval apart:
 
@@ -127,11 +129,13 @@ and real images about half of BG3's smoothed frame interval apart:
 `afterMinimumDuration:` rounds up to whole refreshes, so each minimum is set
 just under its count of refreshes: half the interval rounded up past the frame
 time and let the presenter fall behind. It would also cap the vsync-off fast
-case. On the paced paths (the first two rows) BG3 gets one stand-in instead of
-its two or three, whatever its double/triple buffering: the display paces the
-pairs, and extra stand-ins only queue frames. The fast vsync-off path keeps
-BG3's own buffering. The frame log records BG3's requested buffering and the
-stand-ins allowed. The refresh interval is read on the main thread from the
+case. On the paced paths (the first two rows) BG3 prefers one stand-in, then can
+borrow one overflow slot after a short grace wait; this lets a nearly-finished
+copy release the low-latency slot while avoiding a long render-thread stall.
+The fast vsync-off path keeps BG3's own buffering and allows at most one
+additional stand-in up to a total of three. The frame log records BG3's
+requested buffering, the stand-in limit, wait time, and overflow use. The
+refresh interval is read on the main thread from the
 layer's window. The stand-in is released when the real copy completes, before
 any wait, and the worker skips the wait when BG3's next frame is already
 queued. Frames without a generated image are presented at once. Only the generated scene goes through an extra
