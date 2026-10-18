@@ -147,7 +147,7 @@ variable in the environment used to launch `bg3mfx`:
 
 | Feature | Environment variable |
 | --- | --- |
-| **Shadow Rendering Optimizations** | `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` disables the feature. The vista experiment is off by default; enable it with `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA=1`. |
+| **Shadow Rendering Optimizations** | `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` disables the feature. |
 | **Depth Prepass Optimization** | `BG3MFX_DEPTH_PREPASS_OPTIMIZATION=0` |
 | **Render Thread Optimizations** | `BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0` |
 | **CPU Thread Idling** | `BG3MFX_CPU_THREAD_IDLING=0` |

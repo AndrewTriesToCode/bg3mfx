@@ -14,9 +14,7 @@
 #import "features/metalfx-spatial-upscaling/SpatialUpscaler.h"
 #import "features/metalfx-temporal-upscaling/TemporalUpscaler.h"
 #import "integration/menu/NativeMenu.h"
-#import "features/shadows/VistaShadows.h"
 #ifndef BG3MFX_NO_TRACE
-#include "features/shadows/VistaComparison.h"
 #endif
 #import "features/metalfx-frame-generation/FrameInterpolation.h"
 #import "features/metalfx-frame-generation/FrameLog.h"
@@ -57,20 +55,9 @@ static constexpr bool diagnostics = true;
 static NSMutableDictionary<NSString *, NSNumber *> *constantSamples;
 static NSMutableDictionary<NSString *, NSDictionary *> *shaderBufferSizes;
 #ifndef BG3MFX_NO_TRACE
-static bool shadowProbe;
-static bool shadowPixels;
-static NSDictionary *lastShadowDepthSample;
-static bool vistaOnly;
-static std::atomic<bool> vistaIsolationReady{false};
-static bool vistaCompare;
-static NSMutableDictionary<NSString *, NSArray *> *shadowLayouts;
-static NSMutableSet<NSString *> *smartVistaRejectedDescriptors;
-static double shadowProbeStart;
-static uint64_t shadowPassSequence;
 #endif
 static BOOL sceneProbe;
 static BOOL metalFXEnabled;
-static BOOL smartVista;
 static char bufferScalingModeKey;
 static char frameGenerationModeKey, compositorSizeKey, frameCompositionKey, generatedPairKey;
 static thread_local bool encodingFrameGeneration=false;
@@ -100,7 +87,6 @@ enum PipelineKind : uint8_t {
 // scene-tracking logic still sees these pipelines as unrecognized.
 static bool prepassTrim;
 #ifndef BG3MFX_NO_TRACE
-static char shadowDepthDescriptionKey;
 #endif
 // Bind dedup: BG3 rebinds about 27 fragment texture slots per call when about
 // two change (92% of slots repeat the current binding), and re-sets the bound
@@ -131,7 +117,6 @@ struct CompositionDraw {
     __strong NSDictionary *description;  // diagnostics may create one per pipeline set
     PipelineKind kind;
     __strong id<MTLCommandBuffer> buffer;
-    __strong BG3MFXVistaPass *vista;
     // setBytes data by stage*EncoderSlots+index; rare, so the binding table
     // itself owns nothing and costs nothing to destroy (one per encoder).
     __strong NSMutableDictionary<NSNumber *, NSData *> *bytes;
@@ -147,10 +132,6 @@ struct CompositionDraw {
     // current depth-stencil state (held unretained, like the pipeline).
     BG3MFXPrepassState prepass;
 #ifndef BG3MFX_NO_TRACE
-    __strong NSDictionary *shadowPass;
-    __strong id<MTLTexture> shadowDepthTarget;
-    bool shadowSampled;
-    bool hideShadowGeometry;
     // Diagnostics (BG3MFX_TRACE_REDUNDANT=1): every binding BG3 has made in
     // this encoder, to count binds that repeat what is already bound.
     __unsafe_unretained id seenTexture[64];
@@ -466,12 +447,12 @@ static void bindBytes(__unsafe_unretained id self, SEL cmd, const void *bytes, N
 static void record(NSDictionary *event) {
     std::lock_guard<std::recursive_mutex> lock(guard());
     NSString *kind = event[@"event"];
-    BOOL shadowEvent = [kind hasPrefix:@"shadowProbe"] || [kind hasPrefix:@"smartVista"];
+    BOOL shadowEvent = NO;
     BOOL important = shadowEvent || [kind hasPrefix:@"nativeMenu"] || [kind isEqualToString:@"nativeUpscalingApplied"] ||
         [kind isEqualToString:@"nativeQualityChanged"] || [kind hasPrefix:@"waterfall"] ||
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
-        [kind isEqualToString:@"shadowPassStack"] || [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
+[kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
         [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
@@ -482,10 +463,8 @@ static void record(NSDictionary *event) {
     NSData *data = [NSJSONSerialization dataWithJSONObject:identified options:NSJSONWritingSortedKeys error:nil];
     if (!data) return;
     NSString *key = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    if (!shadowEvent) {
-        if ([seen containsObject:key]) return;
-        [seen addObject:key];
-    }
+    if ([seen containsObject:key]) return;
+    [seen addObject:key];
     NSMutableData *line = [data mutableCopy];
     [line appendData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]];
     [output writeData:line];
@@ -621,10 +600,6 @@ static BG3MFXPrepassState *prepassState(__unsafe_unretained id encoder) {
 // an otherwise identical state that tests GreaterEqual and writes depth.
 static id depthStencilStateHook(id self, SEL cmd, MTLDepthStencilDescriptor *desc) {
     id state = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
-#ifndef BG3MFX_NO_TRACE
-    if (shadowProbe && state) objc_setAssociatedObject(state,&shadowDepthDescriptionKey,
-        @{@"compare":@(desc.depthCompareFunction),@"writes":@(desc.isDepthWriteEnabled)},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-#endif
     if (prepassTrim) BG3MFXPreparePrepassDepth(self,cmd,desc,state,(BG3MFXCreateDepthState)original(self,cmd));
     return state;
 }
@@ -978,85 +953,9 @@ static BOOL copyTemporalAAColor(id<MTLCommandBuffer> buffer, NSDictionary *input
     return YES;
 }
 #ifndef BG3MFX_NO_TRACE
-// Copies only after the native encoder ends, before any later pass can clear
-// or reuse this atlas. GPU completion owns the readback; no render-thread wait.
-static void sampleShadowDepth(id<MTLCommandBuffer> buffer, id<MTLTexture> depth, NSDictionary *pass) {
-    if (!shadowPixels || !buffer || !depth || ![pass[@"nativeVistaReplay"] boolValue] ||
-        depth.textureType!=MTLTextureType2DArray || depth.arrayLength!=2 ||
-        depth.pixelFormat!=MTLPixelFormatDepth16Unorm || depth.sampleCount!=1 ||
-        depth.storageMode==MTLStorageModeMemoryless || depth.width>4096 || depth.height>4096) return;
-    NSUInteger slice=[pass[@"slice"] unsignedIntegerValue];
-    if (slice>=depth.arrayLength) return;
-    {
-        std::lock_guard<std::recursive_mutex> lock(guard());
-        static unsigned samples;
-        static NSMutableDictionary<NSString *,NSNumber *> *times;
-        if (!times) times=[NSMutableDictionary dictionary];
-        NSString *key=[NSString stringWithFormat:@"%@:%lu",pass[@"depth"][@"id"],(unsigned long)slice];
-        double now=NSProcessInfo.processInfo.systemUptime;
-        if (samples>=8 || (times[key] && now-times[key].doubleValue<5)) return;
-        times[key]=@(now); ++samples;
-    }
-    NSUInteger rowBytes=((depth.width*sizeof(uint16_t)+255)/256)*256;
-    id<MTLBuffer> readback=[buffer.device newBufferWithLength:rowBytes*depth.height options:MTLResourceStorageModeShared];
-    if (!readback) { record(@{@"event":@"shadowProbeDepthPixels",@"status":@"allocation-failed",@"pass":pass}); return; }
-    id<MTLBlitCommandEncoder> blit=[buffer blitCommandEncoder];
-    if (!blit) { record(@{@"event":@"shadowProbeDepthPixels",@"status":@"encoder-failed",@"pass":pass}); return; }
-    blit.label=@"BG3 vista atlas diagnostic readback";
-    [blit copyFromTexture:depth sourceSlice:slice sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
-        sourceSize:MTLSizeMake(depth.width,depth.height,1) toBuffer:readback destinationOffset:0
-        destinationBytesPerRow:rowBytes destinationBytesPerImage:rowBytes*depth.height];
-    [blit endEncoding];
-    NSUInteger width=depth.width,height=depth.height;
-    [buffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-        @autoreleasepool {
-            NSMutableDictionary *event=[pass mutableCopy];
-            event[@"event"]=@"shadowProbeDepthPixels";
-            if (completed.status!=MTLCommandBufferStatusCompleted) {
-                event[@"status"]=@"gpu-failed";
-                event[@"error"]=completed.error.localizedDescription ?: @"";
-                record(event); return;
-            }
-            uint64_t nonzero=0,total=width*height,sum=0;
-            uint16_t lo=65535,hi=0;
-            for (NSUInteger y=0;y<height;++y) {
-                const uint16_t *row=(const uint16_t *)((const uint8_t *)readback.contents+y*rowBytes);
-                for (NSUInteger x=0;x<width;++x) {
-                    uint16_t z=row[x]; nonzero+=(z!=0); sum+=z;
-                    lo=std::min(lo,z); hi=std::max(hi,z);
-                }
-            }
-            event[@"status"]=@"completed";
-            event[@"pixelCount"]=@(total); event[@"nonzeroPixels"]=@(nonzero);
-            event[@"minimumDepth"]=@((double)lo/65535); event[@"maximumDepth"]=@((double)hi/65535);
-            event[@"meanDepth"]=@((double)sum/(65535.0*total));
-            { std::lock_guard<std::recursive_mutex> lock(guard()); lastShadowDepthSample=[event copy]; }
-            record(event);
-            fprintf(stderr,"BG3MFX vista atlas slice %lu: %llu/%llu nonzero depth pixels; range %.6f–%.6f\n",
-                (unsigned long)slice,(unsigned long long)nonzero,(unsigned long long)total,(double)lo/65535,(double)hi/65535);
-        }
-    }];
-}
-#endif
-// Read-only regression access, never exposed for the actual game process.
-extern "C" NSDictionary *BG3MFXStandaloneShadowDepthSample() {
-#ifndef BG3MFX_NO_TRACE
-    if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) {
-        std::lock_guard<std::recursive_mutex> lock(guard()); return lastShadowDepthSample;
-    }
-#endif
-    return nil;
-}
 static void endEncoder(id self, SEL cmd) {
     id<MTLCommandBuffer> commandBuffer = encoderBuffer(self);
     __unsafe_unretained BG3MFXEncoderState *encoderRecord = encoderState(self);
-    BG3MFXVistaPass *vista = encoderRecord ? encoderRecord->vista : nil;
-#ifndef BG3MFX_NO_TRACE
-    NSDictionary *shadowDepthPass=encoderRecord && encoderRecord->shadowSampled ? encoderRecord->shadowPass : nil;
-    id<MTLTexture> shadowDepth=encoderRecord ? encoderRecord->shadowDepthTarget : nil;
-    if (encoderRecord) encoderRecord->shadowDepthTarget=nil;
-#endif
-    if (encoderRecord) encoderRecord->vista = nil;
     // Only keys this encoder may hold are read and cleared (most hold none).
     uint16_t associations = encoderAssociations(encoderRecord);
     NSDictionary *probeInputs = associations & AssocTAAInputs ? objc_getAssociatedObject(self, &taaInputsKey) : nil;
@@ -1139,11 +1038,7 @@ static void endEncoder(id self, SEL cmd) {
         if (encoderRecord) { for (auto &stage:encoderRecord->constants) for (auto &binding:stage) binding={}; encoderRecord->bytes=nil; }
     }
     ((void(*)(id,SEL))original(self,cmd))(self,cmd);
-    // Retain the request before ending: Metal may recycle this encoder for the merge.
-    if (vista && ![vista finishInBuffer:commandBuffer])
-        failFeature(NO,@"Could not merge the reduced vista shadows.");
 #ifndef BG3MFX_NO_TRACE
-    sampleShadowDepth(commandBuffer,shadowDepth,shadowDepthPass);
     finishWaterfallCopies(commandBuffer,waterfallCopies);
 #endif
     if (postprocess && commandBuffer) {
@@ -1247,9 +1142,6 @@ static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained i
 static BOOL cameraShader(MTLRenderPipelineDescriptor *desc) {
     NSString *name = desc.fragmentFunction.name;
     if (compositionShader(name)) return YES;
-#ifndef BG3MFX_NO_TRACE
-    if (shadowProbe && desc.depthAttachmentPixelFormat == MTLPixelFormatDepth16Unorm) return YES;
-#endif
     return diagnostics && traceConstants && ([name isEqualToString:@"PPTAA_PS"] || [name isEqualToString:@"VelocityBufferCamera_PS"] ||
                               [name isEqualToString:@"BG3MFXConstantsSmoke"]);
 }
@@ -1263,41 +1155,8 @@ static NSArray *structMembers(MTLStructType *type, NSUInteger depth) {
     }
     return members;
 }
-#ifndef BG3MFX_NO_TRACE
-static BOOL shadowCameraMembers(NSArray *members) {
-    for (NSDictionary *member in members) {
-        if ([member[@"name"] isEqualToString:@"g_ViewMat"] ||
-            [member[@"name"] isEqualToString:@"g_OffsetViewProjectionMat"] ||
-            shadowCameraMembers(member[@"members"])) return YES;
-    }
-    return NO;
-}
-static NSString *shadowLayoutKey(NSDictionary *pipeline) {
-    return [NSString stringWithFormat:@"%@|%@",pipeline[@"vertex"] ?: @"",pipeline[@"fragment"] ?: @""];
-}
-#endif
 static void recordReflection(MTLRenderPipelineDescriptor *desc, MTLRenderPipelineReflection *reflection) {
     if (!reflection) return;
-#ifndef BG3MFX_NO_TRACE
-    if (shadowProbe && desc.depthAttachmentPixelFormat == MTLPixelFormatDepth16Unorm) {
-        NSMutableArray *layouts = [NSMutableArray array];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        NSArray *arguments[] = {reflection.vertexArguments ?: @[], reflection.fragmentArguments ?: @[]};
-        for (unsigned stage=0;stage<2;++stage) for (MTLArgument *arg in arguments[stage]) {
-            if (arg.type != MTLArgumentTypeBuffer || !arg.active) continue;
-            NSArray *members = structMembers(arg.bufferStructType,0);
-            if (!shadowCameraMembers(members)) continue;
-            [layouts addObject:@{@"stage":stage == 0 ? @"vertex" : @"fragment", @"index":@(arg.index),
-                @"size":@(arg.bufferDataSize), @"members":members}];
-        }
-#pragma clang diagnostic pop
-        NSDictionary *pipeline = @{@"vertex":desc.vertexFunction.name ?: @"", @"fragment":desc.fragmentFunction.name ?: @""};
-        std::lock_guard<std::recursive_mutex> lock(guard());
-        shadowLayouts[shadowLayoutKey(pipeline)] = layouts;
-        record(@{@"event":@"shadowProbeReflection", @"pipeline":pipeline, @"layouts":layouts});
-    }
-#endif
     NSMutableArray *buffers = [NSMutableArray array];
     NSMutableArray *textures = [NSMutableArray array];
     NSMutableDictionary *sizes = [NSMutableDictionary dictionary];
@@ -1807,45 +1666,13 @@ static void captureFrameComposition(id encoder, const CompositionDraw &call) {
 }
 static void bindViewport(__unsafe_unretained id self, SEL cmd, MTLViewport v) {
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
-    if (s && s->vista) [s->vista setNativeViewports:&v count:1];
-    MTLViewport actual=s && s->vista ? [s->vista scaleViewport:v] : v;
-    ((void(*)(id,SEL,MTLViewport))original(self,cmd))(self,cmd,actual);
+    ((void(*)(id,SEL,MTLViewport))original(self,cmd))(self,cmd,v);
     if (s) { s->viewport=v; s->hasViewport=true; }
 }
 static void bindScissor(__unsafe_unretained id self, SEL cmd, MTLScissorRect r) {
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
-    if (s && s->vista) [s->vista setNativeScissors:&r count:1];
-    MTLScissorRect actual=s && s->vista ? [s->vista scaleScissor:r] : r;
-    ((void(*)(id,SEL,MTLScissorRect))original(self,cmd))(self,cmd,actual);
+    ((void(*)(id,SEL,MTLScissorRect))original(self,cmd))(self,cmd,r);
     if (s) { s->scissor=r; s->hasScissor=true; }
-}
-static void bindViewports(__unsafe_unretained id self, SEL cmd, const MTLViewport *v, NSUInteger count) {
-    __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
-    std::vector<MTLViewport> scaled;
-    if (s && s->vista && count) {
-        [s->vista setNativeViewports:v count:count];
-        scaled.reserve(count);
-        for (NSUInteger i=0;i<count;++i) scaled.push_back([s->vista scaleViewport:v[i]]);
-        v=scaled.data();
-    }
-    ((void(*)(id,SEL,const MTLViewport *,NSUInteger))original(self,cmd))(self,cmd,v,count);
-}
-static void bindScissors(__unsafe_unretained id self, SEL cmd, const MTLScissorRect *r, NSUInteger count) {
-    __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
-    std::vector<MTLScissorRect> scaled;
-    if (s && s->vista && count) {
-        [s->vista setNativeScissors:r count:count];
-        scaled.reserve(count);
-        for (NSUInteger i=0;i<count;++i) scaled.push_back([s->vista scaleScissor:r[i]]);
-        r=scaled.data();
-    }
-    ((void(*)(id,SEL,const MTLScissorRect *,NSUInteger))original(self,cmd))(self,cmd,r,count);
-}
-static void bindDepthBias(__unsafe_unretained id self, SEL cmd, float bias, float slope, float clamp) {
-    __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
-    // A half-size viewport doubles dz/dpixel; preserve BG3's slope bias in depth units.
-    if (s && s->vista) slope*=0.5f;
-    ((void(*)(id,SEL,float,float,float))original(self,cmd))(self,cmd,bias,slope,clamp);
 }
 static void sampler(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state, NSUInteger index) {
     ((void(*)(id,SEL,id,NSUInteger))original(self,cmd))(self,cmd,state,index);
@@ -1865,39 +1692,7 @@ static bool fastDraw(__unsafe_unretained id encoder) {
     if (s) s->lastDrawOther=true;
     return true;
 }
-#ifndef BG3MFX_NO_TRACE
-static void captureShadowProbe(id encoder) {
-    if (!shadowProbe) return;
-    __unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder);
-    if (!s || !s->shadowPass || s->shadowSampled) return;
-    s->shadowSampled=true;
-    NSDictionary *pipeline=pipelineDescription(encoder) ?: @{};
-    NSArray *layouts;
-    { std::lock_guard<std::recursive_mutex> lock(guard()); layouts=shadowLayouts[shadowLayoutKey(pipeline)]; }
-    NSMutableArray *samples=[NSMutableArray array];
-    for (NSDictionary *layout in layouts) {
-        NSUInteger size=[layout[@"size"] unsignedIntegerValue];
-        EncoderStage stage=[layout[@"stage"] isEqualToString:@"vertex"] ? StageVertex : StageFragment;
-        NSData *data=size && size<=4096 ? constantBytes(encoder,stage,[layout[@"index"] unsignedIntegerValue],size) : nil;
-        NSMutableDictionary *sample=[layout mutableCopy];
-        sample[@"base64"]=[data base64EncodedStringWithOptions:0] ?: @"";
-        sample[@"status"]=data ? @"cpu-readable-at-draw" : @"unavailable";
-        [samples addObject:sample];
-    }
-    NSMutableDictionary *event=[s->shadowPass mutableCopy];
-    event[@"event"]=@"shadowProbeSample"; event[@"pipeline"]=pipeline; event[@"samples"]=samples;
-    if (s->prepass.depthState) event[@"depthState"]=objc_getAssociatedObject(s->prepass.depthState,&shadowDepthDescriptionKey) ?: @{};
-    if (s->hasViewport) {
-        MTLViewport v=s->viewport;
-        event[@"viewport"]=@[@(v.originX),@(v.originY),@(v.width),@(v.height),@(v.znear),@(v.zfar)];
-    }
-    record(event);
-}
-#endif
 static void drawInputs(id encoder, const CompositionDraw &call) {
-#ifndef BG3MFX_NO_TRACE
-    captureShadowProbe(encoder);
-#endif
     captureFrameComposition(encoder,call);
     if (!traceConstants || !temporalInputsNeeded(encoder)) return;
     NSDictionary *state = pipelineDescription(encoder);
@@ -1941,23 +1736,7 @@ static BOOL suppressTemporalTAA(id encoder) {
     record(@{@"event":@"temporalNativeTAADrawSkipped",@"pipeline":state});
     return YES;
 }
-static inline bool suppressHiddenShadow(id encoder) {
-    if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder))
-        if (state->vista) [state->vista noteDraw];
-#ifndef BG3MFX_NO_TRACE
-    if (vistaOnly) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) {
-        if (s->hideShadowGeometry) {
-            captureShadowProbe(encoder);
-            return true;
-        }
-    }
-#else
-    (void)encoder;
-#endif
-    return false;
-}
 static void draw(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count) {
-    if (suppressHiddenShadow(self)) return;
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); return; }
@@ -1966,7 +1745,6 @@ static void draw(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NS
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count);
 }
 static void drawInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances) {
-    if (suppressHiddenShadow(self)) return;
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); return; }
@@ -1975,7 +1753,6 @@ static void drawInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances);
 }
 static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances, NSUInteger base) {
-    if (suppressHiddenShadow(self)) return;
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); return; }
@@ -1984,7 +1761,6 @@ static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveT
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base);
 }
 static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset) {
-    if (suppressHiddenShadow(self)) return;
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); return; }
@@ -1996,7 +1772,6 @@ static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType t
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset);
 }
 static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances) {
-    if (suppressHiddenShadow(self)) return;
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); return; }
@@ -2008,7 +1783,6 @@ static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimit
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances);
 }
 static void drawIndexedBase(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances, NSInteger baseVertex, NSUInteger baseInstance) {
-    if (suppressHiddenShadow(self)) return;
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger,NSInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances,baseVertex,baseInstance); return; }
@@ -2190,21 +1964,12 @@ static void instrumentEncoder(id encoder) {
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:",(IMP)drawIndexed);
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:",(IMP)drawIndexedInstances);
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:",(IMP)drawIndexedBase);
-        BOOL trackDepth=prepassTrim;
-#ifndef BG3MFX_NO_TRACE
-        trackDepth |= shadowProbe;
-#endif
-        if (trackDepth) hook(encoder,"setDepthStencilState:",(IMP)setDepthStencilHook);
+        if (prepassTrim) hook(encoder,"setDepthStencilState:",(IMP)setDepthStencilHook);
     }
     if (diagnostics) hook(encoder,"setLabel:",(IMP)label);
     if (diagnostics) hook(encoder,"pushDebugGroup:",(IMP)group);
     hook(encoder,"setViewport:",(IMP)bindViewport);
     hook(encoder,"setScissorRect:",(IMP)bindScissor);
-    if (smartVista) {
-        hook(encoder,"setViewports:count:",(IMP)bindViewports);
-        hook(encoder,"setScissorRects:count:",(IMP)bindScissors);
-        hook(encoder,"setDepthBias:slopeScale:clamp:",(IMP)bindDepthBias);
-    }
     hook(encoder,"setFragmentSamplerState:atIndex:",(IMP)sampler);
     hook(encoder,"setFragmentSamplerStates:withRange:",(IMP)samplers);
     hook(encoder,"setFragmentTexture:atIndex:",(IMP)bindTexture);
@@ -2252,87 +2017,8 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
         @"computeHookRegistered": @(computeRegistered),
         @"computeHookActive": @(computeMethod && method_getImplementation(computeMethod) == (IMP)computeEncoderType)});
     }
-    BG3MFXVistaPass *vista=nil;
-    BOOL reduceVista=smartVista;
-#ifndef BG3MFX_NO_TRACE
-    BG3MFXVistaComparison::Selection comparison{};
-    id<MTLTexture> comparisonDepth = desc.depthAttachment.texture;
-    BOOL comparisonEligible = [BG3MFXVistaPass supportsDescriptor:desc device:[self device]];
-    if (vistaOnly && BG3MFXVistaReplayActive() && comparisonEligible &&
-        !vistaIsolationReady.exchange(true)) {
-        fprintf(stderr,"BG3MFX vista isolation: matching vista target found; suppression enabled\n");
-        record(@{@"event":@"smartVistaIsolationArmed",@"frame":@(frames),@"depth":texture(comparisonDepth)});
-    }
-    if ((vistaCompare || vistaOnly) && BG3MFXVistaReplayActive() &&
-        comparisonDepth.pixelFormat==MTLPixelFormatDepth16Unorm &&
-        comparisonDepth.textureType==MTLTextureType2DArray && !comparisonEligible) {
-        NSString *descriptorKey = [NSString stringWithFormat:@"%lu:%lu:%lu:%lu:%lu:%lu:%lu",
-            (unsigned long)comparisonDepth.textureType, (unsigned long)comparisonDepth.arrayLength,
-            (unsigned long)comparisonDepth.width, (unsigned long)comparisonDepth.height,
-            (unsigned long)desc.depthAttachment.loadAction, (unsigned long)desc.depthAttachment.storeAction,
-            (unsigned long)desc.depthAttachment.slice];
-        BOOL firstDescriptor = NO;
-        {
-            std::lock_guard<std::recursive_mutex> lock(guard());
-            if (!smartVistaRejectedDescriptors) smartVistaRejectedDescriptors = [NSMutableSet set];
-            if (![smartVistaRejectedDescriptors containsObject:descriptorKey]) {
-                [smartVistaRejectedDescriptors addObject:descriptorKey];
-                firstDescriptor = YES;
-            }
-        }
-        if (firstDescriptor) {
-            NSMutableArray *failed = [NSMutableArray array];
-            if (comparisonDepth.arrayLength!=2) [failed addObject:@"arrayLength"];
-            if (desc.depthAttachment.loadAction!=MTLLoadActionLoad && desc.depthAttachment.loadAction!=MTLLoadActionClear) [failed addObject:@"loadAction"];
-            if (!failed.count) [failed addObject:@"unsupportedDescriptor"];
-            record(@{@"event":@"smartVistaRejectedPass", @"frame":@(frames),
-                @"depth":texture(comparisonDepth), @"load":@(desc.depthAttachment.loadAction),
-                @"store":@(desc.depthAttachment.storeAction), @"level":@(desc.depthAttachment.level),
-                @"slice":@(desc.depthAttachment.slice), @"failedEligibility":failed});
-        }
-    }
-    if (vistaCompare && BG3MFXVistaReplayActive() && comparisonEligible) {
-        // Sample only actual vista passes, and latch across all passes in one
-        // presentation frame. Never change a live encoder's prepared path.
-        std::lock_guard<std::recursive_mutex> lock(guard());
-        static BG3MFXVistaComparison clock;
-        comparison=clock.select(frames,NSProcessInfo.processInfo.systemUptime);
-        reduceVista=comparison.half;
-    }
-#endif
-    if (reduceVista && BG3MFXVistaReplayActive())
-        vista=[BG3MFXVistaPass prepare:desc buffer:self];
-#ifndef BG3MFX_NO_TRACE
-    if (comparison.changed) {
-        const char *mode=vista ? "HALF" : (comparison.half ? "FULL (half setup unavailable)" : "FULL");
-        fprintf(stderr,"BG3MFX vista comparison: %s resolution (%.1fs); alternating every 10s\n",mode,comparison.elapsed);
-        record(@{@"event":@"smartVistaComparison",@"frame":@(frames),@"elapsed":@(comparison.elapsed),
-            @"period":@(comparison.period),@"requestedHalf":@(comparison.half),@"reducedVista":@(vista!=nil),
-            @"width":@(vista ? vista.descriptor.depthAttachment.texture.width : desc.depthAttachment.texture.width)});
-    }
-#endif
-    id encoder = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,vista ? vista.descriptor : desc);
+    id encoder = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
     instrumentEncoder(encoder);
-    if (encoder) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) s->vista=vista;
-    if (vista && encoder) record(@{@"event":@"smartVistaPass",@"frame":@(frames),
-        @"depth":texture(desc.depthAttachment.texture),@"slice":@(desc.depthAttachment.slice),
-        @"reducedWidth":@(vista.descriptor.depthAttachment.texture.width)});
-#ifndef BG3MFX_NO_TRACE
-    if (vistaOnly && vistaIsolationReady.load() && encoder &&
-        !BG3MFXVistaReplayActive() && !BG3MFXVistaInternalEncoding()) {
-        // Keep BG3's clears, attachment lifetime and pass order, but hide the
-        // geometry in other Depth16 shadow maps (cascades and local atlases).
-        BOOL shadow=desc.depthAttachment.texture.pixelFormat==MTLPixelFormatDepth16Unorm &&
-            !desc.stencilAttachment.texture;
-        for (NSUInteger i=0;i<8 && shadow;++i) if (desc.colorAttachments[i].texture) shadow=NO;
-        if (shadow) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) {
-            s->hideShadowGeometry=true;
-            record(@{@"event":@"shadowProbeHiddenPass",@"frame":@(frames),
-                @"depth":texture(desc.depthAttachment.texture),@"slice":@(desc.depthAttachment.slice),
-                @"load":@(desc.depthAttachment.loadAction)});
-        }
-    }
-#endif
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
     flushRedundantCounts();
     if (prepassTrim && encoder) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) {
@@ -2343,28 +2029,6 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
             record(@{@"event":@"prepassTrim",@"frame":@(frames),@"skipped":@(counts.skipped),@"swapped":@(counts.swapped)});
         }
     }
-#ifndef BG3MFX_NO_TRACE
-    if (shadowProbe && encoder) {
-        id<MTLTexture> depth=desc.depthAttachment.texture;
-        if (depth.pixelFormat==MTLPixelFormatDepth16Unorm && depth.textureType==MTLTextureType2DArray) {
-            double now=NSProcessInfo.processInfo.systemUptime;
-            std::lock_guard<std::recursive_mutex> lock(guard());
-            if (!shadowProbeStart) shadowProbeStart=now;
-            // Bound disk use and diagnostic CPU work to three minutes of shadow passes.
-            if (now-shadowProbeStart<=180) {
-                __unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder);
-                if (s && shadowPixels) s->shadowDepthTarget=depth;
-                if (s) s->shadowPass=@{@"frame":@(frames),@"pass":@(++shadowPassSequence),
-                    @"elapsed":@(now-shadowProbeStart),@"buffer":@((uintptr_t)(__bridge void *)self),
-                    @"depth":texture(depth),@"slice":@(desc.depthAttachment.slice),
-                    @"level":@(desc.depthAttachment.level),@"load":@(desc.depthAttachment.loadAction),
-                    @"clearDepth":@(desc.depthAttachment.clearDepth),
-                    @"nativeVistaReplay":@(BG3MFXVistaReplayActive()),@"reducedVista":@(vista!=nil),
-                    @"vistaOnlySuppressed":@(s->hideShadowGeometry)};
-            }
-        }
-    }
-#endif
     if (diagnostics) {
     NSMutableArray *colors = [NSMutableArray array];
     for (NSUInteger i=0; i<8; ++i) if (desc.colorAttachments[i].texture)
@@ -2373,45 +2037,6 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     if (encoder) objc_setAssociatedObject(encoder, &attachmentsKey, attachments, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     noteAssociation(encoder,AssocAttachments);
         record(@{@"event": @"renderPass", @"color": colors, @"depth": attachments[@"depth"]});
-        // Cascade shadow maps are Depth16 arrays; record who opens each pass
-        // (main-executable offsets, symbolized offline with atos).
-        static const bool shadowStacks = getenv("BG3MFX_TRACE_SHADOW_STACKS") != nullptr;
-        static std::atomic<unsigned> shadowStackCount{0};
-        id<MTLTexture> depth = desc.depthAttachment.texture;
-        if (shadowStacks && depth.pixelFormat == MTLPixelFormatDepth16Unorm &&
-            depth.textureType == MTLTextureType2DArray && shadowStackCount++ < 3000) {
-            NSMutableArray *stack = [NSMutableArray array];
-            for (NSNumber *address in [NSThread callStackReturnAddresses]) {
-                Dl_info info = {};
-                void *pc = (void *)address.unsignedLongValue;
-                if (dladdr(pc, &info) && info.dli_fname && strstr(info.dli_fname, "MacOS/Baldur"))
-                    [stack addObject:[NSString stringWithFormat:@"0x%lx", (unsigned long)((char *)pc - (char *)info.dli_fbase + 0x100000000)]];
-            }
-            // In BG3 4.1.1.7631656, CascadedShadowBufferStage::Submit
-            // (0x105d41044-0x105d4116c) saves x20 at [fp-0x10]: the slot of
-            // GameRenderView::FinishRecording's stage array being visited.
-            // Walk the frame chain to it to identify the stage and its view.
-            [[maybe_unused]] uintptr_t slot = 0, stage = 0, view = 0;
-            for (uintptr_t *fp = (uintptr_t *)__builtin_frame_address(0); fp && !((uintptr_t)fp & 7); fp = (uintptr_t *)fp[0]) {
-                Dl_info info = {};
-                uintptr_t lr = fp[1] & 0x0000000fffffffffULL;
-                if (!dladdr((void *)lr, &info) || !info.dli_fname || !strstr(info.dli_fname, "MacOS/Baldur")) continue;
-                uintptr_t unslid = lr - (uintptr_t)info.dli_fbase + 0x100000000;
-                if (unslid > 0x105d41044 && unslid < 0x105d4116c) {
-                    uintptr_t *submitFrame = (uintptr_t *)fp[0];
-                    if (submitFrame) {
-                        slot = submitFrame[-2];
-                        if (slot && !(slot & 7)) stage = *(uintptr_t *)slot;
-                        if (stage && !(stage & 7)) view = ((uintptr_t *)stage)[1];
-                    }
-                    break;
-                }
-            }
-            record(@{@"event": @"shadowPassStack", @"frame": @(frames), @"buffer": @((uintptr_t)(__bridge void *)self),
-                @"slot": @(slot), @"stage": @(stage), @"view": @(view),
-                @"slice": @(desc.depthAttachment.slice), @"load": @(desc.depthAttachment.loadAction),
-                @"width": @(depth.width), @"stack": stack});
-        }
     }
     if ((sceneProbe || metalFXEnabled) && encoder) {
         if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) { state->buffer=self; state->colorTarget=desc.colorAttachments[0].texture; }
@@ -2650,25 +2275,10 @@ static id newQueueLimit(id self, SEL cmd, NSUInteger count) {
 __attribute__((constructor)) static void start() {
     @autoreleasepool {
         if (diagnostics) seen = [NSMutableSet set];
-#ifndef BG3MFX_NO_TRACE
-        vistaCompare = getenv("BG3MFX_VISTA_COMPARE") && strcmp(getenv("BG3MFX_VISTA_COMPARE"),"1")==0;
-        vistaOnly = getenv("BG3MFX_SHADOWS_VISTA_ONLY") && strcmp(getenv("BG3MFX_SHADOWS_VISTA_ONLY"),"1")==0;
-        shadowPixels = getenv("BG3MFX_TRACE_SHADOW_PIXELS") && strcmp(getenv("BG3MFX_TRACE_SHADOW_PIXELS"),"1")==0;
-        shadowProbe = getenv("BG3MFX_TRACE_SHADOWS") && strcmp(getenv("BG3MFX_TRACE_SHADOWS"),"1")==0;
-        shadowLayouts = [NSMutableDictionary dictionary];
-        smartVistaRejectedDescriptors = [NSMutableSet set];
-#endif
         traceConstants = getenv("BG3MFX_TRACE_CONSTANTS") && strcmp(getenv("BG3MFX_TRACE_CONSTANTS"),"1") == 0;
         sceneProbe = diagnostics && getenv("BG3MFX_SCENE_PROBE") && strcmp(getenv("BG3MFX_SCENE_PROBE"),"1") == 0;
         metalFXEnabled = getenv("BG3MFX_ENABLE_METALFX") && strcmp(getenv("BG3MFX_ENABLE_METALFX"),"1") == 0;
-        const char *shadowOptimizationSetting = getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS");
-        BOOL shadowOptimizationsEnabled = !(shadowOptimizationSetting && strcmp(shadowOptimizationSetting,"0")==0);
-        smartVista = metalFXEnabled && shadowOptimizationsEnabled && getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA") && strcmp(getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA"),"1")==0;
         if (metalFXEnabled) traceConstants = YES;
-#ifndef BG3MFX_NO_TRACE
-        if (metalFXEnabled && shadowOptimizationsEnabled && vistaCompare) smartVista = YES;
-        if (shadowProbe || vistaOnly || vistaCompare) traceConstants = YES;
-#endif
         // Depth prepass trim (docs/dev/performance.md); needs the draw hooks.
         // BG3MFX_DEPTH_PREPASS_OPTIMIZATION=0 keeps BG3's full prepass for comparison.
         // Bind dedup; BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0 forwards every bind for comparison.
@@ -2691,22 +2301,11 @@ __attribute__((constructor)) static void start() {
             if (!BG3MFXInstallNativeMenu(menuReport,&menuError))
                 failFeature([menuError.domain isEqualToString:@"BG3MFXTemporalJitter"],menuError.localizedDescription);
         }
-#ifndef BG3MFX_NO_TRACE
-        if (vistaOnly) {
-            fprintf(stderr,"BG3MFX vista isolation: waiting for a matching vista target; normal shadows preserved until then\n");
-            record(@{@"event":@"shadowProbeVistaOnlyEnabled",@"suppressionArmed":@NO});
-        }
-        if (vistaCompare)
-            fprintf(stderr,"BG3MFX vista comparison: enabled; waiting for a compatible native vista pass\n");
-#endif
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
 #ifndef BG3MFX_NO_TRACE
         NSMutableDictionary *startup = [@{@"event": @"start", @"mode": metalFXEnabled ? @"metalfx-menu" : @"diagnostic", @"device": device.name ?: @"unavailable",
                  @"spatial": @([MTLFXSpatialScalerDescriptor supportsDevice:device]),
-                 @"temporal": @([MTLFXTemporalScalerDescriptor supportsDevice:device]),
-                 @"smartVista": @(smartVista)} mutableCopy];
-        startup[@"vistaCompare"] = @(vistaCompare);
-        startup[@"vistaOnly"] = @(vistaOnly);
+                 @"temporal": @([MTLFXTemporalScalerDescriptor supportsDevice:device])} mutableCopy];
         record(startup);
 #endif
         hook(device,"newCommandQueue",(IMP)newQueue);
@@ -2719,11 +2318,7 @@ __attribute__((constructor)) static void start() {
         hook(device,"newRenderPipelineStateWithDescriptor:error:",(IMP)renderPipeline);
         hook(device,"newRenderPipelineStateWithDescriptor:options:reflection:error:",(IMP)renderPipelineOptions);
         hook(device,"newComputePipelineStateWithFunction:error:",(IMP)computePipeline);
-        BOOL trackDepth=prepassTrim;
-#ifndef BG3MFX_NO_TRACE
-        trackDepth |= shadowProbe;
-#endif
-        if (trackDepth) hook(device,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
+        if (prepassTrim) hook(device,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
         // Multiple GPUs may use different concrete driver classes.
         for (id<MTLDevice> other in MTLCopyAllDevices()) {
             hook(other,"newCommandQueue",(IMP)newQueue);

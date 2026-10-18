@@ -5,54 +5,6 @@ are archived under [`history/`](history/).
 
 ## Shadow Rendering Optimizations
 
-This feature combines default-on duplicate shadow-stage elimination with an
-opt-in, experimental lower-resolution vista-shadow path.
-
-### Lower-resolution vista experiment
-
-An opt-in half-resolution vista prototype is implemented behind
-`BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA=1`, disabled by default. The live native baseline
-(`build/shadow-baseline-20261015-195731.jsonl`) establishes that the guarded
-stage+0x21a0 `CascadedShadowBufferStage::Submit` targets a two-slice Depth16
-atlas at 1024² or 2048², using partial 128²/256² Load regions and occasional
-Clear passes. The separate four-slice 2048² cascade array is outside this
-submission's scope, so its near cascade remains native. The earlier association
-of saved capture replay `re30` and resource 491's four-slice array with the
-vista was incorrect and is superseded by the live baseline.
-
-For Load, the prototype seeds a private half-size target from the selected
-native atlas slice using max reduction over each 2×2 footprint. It halves
-viewport, scissor and slope bias, then replaces only draw-covered
-viewport/scissor rectangles in the original slice with clamped max-reduced
-depth. It supports two-slice Load and Clear descriptors. Untouched Load regions
-and the sibling slice remain intact. Max merging assumes reversed depth; the
-saved capture's `GreaterEqual` state does not verify the corrected atlas
-target. A new live trace can record `shadowProbeSample.depthState` to confirm
-its compare and depth-write state. Descriptor/setup failure leaves the native
-submission intact. Hook installation checks the supported UUID, exact
-seven-instruction call context and target prologue, and unused 16-byte island;
-install failure is a launch error.
-
-This baseline verifies the hook target and descriptor shape. It does not
-validate the corrected reduced rendering, image quality or performance; no new
-live reduced-path validation has been done. In FULL/HALF diagnostic comparison,
-atlas tiles can persist across mode switches, so successive 10-second periods
-are not guaranteed clean, independent A/B references and cannot establish a
-performance benefit. Vista-only diagnostic mode requires
-`smartVistaIsolationArmed`; frames before arming can still contain other
-shadows. Keep the feature opt-in. Follow the user-operated validation procedure
-in the [Shadow Rendering Optimizations plan](../smart-shadows-plan.md).
-
-Offscreen validation of the corrected atlas path passed: two-slice redirection,
-clearing and replacing an old blocker, adjacent-depth preservation, sibling
-slice isolation, in-flight resource ownership, deferred encoder completion,
-and vista-only native/reduced modes. The full `make test` suite passed;
-after adding the shader-read eligibility guard, all eight vista smoke modes
-passed again with Metal API validation enabled against the final libraries
-(`build/vista-atlas-metal-validation.log`). `make test-python` passed 19 tests
-after the October 15 test-layout update.
-These are synthetic/offscreen results, not displayed-game acceptance.
-
 ### Duplicate shadow-stage elimination
 
 BG3 builds its game view with two identical cascaded-shadow stages; the first
@@ -60,8 +12,8 @@ one's shadow maps are overwritten before anything reads them.
 `ShadowDuplicateFix` removes the first whenever bg3mfx runs;
 `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` keeps both for comparison. Live on
 October 13 (quiet runtime, Ultra, Upscaling Off, windowed): 73.9 → 86.0 fps,
-HUD GPU time 14.0 → 11.75 ms, in-game shadow passes 10 → 5 per frame (probe
-trace), and the user saw no difference in shadows. No GPU capture was taken
+HUD GPU time 14.0 → 11.75 ms, in-game shadow passes 10 → 5 per frame, and the
+user saw no difference in shadows. No GPU capture was taken
 with the fix on. Analysis and method:
 [`docs/dev/performance.md`](../performance.md).
 
@@ -313,7 +265,7 @@ layouts, and branch-island ranges retain their supported-build values.
 
 `make` builds the quiet runtime and launcher under `build/bin/`. `make test`
 passes with GPU access on both quiet and diagnostic runtimes, including the
-existing native-jitter, vista-context, prepass pixel, and renderer-hook checks.
+existing native-jitter, prepass pixel, and renderer-hook checks.
 New bind-filter checks cover mixed single/bulk calls, nil/unbinding, changed-run
 coalescing, pipeline repeats, and cache bounds. Supported-build guard checks
 include overlap, alignment, empty/bounds, and overflow negative cases. These are

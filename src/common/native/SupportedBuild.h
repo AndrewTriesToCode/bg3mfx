@@ -66,8 +66,6 @@ namespace Shadows {
 inline constexpr uintptr_t FirstStageAdd = 0x105d1a7c8;
 inline constexpr uintptr_t SecondStageAdd = 0x105d1a818;
 inline constexpr uintptr_t StageType = 0x10789ffc3;
-inline constexpr uintptr_t VistaSubmitCall = 0x105d41154;
-inline constexpr uintptr_t VistaSubmitTarget = 0x106429f40;
 }
 
 namespace Menu::Layout {
@@ -126,8 +124,7 @@ inline constexpr Island Lua{0x700, 32};
 inline constexpr Island ServerPacing{0x800, 4 * 24};
 inline constexpr Island ThreadWait{0x9a0, 32};
 inline constexpr Island ThreadIdle{0x9c0, 16};
-inline constexpr Island Vista{0xb00, 16};
-inline constexpr Island All[] = {Temporal, Lua, ServerPacing, ThreadWait, ThreadIdle, Vista};
+inline constexpr Island All[] = {Temporal, Lua, ServerPacing, ThreadWait, ThreadIdle};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];

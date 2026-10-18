@@ -75,13 +75,9 @@ Medium) with no visual change, more than switching Ultra to Medium shadows
 `BaseApp::InitFrameStages(rf::RenderView*)` adds the stage-type list `[2]`
 (`CascadedShadowBufferStage`) twice for the game view, before and after the
 `[70, 54, 68, 24, 23, 64, 55, 56]` list (calls at `0x105d1a7ec` and
-`0x105d1a830`). The main menu's view gets one. The diagnostic runtime's
-`BG3MFX_TRACE_SHADOW_STACKS=1` probe records a stack per cascade pass and reads
-the stage slot that `CascadedShadowBufferStage::Submit` saved from
-`GameRenderView::FinishRecording`'s loop: in-game, ten passes per frame come
-from two stage objects 11 slots apart in the same view
-(`tools/analysis/shadow_stacks.py`). Each stage records and encodes its own jobs,
-so the duplicate also costs CPU time.
+`0x105d1a830`). The main menu's view gets one. Ten in-game cascade passes per frame came from
+two stage objects 11 slots apart in the same view. Each stage records and
+encodes its own jobs, so the duplicate also costs CPU time.
 
 ### Fix
 
@@ -268,8 +264,6 @@ samples) and cut its protected Lua call time by 14%.
 - `tools/analysis/categorize.py TSV FRAME_MS`.
 - `tools/analysis/encoder_draw_costs.py SESSION FRAME_MS ENC[=LABEL] ...`: per-encoder
   draw cost grouped by material (foliage, hair, characters, tilesets, HLOD).
-- `tools/analysis/shadow_stacks.py TRACE`: shadow-pass stacks and stage identity from a
-  `BG3MFX_TRACE_SHADOW_STACKS=1` trace.
 - `tools/analysis/foliage_shadows.py SESSION FRAME_MS CB TREE_ENC=PROFILE_ENC ...`:
   foliage order and costliest foliage draws in the cascade shadow passes.
 - `tools/analysis/procpower.c PID [seconds] [samples]`: a process's CPU use, power and

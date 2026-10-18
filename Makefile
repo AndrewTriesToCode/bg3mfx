@@ -70,7 +70,6 @@ RUNTIME_SOURCES = \
 	src/features/metalfx-frame-generation/FrameInterpolation.mm \
 	src/features/metalfx-frame-generation/FrameLog.mm \
 	src/features/shadows/ShadowDuplicateFix.mm \
-	src/features/shadows/VistaShadows.mm \
 	src/features/thread-idling/ThreadIdling.mm \
 	src/features/dynamic-worker-prioritization/DynamicWorkers.mm \
 	src/features/lua-jump-fix/LuaJumpFix.mm \
@@ -91,8 +90,6 @@ RUNTIME_HEADERS = \
 	src/features/metalfx-frame-generation/FrameInterpolation.h \
 	src/features/metalfx-frame-generation/FrameLog.h \
 	src/features/shadows/ShadowDuplicateFix.h \
-	src/features/shadows/VistaShadows.h \
-	src/features/shadows/VistaComparison.h \
 	src/features/thread-idling/ThreadIdling.h \
 	src/features/dynamic-worker-prioritization/DynamicWorkers.h \
 	src/features/lua-jump-fix/LuaJumpFix.h \
@@ -113,24 +110,9 @@ $(BIN_DIR)/libBG3MetalFX.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DI
 $(BIN_DIR)/metalfx-probe: tools/probes/metalfx_probe.m | $(BIN_DIR)
 	xcrun clang -fobjc-arc -mmacosx-version-min=26.0 $< $(FRAMEWORKS) -o $@
 
-test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/shadow-probe-smoke $(BIN_DIR)/vista-context-smoke $(BIN_DIR)/vista-comparison-smoke $(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/prepass-trim-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTrace.dylib
+test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/prepass-trim-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTrace.dylib
 	$(BIN_DIR)/supported-build-smoke
 	$(BIN_DIR)/bind-filter-smoke
-	$(BIN_DIR)/shadow-probe-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-probe
-	$(BIN_DIR)/shadow-probe-smoke $(BIN_DIR)/libBG3MetalFX.dylib expect-quiet
-	$(BIN_DIR)/shadow-probe-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-off
-	$(BIN_DIR)/vista-context-smoke $(BIN_DIR)/libBG3MetalFX.dylib
-	$(BIN_DIR)/vista-context-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib
-	$(BIN_DIR)/vista-comparison-smoke
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFX.dylib expect-vista
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-vista
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-vista-only
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-vista-only-native
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-compare
-	BG3MFX_VISTA_COMPARE=1 $(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFX.dylib expect-vista
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFX.dylib expect-vista-only-quiet
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFX.dylib expect-native
-	$(BIN_DIR)/vista-shadows-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-native
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFX.dylib
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFX.dylib hdr
@@ -172,18 +154,6 @@ $(BIN_DIR)/frame-interpolation-smoke: tests/features/metalfx-frame-generation/fr
 
 $(BIN_DIR)/frame-generation-hook-smoke: tests/features/metalfx-frame-generation/frame_generation_hook_smoke.mm | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< $(FRAMEWORKS) -o $@
-
-$(BIN_DIR)/vista-shadows-smoke: tests/features/shadows/vista_shadows_smoke.mm | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
-
-$(BIN_DIR)/vista-context-smoke: tests/features/shadows/vista_context_smoke.mm | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -framework Foundation -o $@
-
-$(BIN_DIR)/vista-comparison-smoke: tests/features/shadows/vista_comparison_smoke.cpp src/features/shadows/VistaComparison.h | $(BIN_DIR)
-	$(CXX) $(CPPFLAGS) -std=c++17 -O2 -Wall -Wextra $< -o $@
-
-$(BIN_DIR)/shadow-probe-smoke: tests/features/shadows/shadow_probe_smoke.mm | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
 
 $(BIN_DIR)/bind-filter-smoke: tests/features/render-thread-optimizations/bind_filter_smoke.mm src/features/render-thread-optimizations/BindFilter.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@

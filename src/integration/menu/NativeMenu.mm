@@ -1,7 +1,6 @@
 #include "common/native/SupportedBuild.h"
 #import "integration/menu/NativeMenu.h"
 #import "features/metalfx-temporal-upscaling/TemporalJitter.h"
-#import "features/shadows/VistaShadows.h"
 #import "features/shadows/ShadowDuplicateFix.h"
 #import "features/lua-jump-fix/LuaJumpFix.h"
 #import "integration/diagnostics/ServerPacingProbe.h"
@@ -515,19 +514,6 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     bool focusRepairInstalled = installRenderViewFocusRepair();
     event(@{@"event":@"nativeMenuFocusRepairHook", @"installed":@(focusRepairInstalled)});
     if (!BG3MFXInstallTemporalJitter(slide,report,error)) return NO;
-    const char *shadowOptimizationSetting = getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS");
-    BOOL shadowOptimizationsEnabled = !(shadowOptimizationSetting && strcmp(shadowOptimizationSetting,"0")==0);
-    BOOL vistaContext=shadowOptimizationsEnabled && getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA") && strcmp(getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS_VISTA"),"1")==0;
-#ifndef BG3MFX_NO_TRACE
-    vistaContext |= getenv("BG3MFX_TRACE_SHADOWS") && strcmp(getenv("BG3MFX_TRACE_SHADOWS"),"1")==0;
-    vistaContext |= getenv("BG3MFX_SHADOWS_VISTA_ONLY") && strcmp(getenv("BG3MFX_SHADOWS_VISTA_ONLY"),"1")==0;
-    vistaContext |= getenv("BG3MFX_VISTA_COMPARE") && strcmp(getenv("BG3MFX_VISTA_COMPARE"),"1")==0;
-#endif
-    if (vistaContext) {
-        NSError *vistaError=nil;
-        if (!BG3MFXInstallVistaContext(slide,&vistaError)) { if (error) *error=vistaError; return NO; }
-        event(@{@"event":@"smartVistaContextInstalled"});
-    }
     // Remove BG3's duplicate cascaded-shadow stage (docs/dev/performance.md). A mismatch
     // leaves BG3 unchanged. BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0 keeps both stages for
     // comparison.
