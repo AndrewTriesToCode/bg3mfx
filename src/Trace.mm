@@ -74,6 +74,15 @@ enum PipelineKind : uint8_t {
     PipelineOther, PipelineTAA, PipelineLinearizeDepth, PipelineVelocity,
     PipelinePostColor, PipelineToneMapLUT, PipelineCombineUI,
 };
+// Prepass trim (perf/README.md): vertex-only opaque draws are skipped in the
+// depth prepass, and their G-buffer draws write depth instead of testing Equal
+// against it, as BG3's terrain already does. Separate from PipelineKind so the
+// scene-tracking logic still sees these pipelines as unrecognized.
+enum TrimPipeline : uint8_t { TrimNone, TrimPrepassOpaque, TrimGBufferOpaque };
+enum TrimRole : uint8_t { RoleNone, RolePrepass, RoleGBuffer };
+static bool prepassTrim;
+static char pipelineTrimKey, depthReplacementKey;
+static std::atomic<unsigned> prepassTrimSkipped{0}, prepassTrimSwapped{0};
 // Bound buffers, textures and the pipeline are not retained
 // here: the encoder (from a retained-references command buffer; see
 // commandBuffer) keeps everything bound to it alive until it ends, and BG3 keeps
@@ -104,6 +113,11 @@ struct CompositionDraw {
     bool hasViewport, hasScissor;
     MTLViewport viewport;
     MTLScissorRect scissor;
+    // Prepass trim: the bound pipeline's class, this pass's role, and BG3's
+    // current depth-stencil state (held unretained, like the pipeline).
+    TrimPipeline trimPipeline;
+    TrimRole trimRole;
+    __unsafe_unretained id depthState;
 }
 @end
 @implementation BG3MFXEncoderState
@@ -289,7 +303,7 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"nativeQualityChanged"] || [kind hasPrefix:@"waterfall"] ||
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
-        [kind isEqualToString:@"shadowPassStack"];
+        [kind isEqualToString:@"shadowPassStack"] || [kind isEqualToString:@"prepassTrim"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
@@ -427,6 +441,116 @@ static void hook(id object, const char *name, IMP replacement) {
     originalsGeneration.fetch_add(1, std::memory_order_release);
     class_replaceMethod(cls, selector, replacement, method_getTypeEncoding(method));
 }
+// A material's prepass pipeline uses `<stem>_DEP_vertexMain`, its G-buffer one
+// `<stem>_DEF_vertexMain`. A prepass pipeline with no fragment function cannot
+// discard, so its G-buffer draw relies on the prepass only to reject hidden
+// fragments, which the GPU's hidden-surface removal already does. If any
+// prepass variant of a stem has a fragment function (an alpha test or cutout),
+// the stem's G-buffer draws may rely on the Equal test and are left alone.
+static void classifyPrepassTrim(MTLRenderPipelineDescriptor *desc, id state) {
+    NSString *vertex = desc.vertexFunction.name;
+    if (!prepassTrim || !state || !vertex) return;
+    BOOL prepass = [vertex hasSuffix:@"_DEP_vertexMain"], gbuffer = [vertex hasSuffix:@"_DEF_vertexMain"];
+    if (!prepass && !gbuffer) return;
+    NSString *stem = [vertex substringToIndex:vertex.length - @"_DEP_vertexMain".length];
+    std::lock_guard<std::recursive_mutex> lock(guard());
+    static NSMutableSet<NSString *> *opaque = [NSMutableSet set], *excluded = [NSMutableSet set];
+    static NSMutableDictionary<NSString *, NSHashTable *> *prepassStates = [NSMutableDictionary dictionary];
+    static NSMutableDictionary<NSString *, NSHashTable *> *gbufferStates = [NSMutableDictionary dictionary];
+    auto states = [](NSMutableDictionary<NSString *, NSHashTable *> *table, NSString *key) {
+        NSHashTable *set = table[key];
+        if (!set) table[key] = set = [NSHashTable weakObjectsHashTable];
+        return set;
+    };
+    auto mark = [](id pipeline, TrimPipeline value) {
+        objc_setAssociatedObject(pipeline, &pipelineTrimKey, @(value), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    };
+    if (gbuffer) {
+        [states(gbufferStates, stem) addObject:state];
+        if ([opaque containsObject:stem]) mark(state, TrimGBufferOpaque);
+        return;
+    }
+    BOOL vertexOnly = !desc.fragmentFunction && desc.depthAttachmentPixelFormat == MTLPixelFormatDepth32Float_Stencil8;
+    for (NSUInteger i = 0; i < 8; ++i)
+        if (desc.colorAttachments[i].pixelFormat != MTLPixelFormatInvalid) vertexOnly = NO;
+    if (!vertexOnly) {
+        [excluded addObject:stem];
+        [opaque removeObject:stem];
+        for (id pipeline in states(prepassStates, stem)) mark(pipeline, TrimNone);
+        for (id pipeline in states(gbufferStates, stem)) mark(pipeline, TrimNone);
+        return;
+    }
+    if ([excluded containsObject:stem]) return;
+    [opaque addObject:stem];
+    [states(prepassStates, stem) addObject:state];
+    mark(state, TrimPrepassOpaque);
+    for (id pipeline in states(gbufferStates, stem)) mark(pipeline, TrimGBufferOpaque);
+}
+// The G-buffer pass loads the depth its prepass cleared (Depth32Float_Stencil8,
+// four or more color targets). Only a depth-only pass that clears a depth
+// texture already seen feeding a G-buffer is trimmed; other depth passes and
+// a view's first frame render unchanged.
+static TrimRole prepassTrimRole(MTLRenderPassDescriptor *desc) {
+    id<MTLTexture> depth = desc.depthAttachment.texture;
+    if (!prepassTrim || !depth || depth.pixelFormat != MTLPixelFormatDepth32Float_Stencil8) return RoleNone;
+    NSUInteger colors = 0;
+    for (NSUInteger i = 0; i < 8; ++i) if (desc.colorAttachments[i].texture) ++colors;
+    std::lock_guard<std::recursive_mutex> lock(guard());
+    static NSHashTable *gbufferDepths = [NSHashTable weakObjectsHashTable];
+    if (colors >= 4 && desc.depthAttachment.loadAction == MTLLoadActionLoad) {
+        [gbufferDepths addObject:depth];
+        return RoleGBuffer;
+    }
+    if (!colors && desc.depthAttachment.loadAction == MTLLoadActionClear && [gbufferDepths containsObject:depth])
+        return RolePrepass;
+    return RoleNone;
+}
+// For each Equal/no-write state (a G-buffer draw tested against the prepass),
+// an otherwise identical state that tests GreaterEqual and writes depth.
+static id depthStencilStateHook(id self, SEL cmd, MTLDepthStencilDescriptor *desc) {
+    id state = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
+    if (prepassTrim && state && desc.depthCompareFunction == MTLCompareFunctionEqual && !desc.isDepthWriteEnabled) {
+        MTLDepthStencilDescriptor *writes = [desc copy];
+        writes.depthCompareFunction = MTLCompareFunctionGreaterEqual;
+        writes.depthWriteEnabled = YES;
+        id replacement = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,writes);
+        if (replacement) objc_setAssociatedObject(state, &depthReplacementKey, replacement, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return state;
+}
+static BG3MFXEncoderState *encoderState(__unsafe_unretained id encoder);
+static void setDepthStencilHook(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
+    ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
+    if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(self)) s->depthState = state;
+}
+// Applied around each draw: skip an opaque prepass draw, or give its G-buffer
+// draw the depth-writing state and restore BG3's state afterwards.
+struct PrepassTrimDraw {
+    __unsafe_unretained id encoder = nil, restore = nil;
+    bool skip = false;
+    explicit PrepassTrimDraw(__unsafe_unretained id self) {
+        if (!prepassTrim) return;
+        __unsafe_unretained BG3MFXEncoderState *s = encoderState(self);
+        if (!s || s->trimPipeline == TrimNone) return;
+        if (s->trimPipeline == TrimPrepassOpaque && s->trimRole == RolePrepass) {
+            skip = true;
+            if (diagnostics) ++prepassTrimSkipped;
+            return;
+        }
+        if (s->trimPipeline != TrimGBufferOpaque || s->trimRole != RoleGBuffer || !s->depthState) return;
+        id replacement = objc_getAssociatedObject(s->depthState, &depthReplacementKey);
+        if (!replacement) return;
+        SEL set = @selector(setDepthStencilState:);
+        ((void(*)(id,SEL,id))original(self,set))(self,set,replacement);
+        encoder = self; restore = s->depthState;
+        if (diagnostics) ++prepassTrimSwapped;
+    }
+    ~PrepassTrimDraw() {
+        if (!encoder) return;
+        SEL set = @selector(setDepthStencilState:);
+        ((void(*)(id,SEL,id))original(encoder,set))(encoder,set,restore);
+    }
+};
 static NSDictionary *texture(id<MTLTexture> t) {
     if (!t) return @{};
     std::lock_guard<std::recursive_mutex> lock(guard());
@@ -913,6 +1037,7 @@ static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained i
     if (s) {
         s->pipeline=state; s->description=description;
         s->kind=(PipelineKind)[objc_getAssociatedObject(state,&pipelineKindKey) unsignedCharValue];
+        if (prepassTrim) s->trimPipeline=(TrimPipeline)[objc_getAssociatedObject(state,&pipelineTrimKey) unsignedCharValue];
     }
     record(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": description});
 }
@@ -982,6 +1107,7 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
     if (state) {
         objc_setAssociatedObject(state, &pipelineKey, description, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(state, &pipelineKindKey, @(classifyPipeline(fragment)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        classifyPrepassTrim(desc, state);
     }
     record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
     return state;
@@ -1013,6 +1139,7 @@ static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *d
     if (state) {
         objc_setAssociatedObject(state, &pipelineKey, description, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(state, &pipelineKindKey, @(classifyPipeline(fragment)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        classifyPrepassTrim(desc, state);
     }
     record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
     return state;
@@ -1495,24 +1622,32 @@ static BOOL suppressTemporalTAA(id encoder) {
     return YES;
 }
 static void draw(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count) {
+    PrepassTrimDraw trim(self);
+    if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); return; }
     drawInputs(self,CompositionDraw{type,start,count,1,0,0,nil,0,MTLIndexTypeUInt16});
     if (suppressTemporalTAA(self)) return;
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count);
 }
 static void drawInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances) {
+    PrepassTrimDraw trim(self);
+    if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); return; }
     drawInputs(self,CompositionDraw{type,start,count,instances,0,0,nil,0,MTLIndexTypeUInt16});
     if (suppressTemporalTAA(self)) return;
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances);
 }
 static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances, NSUInteger base) {
+    PrepassTrimDraw trim(self);
+    if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); return; }
     drawInputs(self,CompositionDraw{type,start,count,instances,base,0,nil,0,MTLIndexTypeUInt16});
     if (suppressTemporalTAA(self)) return;
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base);
 }
 static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset) {
+    PrepassTrimDraw trim(self);
+    if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); return; }
     drawInputs(self,CompositionDraw{type,0,count,1,0,0,buffer,offset,indexType});
 #ifndef BG3MFX_NO_TRACE
@@ -1522,6 +1657,8 @@ static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType t
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset);
 }
 static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances) {
+    PrepassTrimDraw trim(self);
+    if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); return; }
     drawInputs(self,CompositionDraw{type,0,count,instances,0,0,buffer,offset,indexType});
 #ifndef BG3MFX_NO_TRACE
@@ -1531,6 +1668,8 @@ static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimit
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances);
 }
 static void drawIndexedBase(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances, NSInteger baseVertex, NSUInteger baseInstance) {
+    PrepassTrimDraw trim(self);
+    if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger,NSInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances,baseVertex,baseInstance); return; }
     drawInputs(self,CompositionDraw{type,0,count,instances,baseInstance,baseVertex,buffer,offset,indexType});
 #ifndef BG3MFX_NO_TRACE
@@ -1701,6 +1840,7 @@ static void instrumentEncoder(id encoder) {
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:",(IMP)drawIndexed);
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:",(IMP)drawIndexedInstances);
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:",(IMP)drawIndexedBase);
+        if (prepassTrim) hook(encoder,"setDepthStencilState:",(IMP)setDepthStencilHook);
     }
     if (diagnostics) hook(encoder,"setLabel:",(IMP)label);
     if (diagnostics) hook(encoder,"pushDebugGroup:",(IMP)group);
@@ -1756,6 +1896,12 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     id encoder = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
     instrumentEncoder(encoder);
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
+    if (prepassTrim && encoder) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) {
+        s->trimRole=prepassTrimRole(desc);
+        // Diagnostics: report the previous frame's counts at each trimmed prepass.
+        if (diagnostics && s->trimRole==RolePrepass)
+            record(@{@"event":@"prepassTrim",@"frame":@(frames),@"skipped":@(prepassTrimSkipped.exchange(0)),@"swapped":@(prepassTrimSwapped.exchange(0))});
+    }
     if (diagnostics) {
     NSMutableArray *colors = [NSMutableArray array];
     for (NSUInteger i=0; i<8; ++i) if (desc.colorAttachments[i].texture)
@@ -2033,6 +2179,9 @@ __attribute__((constructor)) static void start() {
         sceneProbe = diagnostics && getenv("BG3MFX_SCENE_PROBE") && strcmp(getenv("BG3MFX_SCENE_PROBE"),"1") == 0;
         metalFXEnabled = getenv("BG3MFX_ENABLE_METALFX") && strcmp(getenv("BG3MFX_ENABLE_METALFX"),"1") == 0;
         if (metalFXEnabled) traceConstants = YES;
+        // Depth prepass trim (perf/README.md); needs the draw hooks.
+        // BG3MFX_PREPASS_TRIM=0 keeps BG3's full prepass for comparison.
+        prepassTrim = metalFXEnabled && !(getenv("BG3MFX_PREPASS_TRIM") && strcmp(getenv("BG3MFX_PREPASS_TRIM"),"0") == 0);
         if (diagnostics) {
             constantSamples = [NSMutableDictionary dictionary];
             shaderBufferSizes = [NSMutableDictionary dictionary];
@@ -2063,6 +2212,7 @@ __attribute__((constructor)) static void start() {
         hook(device,"newRenderPipelineStateWithDescriptor:error:",(IMP)renderPipeline);
         hook(device,"newRenderPipelineStateWithDescriptor:options:reflection:error:",(IMP)renderPipelineOptions);
         hook(device,"newComputePipelineStateWithFunction:error:",(IMP)computePipeline);
+        if (prepassTrim) hook(device,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
         // Multiple GPUs may use different concrete driver classes.
         for (id<MTLDevice> other in MTLCopyAllDevices()) {
             hook(other,"newCommandQueue",(IMP)newQueue);
@@ -2070,6 +2220,7 @@ __attribute__((constructor)) static void start() {
             hook(other,"newRenderPipelineStateWithDescriptor:error:",(IMP)renderPipeline);
             hook(other,"newRenderPipelineStateWithDescriptor:options:reflection:error:",(IMP)renderPipelineOptions);
             hook(other,"newComputePipelineStateWithFunction:error:",(IMP)computePipeline);
+            if (prepassTrim) hook(other,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
         }
     }
 }

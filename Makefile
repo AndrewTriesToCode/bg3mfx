@@ -73,7 +73,7 @@ build/libBG3MetalFX.dylib: src/Trace.mm src/FrameInterpolation.mm src/FrameInter
 build/metalfx-probe: tools/metalfx_probe.m | build
 	xcrun clang -fobjc-arc -mmacosx-version-min=26.0 $< $(FRAMEWORKS) -o $@
 
-test: build/native-menu-probe-smoke build/native-menu-probe-quiet-smoke build/frame-generation-hook-smoke build/frame-interpolation-smoke build/metal4-bridge-smoke build/runtime-smoke build/metalfx-smoke build/temporal-quality-smoke build/temporal-jitter-smoke build/spatial-upscaler-smoke build/temporal-upscaler-smoke build/spatial-hook-smoke build/temporal-hook-smoke build/libBG3MetalFX.dylib build/libBG3MetalFXTrace.dylib
+test: build/native-menu-probe-smoke build/native-menu-probe-quiet-smoke build/frame-generation-hook-smoke build/frame-interpolation-smoke build/metal4-bridge-smoke build/runtime-smoke build/metalfx-smoke build/temporal-quality-smoke build/temporal-jitter-smoke build/spatial-upscaler-smoke build/temporal-upscaler-smoke build/spatial-hook-smoke build/temporal-hook-smoke build/prepass-trim-smoke build/libBG3MetalFX.dylib build/libBG3MetalFXTrace.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFX.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFXTrace.dylib
 	./build/frame-generation-hook-smoke ./build/libBG3MetalFX.dylib hdr

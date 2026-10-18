@@ -15,6 +15,21 @@ trace), and the user saw no difference in shadows. No GPU capture was taken
 with the fix on. Analysis and method:
 [`perf/README.md`](../../../perf/README.md).
 
+## Depth prepass trim
+
+Whenever bg3mfx runs (`BG3MFX_PREPASS_TRIM=0` disables it), opaque draws whose prepass pipeline has no
+fragment function are skipped in the depth prepass, and their G-buffer draws
+write depth (`GreaterEqual`) instead of testing `Equal`, as BG3's terrain
+does. Live on October 14, with the shadow fix (quiet runtime, Ultra, Upscaling
+Off, windowed): the diagnostic trace showed 230 prepass draws skipped and 230
+G-buffer draws switched per frame; HUD GPU time 12.0 → 10.5 ms; 82.9 → 84.4
+fps, because the frame is now limited by BG3's render thread. The user saw no
+artifacts on characters or distant geometry. `prepass-trim-smoke` (in
+`make test`) checks G-buffer pixels with the trim on and off, that the trim
+skips only vertex-only prepass draws and leaves a discarding material's
+Equal test intact, and that bind filtering forwards a changed texture slot;
+negative controls (no depth swap, a dropped texture change) fail it.
+
 ## Frame Generation (initial integration)
 
 Frame Generation is the "MetalFX Frame Generation" checkbox and combines with
