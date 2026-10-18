@@ -2279,10 +2279,13 @@ static id newQueueLimit(id self, SEL cmd, NSUInteger count) {
 __attribute__((constructor)) static void start() {
     @autoreleasepool {
         if (diagnostics) seen = [NSMutableSet set];
-        traceConstants = getenv("BG3MFX_TRACE_CONSTANTS") && strcmp(getenv("BG3MFX_TRACE_CONSTANTS"),"1") == 0;
         sceneProbe = diagnostics && getenv("BG3MFX_SCENE_PROBE") && strcmp(getenv("BG3MFX_SCENE_PROBE"),"1") == 0;
         metalFXEnabled = getenv("BG3MFX_ENABLE_METALFX") && strcmp(getenv("BG3MFX_ENABLE_METALFX"),"1") == 0;
-        if (metalFXEnabled) traceConstants = YES;
+        traceConstants = metalFXEnabled;
+#ifndef BG3MFX_NO_TRACE
+        if (const char *value = getenv("BG3MFX_TRACE_CONSTANTS"))
+            traceConstants |= strcmp(value,"1") == 0;
+#endif
         // Depth prepass trim (docs/dev/performance.md); needs the draw hooks.
         // BG3MFX_DEPTH_PREPASS_OPTIMIZATION=0 keeps BG3's full prepass for comparison.
         // Bind dedup; BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0 forwards every bind for comparison.

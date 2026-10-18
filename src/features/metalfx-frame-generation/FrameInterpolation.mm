@@ -254,8 +254,10 @@ struct PresentTask {
     double cadence;            // BG3's actual interval between frames
     NSArray *handlers;
     __weak BG3MFXStandInDrawable *standIn;
+#ifndef BG3MFX_NO_TRACE
     CFTimeInterval submitted;  // BG3's commit of this frame, for the frame log
     unsigned queued;           // stand-ins in flight plus frames waiting here
+#endif
 };
 
 @implementation BG3MFXFramePresenter {
@@ -371,9 +373,15 @@ struct PresentTask {
     if (buffer) { value=++_eventValue; [buffer encodeSignalEvent:_event value:value]; }
     BG3MFXTexturePool *generatedPool;
     { std::lock_guard<std::mutex> lock(_mutex); generatedPool=_generated; }
-    PresentTask task{standIn.texture,generated,[standIn pool],generatedPool,standIn.layer,value,interval,cadence,handlers,standIn,
-        CACurrentMediaTime(),(unsigned)[_slots inFlight]};
-    std::lock_guard<std::mutex> lock(_mutex); task.queued+=(unsigned)_tasks.size();
+    PresentTask task{standIn.texture,generated,[standIn pool],generatedPool,standIn.layer,value,interval,cadence,handlers,standIn
+#ifndef BG3MFX_NO_TRACE
+        ,CACurrentMediaTime(),(unsigned)[_slots inFlight]
+#endif
+    };
+    std::lock_guard<std::mutex> lock(_mutex);
+#ifndef BG3MFX_NO_TRACE
+    task.queued+=(unsigned)_tasks.size();
+#endif
     _tasks.push_back(std::move(task)); _wake.notify_all();
 }
 #ifndef BG3MFX_NO_TRACE
