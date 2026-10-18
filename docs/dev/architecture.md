@@ -244,12 +244,22 @@ does not alter the app bundle.
   `BG3MFX_OPTIMIZED_IDLING=0` disables it). BG3's idle workers, job scheduler,
   frame limiter (`GameClock::CapFrame`, the server tick and client frame cap)
   and batch waits sleep instead of spinning.
+- `src/DynamicWorkers.*`: dynamic worker core prioritization (on by default;
+  `BG3MFX_DYNAMIC_WORKERS=0` disables it). Puts the `WT/High` workers and the
+  job scheduler in Darwin background while frame-rate trials show it costs no
+  frame rate. It changes no BG3 code: threads apply their placement when they
+  next block in an interposed `semaphore_wait`/`semaphore_timedwait`, and the
+  present hooks in `Trace.mm` count frames. Decisions are logged to subsystem
+  `com.bg3mfx`, category `threads`.
 - `src/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
   avoiding two system calls per protected call (on by default;
   `BG3MFX_LUA_JUMP_FIX=0` disables it).
 - `src/ServerPacingProbe.*`: opt-in measurement
   (`BG3MFX_TRACE_SERVER_PACING=1`, both runtimes) of the server tick's work,
   CPU time and limiter, logged to category `pacing`.
+- Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
+  pacing probe `0x800`, thread idling `0x9a0` and `0x9c0` (offsets from
+  `0x100004000`). Each install checks its range is still zero.
 - `src/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.
 - `src/SpatialUpscaler.*` and `src/TemporalUpscaler.*`: BG3-specific inputs,

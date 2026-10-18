@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <vector>
 #import "MetalFXPipeline.h"
+#import "DynamicWorkers.h"
 #import "SpatialUpscaler.h"
 #import "TemporalUpscaler.h"
 #import "NativeMenu.h"
@@ -449,7 +450,7 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
         [kind isEqualToString:@"shadowPassStack"] || [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
-        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"luaJumpFix"];
+        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
@@ -2235,12 +2236,14 @@ static void logNativePresent(id buffer, id drawable) {
 // (they hook every queue's command buffers); they are not BG3 frames.
 static void present(id self, SEL cmd, id drawable) {
     if([BG3MFXFramePresenter isPresentationThread]) { ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable); return; }
+    BG3MFXRenderedFrames.fetch_add(1,std::memory_order_relaxed);
     if(deferPresent(self,cmd,drawable)) return;
     countPresent(drawable,cmd); logNativePresent(self,drawable);
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable);
 }
 static void presentTimed(id self, SEL cmd, id drawable, double time) {
     if([BG3MFXFramePresenter isPresentationThread]) { ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time); return; }
+    BG3MFXRenderedFrames.fetch_add(1,std::memory_order_relaxed);
     if(deferPresent(self,cmd,drawable)) return;
     countPresent(drawable,cmd); logNativePresent(self,drawable);
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time);

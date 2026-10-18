@@ -4,6 +4,7 @@
 #import "LuaJumpFix.h"
 #import "ServerPacingProbe.h"
 #import "ThreadIdling.h"
+#import "DynamicWorkers.h"
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -659,6 +660,11 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
         if (!BG3MFXInstallThreadIdling(slide,report,&idlingError))
             event(@{@"event":@"threadIdlingSkipped",@"reason":idlingError.localizedDescription ?: @""});
     }
+    // Dynamic worker core prioritization: render workers on the lower-tier
+    // cores while that costs no frame rate (src/DynamicWorkers.mm).
+    // BG3MFX_DYNAMIC_WORKERS=0 keeps BG3's placement.
+    if (!(getenv("BG3MFX_DYNAMIC_WORKERS") && strcmp(getenv("BG3MFX_DYNAMIC_WORKERS"),"0") == 0))
+        BG3MFXInstallDynamicWorkers(report);
     // Opt-in: time BG3's server tick, its CPU time and its limiter
     // (src/ServerPacingProbe.h).
     if (getenv("BG3MFX_TRACE_SERVER_PACING") && strcmp(getenv("BG3MFX_TRACE_SERVER_PACING"),"1") == 0) {

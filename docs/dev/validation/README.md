@@ -1,6 +1,6 @@
 # Current validation status
 
-Updated October 12, 2026. This page is the active record. Detailed dated notes
+Updated October 14, 2026. This page is the active record. Detailed dated notes
 are archived under [`history/`](history/).
 
 ## Duplicate shadow stage fix
@@ -55,6 +55,32 @@ with the defaults, with bind filtering off, and with bind filtering and the
 prepass trim off. Live (Ultra, windowed, October 14): no measurable frame-rate
 change against the previous commit (83.2 vs 83.2 fps, interleaved runs), as
 that scene is mostly GPU-limited. The user saw no artifacts.
+
+## CPU power: optimized thread idling, dynamic worker core prioritization, Lua
+
+Live on October 14 (quiet runtime, Ultra, Upscaling Off, Frame Cap off, Lower
+City, M5 Pro), measured with `perf/tools/procpower.c`. BG3's CPU power fell
+from 23.7 W to 7.4 W at the same 95–96 fps; server ticks stayed at 30.0/s
+(the server pacing probe's worst interval 33.4–34.6 ms). Steps and method:
+[`perf/README.md`](../../../perf/README.md).
+
+- Optimized thread idling alone: about 11 W. The in-game Frame Cap now idles
+  between frames (user-confirmed lower CPU with the cap on).
+- Dynamic worker core prioritization: 7.4 W where background costs nothing.
+  Running through Lower City crowds, trials kept the `WT/High` workers at normal
+  where background would have cost 6–11% (108.7 vs 102.0, 144.0 vs 128.7 fps),
+  and the user saw no stutter at the switches. An earlier version also placed
+  the `WT/Low` workers in background; dialogue replies then started late, and
+  were on time again with them left at normal.
+- Lua error handling: with `_setjmp`/`_longjmp`, `sigprocmask` and
+  `__sigaltstack` no longer appear in server-thread samples (3.5% before);
+  NPCs and combat behaved normally.
+- The user played combat, dialogue and area loads on these builds with no
+  issues.
+- Not covered: Macs with fewer or slower cores (the `CapFrame` job stealing is
+  kept for them), and a GPU capture.
+
+`make test` exercises neither feature: both patch BG3's own code or threads.
 
 ## Frame Generation (initial integration)
 
