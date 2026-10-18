@@ -240,9 +240,16 @@ does not alter the app bundle.
 - `src/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
   (on by default; `BG3MFX_SINGLE_SHADOW_STAGE=0` disables it); see
   [`perf/README.md`](../../perf/README.md).
+- `src/ThreadIdling.*`: optimized thread idling (on by default;
+  `BG3MFX_OPTIMIZED_IDLING=0` disables it). BG3's idle workers, job scheduler,
+  frame limiter (`GameClock::CapFrame`, the server tick and client frame cap)
+  and batch waits sleep instead of spinning.
 - `src/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
   avoiding two system calls per protected call (on by default;
   `BG3MFX_LUA_JUMP_FIX=0` disables it).
+- `src/ServerPacingProbe.*`: opt-in measurement
+  (`BG3MFX_TRACE_SERVER_PACING=1`, both runtimes) of the server tick's work,
+  CPU time and limiter, logged to category `pacing`.
 - `src/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.
 - `src/SpatialUpscaler.*` and `src/TemporalUpscaler.*`: BG3-specific inputs,
