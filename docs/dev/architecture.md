@@ -233,6 +233,10 @@ does not alter the app bundle.
   `BG3MFX_PREPASS_TRIM=0` disables it): vertex-only opaque prepass draws are skipped and
   their G-buffer draws write depth; see `classifyPrepassTrim` and
   `PrepassTrimDraw`.
+- `src/Trace.mm` also filters redundant binds (on by default;
+  `BG3MFX_TEXTURE_DEDUP=0` disables it): fragment texture slots and pipelines
+  already bound in the encoder are not forwarded to the driver. The diagnostic
+  runtime counts BG3's redundant binds with `BG3MFX_TRACE_REDUNDANT=1`.
 - `src/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
   (on by default; `BG3MFX_SINGLE_SHADOW_STAGE=0` disables it); see
   [`perf/README.md`](../../perf/README.md).
