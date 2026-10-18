@@ -1,6 +1,7 @@
 #import "NativeMenu.h"
 #import "TemporalJitter.h"
 #import "ShadowDuplicateFix.h"
+#import "LuaJumpFix.h"
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -639,6 +640,14 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
         NSError *shadowError = nil;
         if (!BG3MFXInstallShadowDuplicateFix(slide,report,&shadowError))
             event(@{@"event":@"shadowDuplicateFixSkipped",@"reason":shadowError.localizedDescription ?: @""});
+    }
+    // Skip the signal-mask system calls in BG3's Lua error handling
+    // (src/LuaJumpFix.mm). A mismatch leaves BG3 unchanged. BG3MFX_LUA_JUMP_FIX=0
+    // keeps setjmp/longjmp for comparison.
+    if (!(getenv("BG3MFX_LUA_JUMP_FIX") && strcmp(getenv("BG3MFX_LUA_JUMP_FIX"),"0") == 0)) {
+        NSError *luaError = nil;
+        if (!BG3MFXInstallLuaJumpFix(slide,report,&luaError))
+            event(@{@"event":@"luaJumpFixSkipped",@"reason":luaError.localizedDescription ?: @""});
     }
     void **table = at<void **>(0x1087ac1a0);
     if (table[4] != at<void *>(0x103288fb8) || table[7] != at<void *>(0x103290180)) { errorOut(error,@"The Video menu callback was already modified."); return NO; }

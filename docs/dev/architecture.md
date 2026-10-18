@@ -240,6 +240,9 @@ does not alter the app bundle.
 - `src/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
   (on by default; `BG3MFX_SINGLE_SHADOW_STAGE=0` disables it); see
   [`perf/README.md`](../../perf/README.md).
+- `src/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
+  avoiding two system calls per protected call (on by default;
+  `BG3MFX_LUA_JUMP_FIX=0` disables it).
 - `src/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.
 - `src/SpatialUpscaler.*` and `src/TemporalUpscaler.*`: BG3-specific inputs,

@@ -448,7 +448,8 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"nativeQualityChanged"] || [kind hasPrefix:@"waterfall"] ||
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
-        [kind isEqualToString:@"shadowPassStack"] || [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"];
+        [kind isEqualToString:@"shadowPassStack"] || [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
+        [kind hasPrefix:@"luaJumpFix"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
