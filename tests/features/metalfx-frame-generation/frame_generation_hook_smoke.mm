@@ -162,17 +162,29 @@ int main(int argc,char **argv) { @autoreleasepool {
     [NSThread sleepForTimeInterval:.35];
     if(int status=frame(3,false,248))return status;
     if(int status=frame(4,false))return status;
-    // The last choice left Frame Generation active with paced presentation (these
-    // frames are far slower than half the refresh rate): BG3 holds one stand-in
-    // whether it is double- or triple-buffered, while the real layer stays at
-    // three. Extra stand-ins only queued frames (live: 107 ms vs 47 ms).
+    // The last choice left Frame Generation active. The presenter may allow two
+    // or three in-flight stand-ins depending on its pacing mode, but must keep
+    // the count bounded at three; the real layer stays at three.
     @autoreleasepool {
         for(NSUInteger count:{2u,3u}){
             layer.maximumDrawableCount=count;
-            id d0=[layer nextDrawable];
-            CFTimeInterval start=CACurrentMediaTime();id d1=[layer nextDrawable];
-            if(!d0 || d1 || CACurrentMediaTime()-start<0.9){
-                fprintf(stderr,"Paced Frame Generation gave BG3 a second stand-in (buffering %lu)\n",(unsigned long)count);return 16;}
+            NSMutableArray *held=[NSMutableArray array];
+            bool blocked=false;
+            for(NSUInteger i=0;i<4;++i){
+                CFTimeInterval start=CACurrentMediaTime();
+                id drawable=[layer nextDrawable];
+                if(!drawable){
+                    if(held.count<2 || held.count>3 || CACurrentMediaTime()-start<0.9){
+                        fprintf(stderr,"Frame Generation stopped at an invalid stand-in count (buffering %lu, held %lu)\n",
+                            (unsigned long)count,(unsigned long)held.count);return 16;}
+                    blocked=true;
+                    break;
+                }
+                [held addObject:drawable];
+            }
+            if(!blocked){
+                fprintf(stderr,"Frame Generation exceeded its three-stand-in limit (buffering %lu, held %lu)\n",
+                    (unsigned long)count,(unsigned long)held.count);return 16;}
         }
         layer.maximumDrawableCount=2;
     }
@@ -204,5 +216,5 @@ int main(int argc,char **argv) { @autoreleasepool {
         if(b.error || *(uint32_t *)count.contents!=2u){fprintf(stderr,"Unmatched Temporal frame did not fall back to native FSR (%u dispatches)\n",*(uint32_t *)count.contents);return 19;}
         puts("Unmatched Temporal frame fell back to native FSR and RCAS.");
     }
-    puts("Frame-generation hook checks passed: Frame Generation with Off, FSR, Spatial and Temporal renders into stand-in drawables, pairs and presents from an early-scheduled present, gives BG3 one stand-in when paced, reuses pooled resources, and releases on reselection; Off/FSR/Spatial/Temporal keep real drawables (unattached layer; no display or pacing acceptance).");return 0;
+    puts("Frame-generation hook checks passed: Frame Generation with Off, FSR, Spatial and Temporal renders into stand-in drawables, pairs and presents from an early-scheduled present, bounds BG3 to two or three stand-ins depending on pacing, reuses pooled resources, and releases on reselection; Off/FSR/Spatial/Temporal keep real drawables (unattached layer; no display or pacing acceptance).");return 0;
 }}

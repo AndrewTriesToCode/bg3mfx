@@ -956,7 +956,6 @@ static BOOL copyTemporalAAColor(id<MTLCommandBuffer> buffer, NSDictionary *input
     record(@{@"event":@"temporalTAACopy",@"source":texture(color),@"target":texture(target)});
     return YES;
 }
-#ifndef BG3MFX_NO_TRACE
 static void endEncoder(id self, SEL cmd) {
     id<MTLCommandBuffer> commandBuffer = encoderBuffer(self);
     __unsafe_unretained BG3MFXEncoderState *encoderRecord = encoderState(self);
@@ -2333,7 +2332,7 @@ __attribute__((constructor)) static void start() {
             hook(other,"newRenderPipelineStateWithDescriptor:error:",(IMP)renderPipeline);
             hook(other,"newRenderPipelineStateWithDescriptor:options:reflection:error:",(IMP)renderPipelineOptions);
             hook(other,"newComputePipelineStateWithFunction:error:",(IMP)computePipeline);
-            if (trackDepth) hook(other,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
+            if (prepassTrim) hook(other,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
         }
     }
 }

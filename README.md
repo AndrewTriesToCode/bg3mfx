@@ -38,7 +38,7 @@ BGMMFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **Metal Performance Overlay** | Shows Apple's performance overlay with FPS and GPU activity. | |
 | **MetalFX Frame Generation** | Creates extra in-between frames for smoother motion. | **~100% more FPS** |
 | **MetalFX Spatial Upscaling** | Upscales a smaller rendered image to the final game resolution. | **~30% more FPS** |
-| **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better result than spatial. | **~20% more FPS** |
+| **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. | **~20% more FPS** |
 | **Shadow Rendering Optimizations** | Fixes shadow rendering bugs and adds other optimizations. | **~15% more FPS** |
 | **Depth Prepass Optimization** | Skips some repeated work when drawing scene depth. | **~2% more FPS** |
 
@@ -49,7 +49,7 @@ BGMMFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **CPU Thread Idling** | Lets idle game workers sleep instead of repeatedly checking for work. | **~50% less thread CPU usage** |
 | **Dynamic Worker Prioritization** | Moves background-capable workers to lower-power cores when frame rate allows. | **~33% less thread CPU usage** |
 | **Render Thread Optimizations** | Skips repeated texture and pipeline commands to reduce graphics-driver work. | **~1% more FPS**; **~25% less thread CPU usage** |
-| **Lua System Call Elimination** | Removes signal-mask and alternate-stack system calls from protected Lua calls. | **~14% less thread CPU usage** in affected calls |
+| **Lua System Call Elimination** | Removes signal-mask and alternate-stack system calls from protected Lua calls. | **~14% less thread CPU usage** |
 
 ### Other
 

@@ -519,7 +519,8 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     // Remove BG3's duplicate cascaded-shadow stage (docs/dev/performance.md). A mismatch
     // leaves BG3 unchanged. BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0 keeps both stages for
     // comparison.
-    if (shadowOptimizationsEnabled) {
+    const char *shadowOptimizationSetting = getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS");
+    if (!(shadowOptimizationSetting && strcmp(shadowOptimizationSetting, "0") == 0)) {
         NSError *shadowError = nil;
         if (!BG3MFXInstallShadowDuplicateFix(slide,report,&shadowError))
             event(@{@"event":@"shadowDuplicateFixSkipped",@"reason":shadowError.localizedDescription ?: @""});
