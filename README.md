@@ -1,6 +1,6 @@
 # BG3MFX
 
-BGMMFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage. It does not alter any actual game files on disk.
+BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage. It does not alter any actual game files on disk.
 
 - Framerate improvements anywhere from **50% to 100%** at no visual loss.
 
