@@ -787,7 +787,9 @@ static BOOL upscaleSpatial(id<MTLCommandBuffer> buffer, NSDictionary *inputs) {
     if (!encoded) failSpatial(error.localizedDescription ?: @"MetalFX could not encode the spatial frame.");
     return encoded;
 }
+#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
 static std::atomic<unsigned> temporalScalersCreated{0};
+#endif
 static NSMutableDictionary *temporalUpscalerCache() {
     static NSMutableDictionary *value;
     if (!value) value = [NSMutableDictionary dictionary];
@@ -893,7 +895,9 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
             upscaler.gpuFailureHandler=^(NSError *gpuError) {
                 failTemporal(gpuError.localizedDescription ?: @"Metal 4 could not complete temporal scaling commands.");
             };
+#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
             temporalScalersCreated.fetch_add(1);
+#endif
             record(@{@"event":@"temporalScalerCreated",@"api":upscaler.usesMetal4 ? @"metal4" : @"metal3"});
             std::lock_guard<std::recursive_mutex> lock(guard());
             // Keep every settled size. Evicting freed nothing (the scaler
@@ -2331,6 +2335,7 @@ __attribute__((constructor)) static void start() {
     }
 }
 // Read-only fixture access; a real BG3 process cannot expose its generated pair.
+#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
 extern "C" NSDictionary *BG3MFXStandaloneGeneratedPair(id<MTLCommandBuffer> buffer) {
     if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return nil;
     return objc_getAssociatedObject(buffer,&generatedPairKey);
@@ -2343,3 +2348,4 @@ extern "C" NSUInteger BG3MFXStandalonePresentedPairs(void) {
     if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return 0;
     return framePresenter.presentedPairs;
 }
+#endif

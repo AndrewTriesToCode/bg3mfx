@@ -3,7 +3,9 @@
 #import "features/metalfx-temporal-upscaling/TemporalJitter.h"
 #import "features/shadows/ShadowDuplicateFix.h"
 #import "features/lua-jump-fix/LuaJumpFix.h"
+#ifndef BG3MFX_NO_TRACE
 #import "integration/diagnostics/ServerPacingProbe.h"
+#endif
 #import "features/thread-idling/ThreadIdling.h"
 #import "features/dynamic-worker-prioritization/DynamicWorkers.h"
 #import <MetalFX/MetalFX.h>
@@ -543,13 +545,15 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     // BG3MFX_DYNAMIC_WORKER_PRIORITIZATION=0 keeps BG3's placement.
     if (!(getenv("BG3MFX_DYNAMIC_WORKER_PRIORITIZATION") && strcmp(getenv("BG3MFX_DYNAMIC_WORKER_PRIORITIZATION"),"0") == 0))
         BG3MFXInstallDynamicWorkers(report);
-    // Opt-in: time BG3's server tick, its CPU time and its limiter
+    // Diagnostic opt-in: time BG3's server tick, its CPU time and its limiter
     // (src/integration/diagnostics/ServerPacingProbe.h).
+#ifndef BG3MFX_NO_TRACE
     if (getenv("BG3MFX_TRACE_SERVER_PACING") && strcmp(getenv("BG3MFX_TRACE_SERVER_PACING"),"1") == 0) {
         NSError *pacingError = nil;
         if (!BG3MFXInstallServerPacingProbe(slide,&pacingError))
             event(@{@"event":@"serverPacingSkipped",@"reason":pacingError.localizedDescription ?: @""});
     }
+#endif
     void **table = at<void **>(Native::Callbacks);
     if (table[Layout::InitSlot] != at<void *>(Native::Init) || table[Layout::ApplyComboSlot] != at<void *>(Native::ApplyCombo)) { errorOut(error,@"The Video menu callback was already modified."); return NO; }
     originalInit = reinterpret_cast<void(*)(void *)>(table[Layout::InitSlot]);
@@ -593,6 +597,7 @@ int BG3MFXSelectedScalingMode(void) { return selectedScalingMode.load(); }
 
 // Standalone GPU regression harnesses have no BG3 settings manager. Never
 // permit them to override a real game's menu selection.
+#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
 extern "C" BOOL BG3MFXSetStandaloneScalingMode(int mode) {
     if (originalInit || [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"] || mode < 0 || mode > 3) return NO;
     selectedScalingMode.store(mode);
@@ -603,5 +608,6 @@ extern "C" BOOL BG3MFXSetStandaloneFrameGeneration(BOOL enabled) {
     frameGenerationChecked.store(enabled);
     return YES;
 }
+#endif
 
 BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported(); }

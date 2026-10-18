@@ -61,7 +61,7 @@ Keep live scene navigation under user control.
 See the [baseline capture procedure](baseline-captures.md) for collecting
 GPU traces, CPU samples, Metal HUD logs, and power estimates.
 
-Add `BG3MFX_FRAME_LOG=1` (quiet or diagnostic runtime) to log BG3's actual
+Add `BG3MFX_FRAME_LOG=1` to the diagnostic runtime to log BG3's actual
 rendered rate, the real and generated images that reached the display, drops,
 the presentation method, the gaps between shown images, and Frame Generation's
 sampled refresh rate, source interval, scheduled minimum durations, app active

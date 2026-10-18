@@ -2,12 +2,12 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 
-// Frame-rate log for development and bug reports, enabled with
-// BG3MFX_FRAME_LOG=1. Every 2 s it writes one line to the system log
+// Diagnostic-runtime frame-rate log, enabled with BG3MFX_FRAME_LOG=1.
+// Every 2 s it writes one line to the system log
 // (subsystem com.bg3mfx, category frames): BG3's rendered rate, the real and
 // generated images that reached the display, drops, the presentation method,
 // the gaps between shown images, and the latency from BG3 committing a frame
-// to the real image being shown. Disabled, each call is one branch.
+// to the real image being shown. Player-runtime calls compile away.
 
 typedef NS_ENUM(int, BG3MFXPresentMethod) {
     BG3MFXPresentNative = 0,       // Frame Generation off: BG3's own presents
@@ -19,6 +19,7 @@ typedef NS_ENUM(int, BG3MFXPresentMethod) {
 #ifdef __cplusplus
 extern "C" {
 #endif
+#ifndef BG3MFX_NO_TRACE
 BOOL BG3MFXFrameLogEnabled(void);
 // BG3 presented a frame, to a real drawable or a stand-in.
 void BG3MFXFrameLogRendered(void);
@@ -46,6 +47,20 @@ void BG3MFXFrameLogGPU(CFTimeInterval start, CFTimeInterval end,
                       CFTimeInterval committed, CFTimeInterval completed);
 // Time spent acquiring a native CAMetalLayer drawable.
 void BG3MFXFrameLogDrawableWait(CFTimeInterval seconds);
+#else
+static inline BOOL BG3MFXFrameLogEnabled(void) { return NO; }
+static inline void BG3MFXFrameLogRendered(void) {}
+static inline void BG3MFXFrameLogShown(BOOL, CFTimeInterval) {}
+static inline void BG3MFXFrameLogMethod(BG3MFXPresentMethod) {}
+static inline void BG3MFXFrameLogPacing(BOOL, double, double, unsigned, double, double) {}
+static inline void BG3MFXFrameLogDisplayState(BOOL, NSInteger) {}
+static inline void BG3MFXFrameLogBackpressure(double, double) {}
+static inline void BG3MFXFrameLogStandInOverflow(void) {}
+static inline void BG3MFXFrameLogBuffering(unsigned, unsigned) {}
+static inline void BG3MFXFrameLogLatency(CFTimeInterval, unsigned) {}
+static inline void BG3MFXFrameLogGPU(CFTimeInterval, CFTimeInterval, CFTimeInterval, CFTimeInterval) {}
+static inline void BG3MFXFrameLogDrawableWait(CFTimeInterval) {}
+#endif
 #ifdef __cplusplus
 }
 #endif

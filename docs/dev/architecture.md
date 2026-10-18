@@ -307,7 +307,7 @@ fixtures keep independent layouts/expected instructions to catch drift.
   avoiding two system calls per protected call (on by default;
   `BG3MFX_LUA_SYSTEM_CALL_ELIMINATION=0` disables it).
 - `src/integration/diagnostics/ServerPacingProbe.*`: opt-in measurement
-  (`BG3MFX_TRACE_SERVER_PACING=1`, both runtimes) of the server tick's work,
+  (`BG3MFX_TRACE_SERVER_PACING=1`, diagnostic runtime) of the server tick's work,
   CPU time and limiter, logged to category `pacing`.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
   pacing probe `0x800`, thread idling `0x9a0` and `0x9c0` (offsets from

@@ -29,19 +29,25 @@
 // uses a shared event signalled at the end of BG3's presenting command buffer.
 @interface BG3MFXFramePresenter : NSObject
 // Pairs whose generated and real images were both submitted for presentation.
+#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
 @property(atomic, readonly) NSUInteger presentedPairs;
+#endif
 @property(nonatomic, readonly) MTLPixelFormat pixelFormat;
 // Diagnostics: called when each worker drawable is shown (presentedTime > 0),
 // dropped (0), or skipped because no drawable was available (-1). `target` is
 // the requested display time (0 for as soon as possible).
+#ifndef BG3MFX_NO_TRACE
 @property(atomic, copy) void (^presentedHandler)(BOOL generated, CFTimeInterval presentedTime,
                                                   CFTimeInterval target, double interval);
+#endif
 @property(atomic, copy) void (^failureHandler)(NSError *);
 - (instancetype)initWithDevice:(id<MTLDevice>)device format:(MTLPixelFormat)format error:(NSError **)error;
 // Diagnostics: average milliseconds per frame the worker spent idle, waiting
 // for drawables, waiting for GPU copies, and sleeping for pacing, and how long
 // BG3 waited for a free stand-in, since the previous call.
+#ifndef BG3MFX_NO_TRACE
 - (NSDictionary *)takeTimingSummary;
+#endif
 // True on the presenter's own thread, whose drawable requests must stay real.
 + (BOOL)isPresentationThread;
 // The presenter that owns `drawable` if it is a stand-in, otherwise nil.

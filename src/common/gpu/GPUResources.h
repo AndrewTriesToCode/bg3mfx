@@ -35,9 +35,13 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 // Diagnostics: when set, receives each Metal 4 bridge submission's GPU time.
+#ifndef BG3MFX_NO_TRACE
 extern "C" void (*_Nullable BG3MFXGPUTimingHook)(NSString *label, double gpuSeconds);
+#endif
 
 NS_ASSUME_NONNULL_END
 
 // Total textures ever allocated by pools in this process (regression checks).
+#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
 extern "C" NSUInteger BG3MFXTexturePoolAllocations(void);
+#endif

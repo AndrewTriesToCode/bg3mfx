@@ -68,7 +68,6 @@ RUNTIME_SOURCES = \
 	src/features/metalfx-temporal-upscaling/TemporalJitter.mm \
 	src/features/metalfx-temporal-upscaling/TemporalJitter.S \
 	src/features/metalfx-frame-generation/FrameInterpolation.mm \
-	src/features/metalfx-frame-generation/FrameLog.mm \
 	src/features/shadows/ShadowDuplicateFix.mm \
 	src/features/thread-idling/ThreadIdling.mm \
 	src/features/dynamic-worker-prioritization/DynamicWorkers.mm \
@@ -77,7 +76,10 @@ RUNTIME_SOURCES = \
 	src/common/gpu/MetalFXPipeline.mm \
 	src/common/native/CodePatch.mm \
 	src/integration/menu/NativeMenu.mm \
-	src/integration/renderer/Trace.mm \
+	src/integration/renderer/Trace.mm
+
+DIAGNOSTIC_SOURCES = \
+	src/features/metalfx-frame-generation/FrameLog.mm \
 	src/integration/diagnostics/ServerPacingProbe.mm
 
 RUNTIME_HEADERS = \
@@ -99,25 +101,30 @@ RUNTIME_HEADERS = \
 	src/integration/menu/NativeMenu.h \
 	src/integration/diagnostics/ServerPacingProbe.h
 
-$(BIN_DIR)/libBG3MetalFXTrace.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) -dynamiclib $(RUNTIME_SOURCES) $(FRAMEWORKS) -o $@
+$(BIN_DIR)/libBG3MetalFXTrace.dylib: $(RUNTIME_SOURCES) $(DIAGNOSTIC_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) -dynamiclib $(RUNTIME_SOURCES) $(DIAGNOSTIC_SOURCES) $(FRAMEWORKS) -o $@
 	codesign --force --sign - $@
 
 $(BIN_DIR)/libBG3MetalFX.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 -dynamiclib $(RUNTIME_SOURCES) $(FRAMEWORKS) -o $@
 	codesign --force --sign - $@
 
+# Same quiet feature path, with standalone fixture exports unavailable to players.
+$(BIN_DIR)/libBG3MetalFXTest.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 -DBG3MFX_STANDALONE_TEST_HOOKS=1 -dynamiclib $(RUNTIME_SOURCES) $(FRAMEWORKS) -o $@
+	codesign --force --sign - $@
+
 $(BIN_DIR)/metalfx-probe: tools/probes/metalfx_probe.m | $(BIN_DIR)
 	xcrun clang -fobjc-arc -mmacosx-version-min=26.0 $< $(FRAMEWORKS) -o $@
 
-test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/prepass-trim-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTrace.dylib
+test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/prepass-trim-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTrace.dylib
 	$(BIN_DIR)/supported-build-smoke
 	$(BIN_DIR)/bind-filter-smoke
-	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFX.dylib
+	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib
-	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFX.dylib hdr
+	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib hdr
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib hdr
-	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFX.dylib scaled
+	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib scaled
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib scaled
 	$(BIN_DIR)/frame-interpolation-smoke
 	BG3MFX_TEST_DIRECT_INPUTS=1 $(BIN_DIR)/frame-interpolation-smoke
@@ -131,9 +138,9 @@ test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/f
 	$(BIN_DIR)/temporal-upscaler-smoke
 	BG3MFX_TEST_DIRECT_OUTPUT=1 $(BIN_DIR)/temporal-upscaler-smoke
 	$(BIN_DIR)/runtime-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib
-	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFX.dylib
+	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib
-	$(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/libBG3MetalFX.dylib
+	$(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib
 	BG3MFX_DEPTH_PREPASS_OPTIMIZATION=1 $(BIN_DIR)/prepass-trim-smoke $(BIN_DIR)/libBG3MetalFX.dylib expect-trim
 	BG3MFX_DEPTH_PREPASS_OPTIMIZATION=1 $(BIN_DIR)/prepass-trim-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib expect-trim
