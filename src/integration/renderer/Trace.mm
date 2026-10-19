@@ -1071,6 +1071,11 @@ static void endEncoder(id self, SEL cmd) {
             sceneFrames[targetKey] = inputFrame;
             record(@{@"event":@"temporalColorKept",@"pipeline":postprocess[@"pipeline"],@"target":texture(target)});
         } else if (inputFrame) {
+            if (!sceneFrames) {
+                // A Spatial frame seeded at FSR_Tonemap has no earlier association.
+                sceneFrames = [NSMutableDictionary dictionary];
+                objc_setAssociatedObject(commandBuffer,&temporalFrameKey,sceneFrames,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
             NSMutableDictionary *next = [inputFrame mutableCopy];
             next[@"taaColor"] = target;
             next[@"color"] = postprocess[@"tonemap"] ? postprocess[@"source"] : target;
@@ -1723,7 +1728,8 @@ static void drawInputs(id encoder, const CompositionDraw &call) {
         id<MTLCommandBuffer> buffer = encoderCommands;
         NSDictionary *sceneFrames = objc_getAssociatedObject(buffer,&temporalFrameKey);
         id<MTLTexture> target = encoderTarget(encoder);
-        if (sceneFrames.count && target) {
+        bool tonemap = [fragment isEqualToString:@"FSR_Tonemap"];
+        if ((sceneFrames.count || (mode == 2 && tonemap)) && target) {
             id<MTLTexture> source = boundTextures(encoder)[@"0"];
             NSDictionary *inputFrame = source ? sceneFrames[[NSValue valueWithPointer:(__bridge const void *)source]] : nil;
             NSMutableDictionary *next = [@{@"target":target} mutableCopy];
@@ -1731,7 +1737,16 @@ static void drawInputs(id encoder, const CompositionDraw &call) {
                 ((temporalColorPass(fragment) && source.pixelFormat == MTLPixelFormatRG11B10Float && target.pixelFormat == MTLPixelFormatRG11B10Float) ||
                  (frameGeneration(buffer) && [fragment isEqualToString:@"PPToneMap_LUT"]))) {
                 next[@"frame"] = inputFrame; next[@"source"] = source; next[@"pipeline"] = fragment;
-                if ([fragment isEqualToString:@"FSR_Tonemap"]) next[@"tonemap"] = @YES;
+                if (tonemap) next[@"tonemap"] = @YES;
+            }
+            // Spatial needs only the color image. With SMAA or no anti-aliasing
+            // there is no TAA pass to seed the chain, but FSR_Tonemap's input is
+            // still the linear HDR scene color at render size that MetalFX scales.
+            if (!next[@"frame"] && mode == 2 && tonemap && source && source != target &&
+                source.width == target.width && source.height == target.height &&
+                source.pixelFormat == MTLPixelFormatRG11B10Float && target.pixelFormat == MTLPixelFormatRG11B10Float) {
+                next[@"frame"] = @{@"color":source,@"taaColor":source}; next[@"source"] = source;
+                next[@"pipeline"] = fragment; next[@"tonemap"] = @YES;
             }
             // In-place scene passes (grading with bloom off, UI model VFX) draw onto an
             // already tagged image; keep its tag. An unrecognized draw later in the
@@ -1889,9 +1904,11 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
                 fallBackToNative(self,NO,@"Could not match FSR input to BG3's linear HDR scene color.");
                 goto native;
             }
-            objc_setAssociatedObject(self,&fsrInputsKey,
-                @{@"input":temporal ? source : spatialColor,@"encodedInput":source,@"scaled":scaled,@"mode":@(mode),
-                  @"nativeTAA":frame[@"nativeTAA"]},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            NSMutableDictionary *request = [@{@"input":temporal ? source : spatialColor,@"encodedInput":source,
+                @"scaled":scaled,@"mode":@(mode)} mutableCopy];
+            // Absent when Spatial was seeded at FSR_Tonemap without a TAA pass.
+            if (frame[@"nativeTAA"]) request[@"nativeTAA"] = frame[@"nativeTAA"];
+            objc_setAssociatedObject(self,&fsrInputsKey,request,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             noteAssociation(self,AssocFSRInputs);
             suppressNative = YES;
         } else if ([pipelineName isEqualToString:@"FSR_RCAS"]) {

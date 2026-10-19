@@ -50,6 +50,12 @@ BG3's callbacks and native rendering.
 RGBA16Float, runs MetalFX Spatial in HDR mode, and copies the result into BG3's
 FSR output target. The input is after bloom and color grading but before
 `FSR_Tonemap`; BG3's tone mapping and UI composition remain downstream.
+Spatial needs only this color image, not TAA. With TAA on, the chain is seeded
+at BG3's TAA output as described below. With SMAA or no anti-aliasing there is
+no TAA pass, so an untagged `FSR_Tonemap` input (RG11B10Float, the same size as
+its output) seeds the chain there. A live trace with SMAA (October 19) showed
+SMAA, bloom and color grading writing that input; before this seeding, every
+SMAA frame fell back to native FSR.
 
 `Trace.mm` captures HDR scene color, device depth, motion, camera constants, and
 BG3's original jitter at the TAA stage. It copies current color into the skipped

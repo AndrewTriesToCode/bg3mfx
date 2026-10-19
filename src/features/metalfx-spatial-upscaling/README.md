@@ -6,7 +6,8 @@ Adds the “MetalFX Spatial” choice to BG3's Upscaling Type menu. It is user-s
 defaults to BG3's native Off setting; native Off and AMD FSR 1.0 remain
 available. Spatial consumes BG3's linear HDR scene after bloom and color
 grading, before `FSR_Tonemap`, then returns the scaled image to BG3's normal
-tone mapping and UI path. BG3's independent anti-aliasing setting remains active unless Frame Generation is enabled.
+tone mapping and UI path. BG3's independent anti-aliasing setting remains active unless Frame Generation is enabled;
+Spatial works with TAA, SMAA or no anti-aliasing, because it needs only the color image.
 
 The upscaler is implemented in
 [`SpatialUpscaler.mm`](../../../src/features/metalfx-spatial-upscaling/SpatialUpscaler.mm), using

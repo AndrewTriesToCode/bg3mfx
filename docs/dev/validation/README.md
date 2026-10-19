@@ -1,6 +1,6 @@
 # Current validation status
 
-Updated October 15, 2026. This page is the active record. Detailed dated notes
+Updated October 19, 2026. This page is the active record. Detailed dated notes
 are archived under [`history/`](history/).
 
 ## Shadow Rendering Optimizations
@@ -146,6 +146,19 @@ interpolation) dominates.
 Local traces, captures, samples and replay inputs under `build/` were deleted on
 October 12, 2026. Validation pages that cite those paths describe results that
 can no longer be re-inspected locally.
+
+## Spatial without TAA (October 19, 2026)
+
+With Anti-Aliasing set to SMAA, MetalFX Spatial fell back to native FSR on every
+frame ("Could not match FSR input to BG3's linear HDR scene color"): the scene
+chain was seeded only at BG3's TAA pass. A diagnostic trace with SMAA showed
+SMAA, bloom and color grading writing `FSR_Tonemap`'s input, RG11B10Float at
+render size (640×400 → 1280×800 windowed). Spatial now seeds the chain there
+when nothing upstream tagged it. `spatial-hook-smoke no-taa` reproduced the
+fallback before the change and passes its pixel checks after it in both
+runtimes. Live, quiet runtime, SMAA, windowed: zero fallback messages at the
+main menu and in game, and the user reported the image looks good. Displayed
+acceptance only; no frame-rate comparison.
 
 ## Metal 4 Temporal path
 

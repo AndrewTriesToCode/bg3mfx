@@ -52,6 +52,7 @@ int main(int argc, char **argv) {
         NSString *source = @"#include <metal_stdlib>\nusing namespace metal;\n"
             "vertex float4 Fullscreen(uint id [[vertex_id]]) {float2 p[3]={float2(-1,-1),float2(3,-1),float2(-1,3)};return float4(p[id],0,1);}\n"
             "fragment float4 PPTAA_PS(float4 p [[position]], texture2d<float> src [[texture(0)]]) {return src.read(uint2(p.xy));}\n"
+            "fragment float4 SMAANeighborhoodBlending_PS(float4 p [[position]], texture2d<float> src [[texture(0)]]) {return src.read(uint2(p.xy));}\n"
             "fragment float4 PPBloomUpsampleBlurAndCombine_PS(float4 p [[position]], texture2d<float> src [[texture(0)]]) {return float4(src.read(uint2(p.xy)).rgb+1.0,1);}\n"
             "fragment float4 PPColorGradingApplyLUTPS(float4 p [[position]], texture2d<float> src [[texture(0)]]) {return float4(src.read(uint2(p.xy)).rgb+1.0,1);}\n"
             "fragment float4 FSR_Tonemap(float4 p [[position]], texture2d<float> src [[texture(0)]]) {float3 c=src.read(uint2(p.xy)).rgb;return float4(c/(1+max(c.r,max(c.g,c.b))),1);}\n"
@@ -73,7 +74,7 @@ int main(int argc, char **argv) {
             if (!state) { fprintf(stderr,"%s\n",error.description.UTF8String); return 4; } [pipelines addObject:state];
         }
         NSMutableArray *renderPipelines = [NSMutableArray array];
-        for (NSString *name in @[@"PPTAA_PS",@"PPBloomUpsampleBlurAndCombine_PS",@"PPColorGradingApplyLUTPS",@"FSR_Tonemap"]) {
+        for (NSString *name in @[@"PPTAA_PS",@"PPBloomUpsampleBlurAndCombine_PS",@"PPColorGradingApplyLUTPS",@"FSR_Tonemap",@"SMAANeighborhoodBlending_PS"]) {
             MTLRenderPipelineDescriptor *desc = [MTLRenderPipelineDescriptor new];
             desc.vertexFunction = [library newFunctionWithName:@"Fullscreen"];
             desc.fragmentFunction = [library newFunctionWithName:name];
@@ -99,7 +100,8 @@ int main(int argc, char **argv) {
             id<MTLComputeCommandEncoder> encoder = [buffer computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
             [encoder setComputePipelineState:pipelines[0]]; [encoder setTexture:input atIndex:0];
             [encoder dispatchThreads:MTLSizeMake(256,256,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)]; [encoder endEncoding];
-            drawPass(buffer,input,taa,renderPipelines[0]);
+            // "no-taa": BG3 with SMAA (or no AA) runs no TAA pass to seed the chain.
+            drawPass(buffer,input,taa,renderPipelines[[mode isEqualToString:@"no-taa"] ? 4 : 0]);
             drawPass(buffer,taa,bloom,renderPipelines[1]);
             drawPass(buffer,bloom,graded,renderPipelines[2]);
             drawPass(buffer,graded,tonemapped,renderPipelines[3]);
@@ -133,6 +135,7 @@ int main(int argc, char **argv) {
                 }
             }
         }
-        puts("MetalFX Spatial scaled post-bloom/color-grade linear HDR across three frames; native FSR/RCAS stayed suppressed, including a displaced creation hook.");
+        if ([mode isEqualToString:@"no-taa"]) puts("MetalFX Spatial without TAA scaled FSR_Tonemap's linear HDR input across three frames; native FSR/RCAS stayed suppressed.");
+        else puts("MetalFX Spatial scaled post-bloom/color-grade linear HDR across three frames; native FSR/RCAS stayed suppressed, including a displaced creation hook.");
     }
 }
