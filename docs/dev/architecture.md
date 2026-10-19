@@ -14,7 +14,14 @@ MetalFX type temporarily invokes BG3's FSR setup callback to retain its quality
 and render-resolution behavior, then restores the custom menu value and stores
 the selected type separately. Startup and Options → Back use the same setup.
 The quality state is independent of the custom type. This bridge is
-build-specific and guarded by the executable's Mach-O UUID.
+build-specific and guarded by the executable's Mach-O UUID. BG3's FSR quality
+setter resets Upscaling Sharpness to 0.8 whenever the quality changes, and
+BG3's Upscaling Type callback redraws the slider from that setting. A moved
+slider reaches the setting only on Apply, so the bridge saves the slider's
+displayed value and restores both across type changes, Options → Back and
+MetalFX quality changes. The slider controls FSR's RCAS pass,
+which MetalFX replaces, so it is dimmed while MetalFX Spatial or Temporal is
+selected.
 
 Spatial keeps the native anti-aliasing option enabled unless Frame Generation is
 on. While Temporal or Frame Generation is on, the menu selects the Anti-Aliasing

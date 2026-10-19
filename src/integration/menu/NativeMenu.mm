@@ -209,7 +209,44 @@ static void selectAntiAliasing(void *aa, int value) {
         if (table && table[0]) reinterpret_cast<void(*)(void *,int)>(table[0])(entry+Layout::ObserverContext,value);
     }
 }
+static void *findItemByID(void *manager, uint16_t id) {
+    void **items = field<void **>(manager,Layout::Items);
+    uint32_t count = field<uint32_t>(manager,Layout::ItemCount);
+    if (!items || count > 256) return nullptr;
+    for (uint32_t i=0;i<count;++i) if (field<uint16_t>(items[i],Layout::ItemID) == id) return items[i];
+    return nullptr;
+}
+static const uint16_t upscaleSharpnessID = 101;
+// The player's sharpness is what the slider shows: moving it updates only the
+// slider until Apply copies it to the manager (VideoOptionsManager::ApplySlider).
+static float currentSharpness(void *manager) {
+    void *slider = findItemByID(manager,upscaleSharpnessID);
+    return slider ? field<float>(slider,Layout::SliderValue)/100 : field<float>(manager,Layout::UpscaleSharpness);
+}
+// BG3's FSR quality setter resets Upscaling Sharpness to 0.8 whenever the quality
+// changes, which the MetalFX bridge does behind the player's back. Put back the
+// player's value and show it, as the native Upscaling Type callback does.
+static bool restoreSharpness(void *manager, float value) {
+    bool changed = field<float>(manager,Layout::UpscaleSharpness) != value;
+    field<float>(manager,Layout::UpscaleSharpness) = value;
+    void *slider = findItemByID(manager,upscaleSharpnessID);
+    if (!slider) return changed;
+    if (field<float>(slider,Layout::SliderValue) == value*100) return changed;
+    float shown = value*100;
+    field<float>(slider,Layout::SliderValue) = shown;
+    void *observers = field<void *>(slider,Layout::SliderObservers);
+    int32_t observerCount = field<int32_t>(slider,Layout::SliderObserverCount);
+    if (observers && observerCount >= 0 && observerCount <= 256) for (int32_t j=0;j<observerCount;++j) {
+        char *entry = static_cast<char *>(observers)+j*Layout::ObserverStride;
+        void **table = field<void **>(entry,Layout::VTable);
+        if (table && table[0]) reinterpret_cast<void(*)(void *,float)>(table[0])(entry+Layout::ObserverContext,shown);
+    }
+    return changed;
+}
 static void updateDependentControls(void *manager, int mode) {
+    // Upscaling Sharpness drives FSR's RCAS pass, which MetalFX replaces; dim it
+    // there. BG3 enables it for its FSR type, which the MetalFX types run as.
+    if (metalFXValue(mode)) setItemEnabled(findItemByID(manager,upscaleSharpnessID),0);
     // MetalFX Temporal and Frame Generation use the depth, motion and camera
     // data of BG3's TAA pass (Temporal then replaces its draw). While either is
     // on, select TAA and dim the control; afterwards restore the player's choice.
@@ -268,10 +305,13 @@ static void restoreCustomQuality(void *manager, int value, BOOL refresh) {
 static void qualityChanged(void *storage, const void *item) {
     int value = item ? field<int32_t>(const_cast<void *>(item),Layout::ComboSelection) : -1;
     int mode = selectedScalingMode.load();
+    void *manager = storage ? field<void *>(storage,Layout::CallbackManager) : nullptr;
+    float sharpness = manager ? currentSharpness(manager) : 0;
     if (originalQualityCall) originalQualityCall(storage,item);
     if (storage) {
-        void *manager = field<void *>(storage,Layout::CallbackManager);
         if (manager) {
+            if (metalFXValue(mode) && restoreSharpness(manager,sharpness))
+                at<void(*)(void *,bool)>(Native::PublishSettings)(manager,false);
             if (metalFXValue(mode) && value >= 0 && value <= 3) {
                 [NSUserDefaults.standardUserDefaults setInteger:value forKey:qualityPreference];
                 event(@{@"event":@"nativeQualityChanged",@"value":@(value),@"nativeQuality":@(field<uint8_t>(manager,Layout::NativeQuality)),
@@ -289,10 +329,12 @@ static void applyCombo(void *manager, const void *item) {
     int value = upscale ? field<int32_t>(mutableItem,Layout::ComboSelection) : -1;
     bool custom = metalFXValue(value);
     int quality = custom ? customQuality(manager) : -1;
+    float sharpness = currentSharpness(manager);
     if (custom) field<int32_t>(mutableItem,Layout::ComboSelection) = 1;
     originalApplyCombo(manager,item);
     if (custom) {
         restoreCustomQuality(manager,quality,YES);
+        restoreSharpness(manager,sharpness);
         field<int32_t>(mutableItem,Layout::ComboSelection) = value;
         updateDependentControls(manager,value);
         event(@{@"event":@"nativeUpscalingApplied",@"value":@(value),@"nativeType":@(field<uint8_t>(manager,Layout::NativeUpscalingType))});
@@ -318,13 +360,16 @@ static void upscaleChanged(void *storage, const void *item) {
     // selected, so the native Off and FSR paths remain unchanged.
     int appliedValue = metalFXValue(value) ? 1 : value;
     int quality = metalFXValue(value) ? customQuality(manager) : -1;
+    float sharpness = currentSharpness(manager);
     field<int32_t>(const_cast<void *>(item),Layout::ComboSelection) = appliedValue;
     originalUpscaleCall(storage,item);
     if (quality >= 0) restoreCustomQuality(manager,quality,YES);
+    // Changing the type is not a sharpness choice, even to or from FSR.
+    bool sharpnessRestored = restoreSharpness(manager,sharpness);
     field<int32_t>(const_cast<void *>(item),Layout::ComboSelection) = value;
     // The selection callback already published Balanced before we restored
     // the manager's quality. Publish the restored settings to the renderer too.
-    if (quality >= 0) at<void(*)(void *,bool)>(Native::PublishSettings)(manager,false);
+    if (quality >= 0 || sharpnessRestored) at<void(*)(void *,bool)>(Native::PublishSettings)(manager,false);
     int previous = selectedScalingMode.exchange(value);
     updateDependentControls(manager,value);
     if (metalFXValue(value))
