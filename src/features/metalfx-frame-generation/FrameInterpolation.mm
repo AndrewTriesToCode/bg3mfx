@@ -185,6 +185,10 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
             [_lock unlock]; return nil;
         }
     } else { [_effect3 encodeToCommandBuffer:buffer]; }
+    // The effect retains its textures (BG3's own when read directly); the
+    // command buffer or Metal 4 bridge keeps them until the GPU finishes.
+    _effect.colorTexture=nil; _effect.prevColorTexture=nil; _effect.outputTexture=nil;
+    _effect.depthTexture=nil; _effect.motionTexture=nil;
     if (!_directColor) {
         if (_previous) [_colors relinquish:_previous afterCommandBuffer:buffer];
         [_colors retainTexture:color]; _previous=color;

@@ -216,11 +216,28 @@ Apple report. A live windowed-mode drag created one per frame
 until BG3 hung inside scaler creation with about 1,000 `ANEServicesThread`s
 (October 13). A size with no scaler now runs BG3's native FSR until it holds for
 0.3 s; the session's first scaler is created at once. The cache keeps every
-settled size: its former six-entry bound evicted by `NSDictionary` key order,
-which could drop the scaler just added, so a steady size recreated one every
-frame (about 1,000 in 35 s live, after nine window sizes) and hung BG3 the same
-way. `temporal-hook-smoke` resizes through nine sizes, returns to each, and
-checks that every size creates exactly one scaler.
+settled size whose scaler leaks: its former six-entry bound evicted by
+`NSDictionary` key order, which could drop the scaler just added, so a steady
+size recreated one every frame (about 1,000 in 35 s live, after nine window
+sizes) and hung BG3 the same way. Once another size is rendered, cached scalers
+with taller outputs, which MetalFX frees, are evicted. `temporal-hook-smoke`
+resizes through nine sizes, returns to each, and checks that every size creates
+exactly one scaler.
+
+MetalFX scalers retain the textures last assigned to them, and a Metal 4
+residency set retains every allocation added to it (both verified standalone).
+A cached scaler for a size no longer rendered therefore kept that size's BG3
+color, depth and motion targets alive after BG3 freed them. The pipeline now
+clears the scaler's texture properties after encoding (the command buffer or
+the Metal 4 bridge keeps them for the GPU), and the previous size's scaler drops
+its residency set when the size changes. `temporal-hook-smoke` checks that no
+earlier size's textures survive (24 of 32 did before).
+
+Spatial uses the same 0.3 s settle and keeps at most two sizes, the current one
+and the one before it; MetalFX frees evicted Spatial scalers. Keeping every size
+held each one's scaler and pooled textures for the session: `spatial-hook-smoke
+resize` measured +170.8 MB of GPU allocations after 24 sizes at 200–384 px input,
+and +6.3 MB with the bound.
 
 MetalFX consumes BG3's textures directly wherever it accepts their format and
 usage, avoiding per-frame conversion passes (about 0.7 ms each for Temporal and

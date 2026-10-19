@@ -118,6 +118,7 @@ static void failure(NSError **error, NSString *message) {
 
 - (BOOL)usesMetal4 { return _temporal4 != nil; }
 - (void)resetHistory { _reset = YES; }
+- (void)releaseIdleResources { [_bridge releaseResidency]; }
 
 - (BOOL)validTexture:(id<MTLTexture>)texture format:(MTLPixelFormat)format usage:(MTLTextureUsage)usage {
     return texture.device == _device && texture.textureType == MTLTextureType2D && texture.sampleCount == 1 &&
@@ -175,6 +176,8 @@ static void failure(NSError **error, NSString *message) {
         _spatial.inputContentWidth = color.width;
         _spatial.inputContentHeight = color.height;
         [_spatial encodeToCommandBuffer:buffer];
+        // The scaler retains its textures; the command buffer keeps them for the GPU.
+        _spatial.colorTexture = nil; _spatial.outputTexture = nil;
     } else {
         _temporal.colorTexture = color;
         _temporal.depthTexture = depth;
@@ -200,6 +203,11 @@ static void failure(NSError **error, NSString *message) {
                 [self resetHistory]; return nil;
             }
         } else [_temporal3 encodeToCommandBuffer:buffer];
+        // The scaler retains its textures, which would keep a cached size's last
+        // BG3 render targets alive after a resize. Encoding is done, and the
+        // command buffer (or the Metal 4 bridge) keeps them until the GPU finishes.
+        _temporal.colorTexture = nil; _temporal.depthTexture = nil;
+        _temporal.motionTexture = nil; _temporal.outputTexture = nil;
     }
     _reset = NO;
     return frame;

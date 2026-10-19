@@ -475,9 +475,13 @@ static void record(NSDictionary *event) {
     if (important) identified[@"time"] = @(NSDate.timeIntervalSinceReferenceDate);
     NSData *data = [NSJSONSerialization dataWithJSONObject:identified options:NSJSONWritingSortedKeys error:nil];
     if (!data) return;
-    NSString *key = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    if ([seen containsObject:key]) return;
-    [seen addObject:key];
+    // Important events carry a timestamp, so each is unique: remembering them
+    // grew the set by one entry per frame with Frame Generation or prepass trim.
+    if (!important) {
+        NSString *key = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        if ([seen containsObject:key]) return;
+        [seen addObject:key];
+    }
     NSMutableData *line = [data mutableCopy];
     [line appendData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]];
     [output writeData:line];
@@ -771,22 +775,57 @@ static void menuReport(NSDictionary *event) {
         BG3MFXResetTemporalHistory();
     }
 }
+static NSString *scalerKey(id<MTLDevice> device, NSUInteger iw, NSUInteger ih, NSUInteger ow, NSUInteger oh) {
+    return [NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu",(__bridge void *)device,iw,ih,ow,oh];
+}
+// Creating a scaler takes tens of milliseconds. Dragging a window edge gives
+// every frame a new size, so a size with no scaler runs BG3's native FSR until
+// it has held for a moment; the first scaler of the session is created at once.
+struct PendingSize { NSString *key; double since; };
+static BOOL sizeSettled(NSString *key, NSDictionary *cache, PendingSize &pending) {
+    std::lock_guard<std::recursive_mutex> lock(guard());
+    if (cache[key] || !cache.count) return YES;
+    double now=NSProcessInfo.processInfo.systemUptime;
+    if (![key isEqualToString:pending.key]) { pending.key=key; pending.since=now; return NO; }
+    return now-pending.since>=0.3;
+}
+// Spatial scalers are freed normally. Keep only the sizes in use, the current
+// one and the one before it (two views of different sizes may alternate):
+// keeping every size held each one's scaler and pooled textures for the rest
+// of the session, about 7 MB per size even at 384×384 → 768×768.
+static constexpr NSUInteger SpatialCachedSizes = 2;
+static NSMutableDictionary<NSString *, BG3MFXSpatialUpscaler *> *spatialUpscalerCache() {
+    static NSMutableDictionary *value = [NSMutableDictionary dictionary];
+    return value;
+}
+static NSMutableArray<NSString *> *spatialUpscalerOrder() {  // least recently used first
+    static NSMutableArray *value = [NSMutableArray array];
+    return value;
+}
+static BOOL spatialSizeSettled(NSString *key) {
+    static PendingSize pending;
+    return sizeSettled(key,spatialUpscalerCache(),pending);
+}
 static BOOL upscaleSpatial(id<MTLCommandBuffer> buffer, NSDictionary *inputs) {
     id<MTLTexture> input = inputs[@"input"], destination = inputs[@"destination"];
     if (!input || !destination) return NO;
     // Fetch/store under the tracer guard, but construct MetalFX outside it:
     // synchronous driver initialization can call our hooks on other threads.
-    static NSMutableDictionary *cache;
-    NSString *key = [NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu", (__bridge void *)buffer.device,
-        input.width,input.height,destination.width,destination.height];
+    NSString *key = scalerKey(buffer.device,input.width,input.height,destination.width,destination.height);
     BG3MFXSpatialUpscaler *upscaler;
-    { std::lock_guard<std::recursive_mutex> lock(guard());
-      if (!cache) cache = [NSMutableDictionary dictionary]; upscaler = cache[key]; }
+    { std::lock_guard<std::recursive_mutex> lock(guard()); upscaler = spatialUpscalerCache()[key]; }
     NSError *error = nil;
-    if (!upscaler) {
-        upscaler = [[BG3MFXSpatialUpscaler alloc] initWithDevice:buffer.device inputWidth:input.width
-            inputHeight:input.height outputWidth:destination.width outputHeight:destination.height error:&error];
-        if (upscaler) { std::lock_guard<std::recursive_mutex> lock(guard()); cache[key] = upscaler; }
+    if (!upscaler) upscaler = [[BG3MFXSpatialUpscaler alloc] initWithDevice:buffer.device inputWidth:input.width
+        inputHeight:input.height outputWidth:destination.width outputHeight:destination.height error:&error];
+    if (upscaler) {
+        // Frames in flight keep an evicted scaler alive until they complete.
+        std::lock_guard<std::recursive_mutex> lock(guard());
+        NSMutableArray<NSString *> *order = spatialUpscalerOrder();
+        [order removeObject:key]; [order addObject:key];
+        spatialUpscalerCache()[key] = upscaler;
+        while (order.count > SpatialCachedSizes) {
+            [spatialUpscalerCache() removeObjectForKey:order.firstObject]; [order removeObjectAtIndex:0];
+        }
     }
     BOOL encoded = upscaler && [upscaler encodeHDRColor:input destination:destination commandBuffer:buffer error:&error];
     record(@{@"event": @"spatialUpscaleEncoded", @"success": @(encoded),
@@ -808,25 +847,17 @@ static NSMutableDictionary *temporalUpscalerCache() {
     if (!value) value = [NSMutableDictionary dictionary];
     return value;
 }
-static NSString *temporalScalerKey(id<MTLDevice> device, NSUInteger iw, NSUInteger ih, NSUInteger ow, NSUInteger oh) {
-    return [NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu",(__bridge void *)device,iw,ih,ow,oh];
-}
-// Creating a Temporal scaler takes tens of milliseconds, and on macOS 27.0.1 a
-// Temporal scaler whose output is 1512 px tall or less is never deallocated
-// (Metal 3 and Metal 4 alike): each keeps an ANEServicesThread and tens to
-// hundreds of MB. Dragging a window edge gives every frame a new size; creating one
-// per frame stuttered, corrupted the image and eventually hung BG3 inside
-// scaler creation with about a thousand leaked threads. A size with no scaler
-// therefore runs BG3's native FSR until it has held for a moment; the first
-// scaler of the session is created at once.
+// On macOS 27.0.1 a Temporal scaler whose output is 1512 px tall or less is
+// never deallocated (Metal 3 and Metal 4 alike): each keeps an
+// ANEServicesThread and tens to hundreds of MB. Creating one per frame while a
+// window edge was dragged stuttered, corrupted the image and eventually hung
+// BG3 inside scaler creation with about a thousand leaked threads, so new
+// sizes wait to settle and such scalers stay cached for reuse. Taller ones are
+// freed, so they are evicted once another size is rendered.
+static constexpr NSUInteger TemporalLeakedOutputHeight = 1512;
 static BOOL temporalSizeSettled(NSString *key) {
-    static NSString *pendingKey;
-    static double pendingSince;
-    std::lock_guard<std::recursive_mutex> lock(guard());
-    if (temporalUpscalerCache()[key] || !temporalUpscalerCache().count) return YES;
-    double now=NSProcessInfo.processInfo.systemUptime;
-    if (![key isEqualToString:pendingKey]) { pendingKey=key; pendingSince=now; return NO; }
-    return now-pendingSince>=0.3;
+    static PendingSize pending;
+    return sizeSettled(key,temporalUpscalerCache(),pending);
 }
 void BG3MFXResetTemporalHistory(void) {
     NSArray<BG3MFXTemporalUpscaler *> *upscalers;
@@ -897,7 +928,7 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
     if (!temporalParameters(inputs,&parameters,&reason)) { failTemporal(reason); return NO; }
     BOOL nativeAAWarmup = [inputs[@"nativeTAAPreserved"] boolValue];
     parameters.reset |= nativeAAWarmup || temporalResetPending.exchange(false);
-    NSString *key = temporalScalerKey(buffer.device,color.width,color.height,destination.width,destination.height);
+    NSString *key = scalerKey(buffer.device,color.width,color.height,destination.width,destination.height);
     BG3MFXTemporalUpscaler *upscaler;
     { std::lock_guard<std::recursive_mutex> lock(guard()); upscaler = temporalUpscalerCache()[key]; }
     NSError *error = nil;
@@ -913,11 +944,30 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
 #endif
             record(@{@"event":@"temporalScalerCreated",@"api":upscaler.usesMetal4 ? @"metal4" : @"metal3"});
             std::lock_guard<std::recursive_mutex> lock(guard());
-            // Keep every settled size. Evicting freed nothing (the scaler
-            // leaks), and a bounded cache could evict the scaler it had just
-            // added, recreating it every frame until the ANE was exhausted.
+            // Keep every settled size that leaks: evicting it freed nothing,
+            // and a bounded cache once evicted the scaler it had just added,
+            // recreating it every frame until the ANE was exhausted.
             temporalUpscalerCache()[key] = upscaler;
         }
+    }
+    if (upscaler) {
+        // When the size changes, the previous size's scaler lets go of what it
+        // kept for its next frame (BG3 frees those render targets on resize),
+        // and other sizes MetalFX does free are evicted. The current size is
+        // never evicted.
+        static NSString *activeKey;
+        NSMutableArray<BG3MFXTemporalUpscaler *> *idle = [NSMutableArray array];
+        { std::lock_guard<std::recursive_mutex> lock(guard());
+          if (![key isEqualToString:activeKey]) {
+              if (BG3MFXTemporalUpscaler *previous = activeKey ? temporalUpscalerCache()[activeKey] : nil) [idle addObject:previous];
+              activeKey = key;
+              for (NSString *cached in temporalUpscalerCache().allKeys) {
+                  BG3MFXTemporalUpscaler *other = temporalUpscalerCache()[cached];
+                  if (![cached isEqualToString:key] && other.outputHeight > TemporalLeakedOutputHeight)
+                      [temporalUpscalerCache() removeObjectForKey:cached];
+              }
+          } }
+        for (BG3MFXTemporalUpscaler *previous in idle) [previous releaseIdleResources];
     }
     #ifndef BG3MFX_NO_TRACE
     validateMotionSample(buffer,motion);
@@ -1895,13 +1945,16 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
                     fallBackToNative(self,YES,[NSString stringWithFormat:@"The native upscaling stage did not match the captured temporal scene inputs (%@).", !frame ? (objc_getAssociatedObject(buffer,&sceneCaptureFailureKey) ?: @"no matching scene color") : source != frame[@"taaColor"] ? @"different scene color target" : @"invalid output dimensions"]);
                     goto native;
                 }
-                if (!temporalSizeSettled(temporalScalerKey(buffer.device,spatialColor.width,spatialColor.height,scaled.width,scaled.height))) {
+                if (!temporalSizeSettled(scalerKey(buffer.device,spatialColor.width,spatialColor.height,scaled.width,scaled.height))) {
                     fallBackToNative(self,YES,@"The output size is changing; waiting for it to settle before creating a Temporal scaler.");
                     goto native;
                 }
             } else if (!spatialColor || spatialColor.width != source.width || spatialColor.height != source.height ||
                        spatialColor.pixelFormat != MTLPixelFormatRG11B10Float) {
                 fallBackToNative(self,NO,@"Could not match FSR input to BG3's linear HDR scene color.");
+                goto native;
+            } else if (!temporal && !spatialSizeSettled(scalerKey(buffer.device,spatialColor.width,spatialColor.height,scaled.width,scaled.height))) {
+                fallBackToNative(self,NO,@"The output size is changing; waiting for it to settle before creating a Spatial scaler.");
                 goto native;
             }
             NSMutableDictionary *request = [@{@"input":temporal ? source : spatialColor,@"encodedInput":source,

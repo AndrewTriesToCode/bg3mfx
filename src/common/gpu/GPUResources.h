@@ -32,6 +32,9 @@ NS_ASSUME_NONNULL_BEGIN
                   encode:(void (^)(id<MTL4CommandBuffer> commands))encode
                  failure:(nullable void (^)(NSError *error))failure
                    error:(NSError **)error;
+// The residency set retains its allocations. Drop it while idle; submissions
+// in flight keep their own reference, and the next one starts a new set.
+- (void)releaseResidency;
 @end
 
 // Diagnostics: when set, receives each Metal 4 bridge submission's GPU time.

@@ -15,6 +15,7 @@ static inline void BG3MFXApplyTemporalJitter(BG3MFXFrameParameters *p, float x, 
 // HDR encoding; depth and motion are the real scene buffers discovered at TAA.
 @interface BG3MFXTemporalUpscaler : NSObject
 @property(nonatomic, readonly) BOOL usesMetal4;
+@property(nonatomic, readonly) NSUInteger outputHeight;
 @property(nonatomic, copy, nullable) void (^gpuFailureHandler)(NSError *error);
 - (nullable instancetype)initWithDevice:(id<MTLDevice>)device
                               inputWidth:(NSUInteger)width
@@ -30,6 +31,8 @@ static inline void BG3MFXApplyTemporalJitter(BG3MFXFrameParameters *p, float x, 
        commandBuffer:(id<MTLCommandBuffer>)commandBuffer
                error:(NSError **)error;
 - (void)resetHistory;
+// Lets go of memory kept for the next frame while this size is not rendered.
+- (void)releaseIdleResources;
 @end
 
 NS_ASSUME_NONNULL_END

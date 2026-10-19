@@ -160,6 +160,20 @@ runtimes. Live, quiet runtime, SMAA, windowed: zero fallback messages at the
 main menu and in game, and the user reported the image looks good. Displayed
 acceptance only; no frame-rate comparison.
 
+## Scaler caches across resizes (October 19, 2026)
+
+A static review found two leaks in the per-size scaler caches; regression
+checks reproduced both before the change. Offscreen, `spatial-hook-smoke
+resize` measured +170.8 MB of GPU allocations after a 24-size sweep (every
+Spatial size kept); with a two-size cache and the 0.3 s settle it measures
++6.3 MB (+10.8 MB diagnostic runtime). `temporal-hook-smoke` found 24 of 32
+earlier-size BG3 textures kept alive by cached Temporal scalers (texture
+properties and the Metal 4 residency set); none survive now. Live, before the
+change, a 10 s Spatial window drag in BG3 (SMAA, 1280×800 window) retained
++280 MB of graphics memory, and a second shorter drag +6 MB; how much of the
+first was BG3's own resize cost was not isolated. Live re-measurement after the
+change is pending.
+
 ## Metal 4 Temporal path
 
 Temporal now chooses the Metal 4 scaler on supported devices and retains the

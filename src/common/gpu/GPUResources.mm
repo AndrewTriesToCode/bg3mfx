@@ -106,6 +106,10 @@ static NSError *resourceError(NSString *reason) {
     if (changed) [_residency commit];
     return _residency;
 }
+- (void)releaseResidency {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _residency = nil;
+}
 - (BOOL)encodeIntoBuffer:(id<MTLCommandBuffer>)buffer allocations:(NSArray<id<MTLAllocation>> *)allocations
                 retained:(NSArray *)retained encode:(void (^)(id<MTL4CommandBuffer>))encode
                  failure:(void (^)(NSError *))failure error:(NSError **)error {

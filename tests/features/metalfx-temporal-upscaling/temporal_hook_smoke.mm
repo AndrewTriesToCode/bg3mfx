@@ -164,7 +164,8 @@ int main(int argc, char **argv) {
         auto created = (NSUInteger(*)(void))dlsym(runtime,"BG3MFXStandaloneTemporalScalersCreated");
         if (!created) return 13;
         // Returns whether MetalFX replaced BG3's native FSR for the frame.
-        auto resizedFrame = [&](NSUInteger size) -> int {
+        // `probe` receives weak references to BG3's color, depth, motion and output.
+        auto resizedFrame = [&](NSUInteger size, __weak id<MTLTexture> *probe = nullptr) -> int { @autoreleasepool {
             id<MTLTexture> sColor=texture(device,size,MTLPixelFormatRG11B10Float,rw);
             id<MTLTexture> sMotion=texture(device,size,MTLPixelFormatRG16Float,rw|MTLTextureUsageRenderTarget);
             id<MTLTexture> sDepth=texture(device,size,MTLPixelFormatDepth32Float_Stencil8,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
@@ -173,6 +174,7 @@ int main(int argc, char **argv) {
             id<MTLTexture> sTonemapped=texture(device,size,MTLPixelFormatRG11B10Float,rw|MTLTextureUsageRenderTarget);
             id<MTLTexture> sScaled=texture(device,size*2,MTLPixelFormatRG11B10Float,rw);
             id<MTLTexture> sOutput=texture(device,size*2,MTLPixelFormatRG11B10Float,rw);
+            if (probe) { probe[0]=sTAA; probe[1]=sDepth; probe[2]=sMotion; probe[3]=sOutput; }
             uint32_t sDimensions[2]={uint32_t(size),uint32_t(size)}; memcpy((char *)viewport+16,sDimensions,8);
             *(uint32_t *)count.contents=0;
             if (!select(3)) return -1;
@@ -209,7 +211,7 @@ int main(int argc, char **argv) {
             [b commit]; [b waitUntilCompleted];
             if (b.status!=MTLCommandBufferStatusCompleted) return -1;
             return *(uint32_t *)count.contents==0;
-        };
+        }};
         const NSUInteger sizes[]={160,176,192,208,224,240,272,288,304};
         for (NSUInteger size : sizes) {
             NSUInteger before=created(); int replaced=0;
@@ -227,6 +229,16 @@ int main(int argc, char **argv) {
         for (NSUInteger size : sizes) if (resizedFrame(size)!=1 || created()!=total) {
             fprintf(stderr,"Temporal scaler recreated when returning to %lux%lu\n",size,size); return 18;
         }
+        // Cached scalers must not keep the textures of sizes no longer rendered:
+        // BG3 frees its render targets on resize. Render each size once more,
+        // then end on a different size and check that none of them survives.
+        __weak id<MTLTexture> earlier[9][4];
+        for (NSUInteger i=0;i<9;++i) if (resizedFrame(sizes[i],earlier[i])!=1) return 19;
+        if (resizedFrame(sizes[0])!=1) return 19;
+        NSUInteger pinned=0;
+        for (NSUInteger i=1;i<9;++i) for (int k=0;k<4;++k) if (earlier[i][k]) { ++pinned; if (getenv("BG3MFX_TEST_VERBOSE")) fprintf(stderr,"size %lu kind %d alive\n",(unsigned long)sizes[i],k); }
+        printf("Temporal resize: %lu textures of 32 from earlier sizes still alive\n",(unsigned long)pinned);
+        if (pinned) { fprintf(stderr,"Cached Temporal scalers kept earlier sizes' textures alive\n"); return 20; }
         puts("Spatial/Temporal switching, retained native AA on an unscaled preview, new-target warmup, and HDR postprocessing passed four-frame pixel checks; native FSR dispatch count zero.");
         printf("Nine settled resizes created one Temporal scaler each and reused all of them on return.\n");
     }

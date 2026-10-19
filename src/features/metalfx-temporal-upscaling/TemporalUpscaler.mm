@@ -113,6 +113,7 @@ static void captureInputs(id<MTLCommandBuffer> buffer, id<MTLTexture> color,
 }
 
 - (BOOL)usesMetal4 { return _scaler.usesMetal4; }
+- (NSUInteger)outputHeight { return _outputHeight; }
 - (void (^)(NSError *))gpuFailureHandler { return _scaler.gpuFailureHandler; }
 - (void)setGpuFailureHandler:(void (^)(NSError *))handler { _scaler.gpuFailureHandler=handler; }
 
@@ -203,6 +204,12 @@ encoderFailure:
 - (void)resetHistory {
     [_lock lock];
     [_scaler resetHistory];
+    [_lock unlock];
+}
+
+- (void)releaseIdleResources {
+    [_lock lock];
+    [_scaler releaseIdleResources];
     [_lock unlock];
 }
 @end

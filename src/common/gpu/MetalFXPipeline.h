@@ -70,6 +70,8 @@ typedef struct {
 // Required usage for an explicit output texture.
 @property(nonatomic, readonly) MTLTextureUsage outputTextureUsage;
 - (void)resetHistory;
+// Drops the Metal 4 residency set, which keeps every input it has seen alive.
+- (void)releaseIdleResources;
 @end
 
 NS_ASSUME_NONNULL_END
