@@ -79,7 +79,7 @@ static bool sceneTracked(int mode, id buffer) { return mode == 2 || mode == 3 ||
 enum EncoderStage : uint8_t { StageVertex, StageFragment, StageCompute };
 enum PipelineKind : uint8_t {
     PipelineOther, PipelineTAA, PipelineLinearizeDepth, PipelineVelocity,
-    PipelinePostColor, PipelineToneMapLUT, PipelineCombineUI,
+    PipelinePostColor, PipelineToneMapLUT, PipelineCombineUI, PipelineSceneOverlay,
 };
 // Prepass trim (docs/dev/performance.md): vertex-only opaque draws are skipped in the
 // depth prepass, and their G-buffer draws write depth instead of testing Equal
@@ -244,6 +244,12 @@ static NSDictionary *boundTextures(id encoder) {
 static BOOL compositionShader(NSString *fragment) {
     return [fragment isEqualToString:@"CombineUI"] || [fragment isEqualToString:@"CombineUI_HDR"];
 }
+// BG3's UI model VFX alpha-blend a 3D effect straight onto the final scene image.
+static BOOL sceneOverlayShader(NSString *fragment) { return [fragment hasPrefix:@"Shared_UI_VFX_UI_Model_"]; }
+// BG3 grades colors in place on the TAA output when bloom is off (the read is the TAA input).
+static BOOL colorGradingShader(NSString *fragment) { return [fragment isEqualToString:@"PPColorGradingApplyLUTPS"]; }
+// Passes that rewrite a tagged scene image in place, keeping its frame inputs.
+static BOOL inPlaceScenePass(NSString *fragment) { return colorGradingShader(fragment) || sceneOverlayShader(fragment); }
 static PipelineKind classifyPipeline(NSString *fragment) {
     if ([fragment isEqualToString:@"PPTAA_PS"]) return PipelineTAA;
     if ([fragment isEqualToString:@"LinearizeDepth"]) return PipelineLinearizeDepth;
@@ -251,7 +257,8 @@ static PipelineKind classifyPipeline(NSString *fragment) {
     if ([fragment isEqualToString:@"PPToneMap_LUT"]) return PipelineToneMapLUT;
     if (compositionShader(fragment)) return PipelineCombineUI;
     if ([fragment isEqualToString:@"PPBloomUpsampleBlurAndCombine_PS"] || [fragment isEqualToString:@"PPColorGradingApplyLUTPS"] ||
-        [fragment isEqualToString:@"EoCOutlineCombinePS"] || [fragment isEqualToString:@"FSR_Tonemap"]) return PipelinePostColor;
+        [fragment isEqualToString:@"EoCOutlineCombinePS"] || [fragment isEqualToString:@"EoCSight"] || [fragment isEqualToString:@"FSR_Tonemap"]) return PipelinePostColor;
+    if (sceneOverlayShader(fragment)) return PipelineSceneOverlay;
     return PipelineOther;
 }
 static bool temporalInputsNeeded(__unsafe_unretained id encoder) {
@@ -307,7 +314,13 @@ static BOOL temporalColorPass(NSString *name) {
     return [name isEqualToString:@"PPBloomUpsampleBlurAndCombine_PS"] ||
         [name isEqualToString:@"PPColorGradingApplyLUTPS"] ||
         [name isEqualToString:@"EoCOutlineCombinePS"] ||
+        [name isEqualToString:@"EoCSight"] ||  // stealth/visibility overlay, ping-pongs a variable number of times
         [name isEqualToString:@"FSR_Tonemap"];
+}
+// Quiet runtime: pipelines keep their fragment name only when the integration reads it.
+static BOOL recognizedFragment(NSString *fragment) {
+    return [fragment isEqualToString:@"PPTAA_PS"] || [fragment isEqualToString:@"LinearizeDepth"] || [fragment isEqualToString:@"VelocityBufferCamera_PS"] ||
+        temporalColorPass(fragment) || compositionShader(fragment) || [fragment isEqualToString:@"PPToneMap_LUT"] || sceneOverlayShader(fragment);
 }
 #ifndef BG3MFX_NO_TRACE
 static char temporalPassHistoryKey;
@@ -1053,7 +1066,11 @@ static void endEncoder(id self, SEL cmd) {
         // same-size texture selected by a heuristic.
         [sceneFrames removeObjectForKey:targetKey];
         NSDictionary *inputFrame = postprocess[@"frame"];
-        if (inputFrame) {
+        if ([postprocess[@"keep"] boolValue]) {
+            // In-place scene pass: the target keeps the frame inputs it already had.
+            sceneFrames[targetKey] = inputFrame;
+            record(@{@"event":@"temporalColorKept",@"pipeline":postprocess[@"pipeline"],@"target":texture(target)});
+        } else if (inputFrame) {
             NSMutableDictionary *next = [inputFrame mutableCopy];
             next[@"taaColor"] = target;
             next[@"color"] = postprocess[@"tonemap"] ? postprocess[@"source"] : target;
@@ -1200,7 +1217,7 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
     } else state = ((id(*)(id,SEL,id,NSError **))original(self,cmd))(self,cmd,desc,error);
     NSString *fragment = desc.fragmentFunction.name;
     NSDictionary *description = diagnostics ? @{@"vertex": desc.vertexFunction.name ?: @"", @"fragment": fragment ?: @"", @"label": desc.label ?: @""} :
-        (([fragment isEqualToString:@"PPTAA_PS"] || [fragment isEqualToString:@"LinearizeDepth"] || [fragment isEqualToString:@"VelocityBufferCamera_PS"] || temporalColorPass(fragment) || compositionShader(fragment) || [fragment isEqualToString:@"PPToneMap_LUT"]) ? @{@"fragment":fragment} : nil);
+        (recognizedFragment(fragment) ? @{@"fragment":fragment} : nil);
 #ifndef BG3MFX_NO_TRACE
     NSDictionary *waterfall=waterfallLayout(desc);
     if (waterfall) { NSMutableDictionary *expanded=[description mutableCopy]; expanded[@"vertexLayout"]=waterfall; description=expanded; }
@@ -1234,7 +1251,7 @@ static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *d
     } else state = ((id(*)(id,SEL,id,MTLPipelineOption,MTLRenderPipelineReflection **,NSError **))original(self,cmd))(self,cmd,desc,options,reflection,error);
     NSString *fragment = desc.fragmentFunction.name;
     NSDictionary *description = diagnostics ? @{@"vertex": desc.vertexFunction.name ?: @"", @"fragment": fragment ?: @"", @"label": desc.label ?: @""} :
-        (([fragment isEqualToString:@"PPTAA_PS"] || [fragment isEqualToString:@"LinearizeDepth"] || [fragment isEqualToString:@"VelocityBufferCamera_PS"] || temporalColorPass(fragment) || compositionShader(fragment) || [fragment isEqualToString:@"PPToneMap_LUT"]) ? @{@"fragment":fragment} : nil);
+        (recognizedFragment(fragment) ? @{@"fragment":fragment} : nil);
 #ifndef BG3MFX_NO_TRACE
     NSDictionary *waterfall=waterfallLayout(desc);
     if (waterfall) { NSMutableDictionary *expanded=[description mutableCopy]; expanded[@"vertexLayout"]=waterfall; description=expanded; }
@@ -1715,6 +1732,14 @@ static void drawInputs(id encoder, const CompositionDraw &call) {
                  (frameGeneration(buffer) && [fragment isEqualToString:@"PPToneMap_LUT"]))) {
                 next[@"frame"] = inputFrame; next[@"source"] = source; next[@"pipeline"] = fragment;
                 if ([fragment isEqualToString:@"FSR_Tonemap"]) next[@"tonemap"] = @YES;
+            }
+            // In-place scene passes (grading with bloom off, UI model VFX) draw onto an
+            // already tagged image; keep its tag. An unrecognized draw later in the
+            // same encoder still clears it (lastDrawOther, applied in endEncoder).
+            NSDictionary *targetFrame = sceneFrames[[NSValue valueWithPointer:(__bridge const void *)target]];
+            if (!next[@"frame"] && targetFrame && inPlaceScenePass(fragment) &&
+                (sceneOverlayShader(fragment) || target.pixelFormat == MTLPixelFormatRG11B10Float)) {
+                next[@"frame"] = targetFrame; next[@"source"] = target; next[@"pipeline"] = fragment; next[@"keep"] = @YES;
             }
             objc_setAssociatedObject(encoder,&temporalPostprocessKey,next,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             noteAssociation(encoder,AssocPostprocess);

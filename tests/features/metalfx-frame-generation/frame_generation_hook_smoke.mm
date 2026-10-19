@@ -10,11 +10,13 @@ static id<MTLTexture> texture(id<MTLDevice> d, NSUInteger size, MTLPixelFormat f
     t.storageMode=MTLStorageModePrivate;t.usage=usage;return [d newTextureWithDescriptor:t];
 }
 int main(int argc,char **argv) { @autoreleasepool {
-    if(argc!=2 && !(argc==3 && (!strcmp(argv[2],"hdr") || !strcmp(argv[2],"scaled"))))return 1;
+    if(argc!=2 && !(argc==3 && (!strcmp(argv[2],"hdr") || !strcmp(argv[2],"scaled") || !strcmp(argv[2],"overlays"))))return 1;
     // "hdr": BG3 with HDR output composes with CombineUI_HDR into a BGR10A2Unorm layer.
     // "scaled": BG3 letterboxes the scene into a larger output (windowed or a
     // display whose size or aspect differs from the render resolution).
-    bool hdrOutput=argc==3 && !strcmp(argv[2],"hdr"),scaledOutput=argc==3 && !strcmp(argv[2],"scaled");setenv("BG3MFX_ENABLE_METALFX","1",1);
+    // "overlays": BG3's live post-TAA chain for Off + Frame Generation: grading in place on the TAA
+    // output (bloom off), the EoCSight ping-pong, and a UI model VFX blended onto the CAS output.
+    bool hdrOutput=argc==3 && !strcmp(argv[2],"hdr"),scaledOutput=argc==3 && !strcmp(argv[2],"scaled"),overlays=argc==3 && !strcmp(argv[2],"overlays");setenv("BG3MFX_ENABLE_METALFX","1",1);
     void *lib=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);if(!lib){fprintf(stderr,"%s\n",dlerror());return 2;}
     auto setMode=(BOOL(*)(int))dlsym(lib,"BG3MFXSetStandaloneScalingMode");
     auto setFrameGeneration=(BOOL(*)(BOOL))dlsym(lib,"BG3MFXSetStandaloneFrameGeneration");
@@ -34,6 +36,11 @@ int main(int argc,char **argv) { @autoreleasepool {
         "fragment float2 VelocityBufferCamera_PS(){return float2(0);}\n"
         "fragment float4 PPTAA_PS(float4 p [[position]],texture2d<float> t [[texture(0)]]){return t.read(uint2(p.xy));}\n"
         "fragment float4 FSR_Tonemap(float4 p [[position]],texture2d<float> t [[texture(0)]]){float3 c=t.read(uint2(p.xy)).rgb;return float4(c/(1+max(c.r,max(c.g,c.b))),1);}\n"
+        "fragment float4 PPColorGradingApplyLUTPS(float4 p [[position]],texture2d<float> t [[texture(0)]]){return t.read(uint2(p.xy));}\n"
+        "fragment float4 EoCSight(float4 p [[position]],texture2d<float> t [[texture(0)]]){return t.read(uint2(p.xy));}\n"
+        // Transparent: blended with alpha 0, so the scene is unchanged.
+        "fragment float4 Shared_UI_VFX_UI_Model_AlphaBlend_Unlit_Emissive_CameraAligned_CustomMask_3Layers_01_STI_FOR_fragmentMain(float4 p [[position]],texture2d<float> t [[texture(0)]]){return float4(t.read(uint2(0)).rgb,0);}\n"
+        "fragment float4 PPUnknownOverlay_PS(float4 p [[position]]){return float4(1,0,0,1);}\n"
         "fragment float4 PPToneMap_LUT(float4 p [[position]],texture2d<float> t [[texture(0)]]){return t.read(uint2(p.xy));}\n"
         // Like BG3's DefaultVS: a quad strip with texture coordinates, so the scene maps onto the viewport at any size.
         "struct Q{float4 p [[position]];float2 uv;};vertex Q Quad(uint i [[vertex_id]]){float2 c=float2(i&1,i>>1);return {float4(c*2-1,0,1),float2(c.x,1-c.y)};}\n"
@@ -51,6 +58,14 @@ int main(int argc,char **argv) { @autoreleasepool {
         d.fragmentFunction=[library newFunctionWithName:names[i]];
         d.colorAttachments[0].pixelFormat=i==0 ? MTLPixelFormatR32Float : i==1 ? MTLPixelFormatRG16Float : i==4 ? MTLPixelFormatRGB10A2Unorm : i==5 ? outputFormat : MTLPixelFormatRG11B10Float;
         auto p=[device newRenderPipelineStateWithDescriptor:d error:&error];if(!p){fprintf(stderr,"%s\n",error.description.UTF8String);return 5;}[render addObject:p];}
+    NSMutableDictionary *extra=[NSMutableDictionary dictionary];
+    for(NSString *name in @[@"PPColorGradingApplyLUTPS",@"EoCSight",@"Shared_UI_VFX_UI_Model_AlphaBlend_Unlit_Emissive_CameraAligned_CustomMask_3Layers_01_STI_FOR_fragmentMain",@"PPUnknownOverlay_PS"]){
+        auto d=[MTLRenderPipelineDescriptor new];d.vertexFunction=[library newFunctionWithName:@"V"];d.fragmentFunction=[library newFunctionWithName:name];
+        bool onScene=[name hasPrefix:@"Shared_"] || [name hasPrefix:@"PPUnknown"];
+        d.colorAttachments[0].pixelFormat=onScene ? MTLPixelFormatRGB10A2Unorm : MTLPixelFormatRG11B10Float;
+        if([name hasPrefix:@"Shared_"]){auto a=d.colorAttachments[0];a.blendingEnabled=YES;a.sourceRGBBlendFactor=MTLBlendFactorSourceAlpha;a.destinationRGBBlendFactor=MTLBlendFactorOneMinusSourceAlpha;}
+        auto p=[device newRenderPipelineStateWithDescriptor:d error:&error];if(!p){fprintf(stderr,"%s\n",error.description.UTF8String);return 5;}extra[name]=p;}
+    NSString *vfxName=@"Shared_UI_VFX_UI_Model_AlphaBlend_Unlit_Emissive_CameraAligned_CustomMask_3Layers_01_STI_FOR_fragmentMain";
     auto fsr=[device newComputePipelineStateWithFunction:[library newFunctionWithName:@"FSR"] error:&error];
     auto rcas=[device newComputePipelineStateWithFunction:[library newFunctionWithName:@"FSR_RCAS"] error:&error];
     auto cas=[device newComputePipelineStateWithFunction:[library newFunctionWithName:@"CAS"] error:&error];
@@ -69,9 +84,10 @@ int main(int argc,char **argv) { @autoreleasepool {
     // which Frame Generation cannot replay: it must turn itself off, not stop.
     // "size" overrides the output size; "unsettled" expects BG3's native FSR
     // because that size has no Temporal scaler yet and has not held long enough.
+    // "overlay" (1, or 2 for the negative case) inserts BG3's post-TAA scene chain into Off frames.
     // "noTAA" renders a world frame without BG3's TAA pass (another
     // anti-aliasing setting): there is no depth, motion or camera to pair with.
-    auto frame=[&](int choice,bool decline,NSUInteger size=0,bool unsettled=false,bool noTAA=false)->int{if(!select(choice))return 6;int mode=modeFor(choice);bool fg=choice>=4 && !decline;NSUInteger out=size ?: mode ? 256 : 128;
+    auto frame=[&](int choice,bool decline,NSUInteger size=0,bool unsettled=false,bool noTAA=false,int overlay=0)->int{if(!select(choice))return 6;int mode=modeFor(choice);bool fg=choice>=4 && !decline;NSUInteger out=size ?: mode ? 256 : 128;
         NSUInteger width=scaledOutput ? out+64 : out,height=scaledOutput ? out+32 : out;
         auto color=texture(device,128,MTLPixelFormatRG11B10Float,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
         auto taa=texture(device,128,MTLPixelFormatRG11B10Float,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
@@ -84,7 +100,7 @@ int main(int argc,char **argv) { @autoreleasepool {
         auto scene=texture(device,out,MTLPixelFormatRGB10A2Unorm,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
         auto ui=texture(device,out,MTLPixelFormatRGBA8Unorm,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
         // Without an upscaler, BG3 sharpens the tone-mapped scene with CAS.
-        auto sharpened=texture(device,out,MTLPixelFormatRGB10A2Unorm,MTLTextureUsageShaderRead|MTLTextureUsageShaderWrite);
+        auto sharpened=texture(device,out,MTLPixelFormatRGB10A2Unorm,MTLTextureUsageShaderRead|MTLTextureUsageShaderWrite|MTLTextureUsageRenderTarget);
         // Later Frame Generation frames use BG3's vsync-off setting, whose
         // presenter path presents each image after a minimum on-screen duration.
         layer.displaySyncEnabled=!(fg && fgFrames>=2);
@@ -103,13 +119,27 @@ int main(int argc,char **argv) { @autoreleasepool {
             if(i==1)[e setFragmentBytes:camera length:sizeof(camera) atIndex:11];
             if(i==2){[e setFragmentTexture:motion atIndex:2];[e setFragmentBytes:temporal length:sizeof(temporal) atIndex:8];[e setFragmentBytes:viewport length:sizeof(viewport) atIndex:9];}
             [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];[e endEncoding];}
+        id<MTLTexture> toneSource=taa;
+        auto fullscreen=[&](NSString *name,id<MTLTexture> target,id<MTLTexture> input,MTLLoadAction load){
+            auto p=[MTLRenderPassDescriptor new];p.colorAttachments[0].texture=target;p.colorAttachments[0].loadAction=load;p.colorAttachments[0].storeAction=MTLStoreActionStore;
+            auto enc=[b renderCommandEncoderWithDescriptor:p];[enc setRenderPipelineState:extra[name]];[enc setFragmentTexture:input atIndex:0];
+            [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];[enc endEncoding];};
+        if(overlay && !noTAA && !mode){
+            // Bloom off: grading reads the untagged TAA input and writes the tagged TAA output.
+            fullscreen(@"PPColorGradingApplyLUTPS",taa,color,MTLLoadActionLoad);
+            auto ping=texture(device,128,MTLPixelFormatRG11B10Float,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget),pong=texture(device,128,MTLPixelFormatRG11B10Float,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget);
+            id<MTLTexture> chain[]={ping,pong,ping};
+            for(auto t:chain){fullscreen(@"EoCSight",t,toneSource,MTLLoadActionDontCare);toneSource=t;}
+        }
         *(uint32_t *)count.contents=0;
         if(mode){pass=[MTLRenderPassDescriptor new];pass.colorAttachments[0].texture=bounded;pass.colorAttachments[0].loadAction=MTLLoadActionDontCare;pass.colorAttachments[0].storeAction=MTLStoreActionStore;e=[b renderCommandEncoderWithDescriptor:pass];[e setRenderPipelineState:render[3]];[e setFragmentTexture:taa atIndex:0];[e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];[e endEncoding];
             auto c=[b computeCommandEncoder];[c setComputePipelineState:fsr];[c setTexture:bounded atIndex:0];[c setTexture:scaled atIndex:1];[c setBuffer:count offset:0 atIndex:0];[c dispatchThreads:MTLSizeMake(out,out,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];
             [c setComputePipelineState:rcas];[c setTexture:scaled atIndex:0];[c setTexture:hdr atIndex:2];[c dispatchThreads:MTLSizeMake(out,out,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];[c endEncoding];}
-        pass=[MTLRenderPassDescriptor new];pass.colorAttachments[0].texture=scene;pass.colorAttachments[0].loadAction=MTLLoadActionDontCare;pass.colorAttachments[0].storeAction=MTLStoreActionStore;e=[b renderCommandEncoderWithDescriptor:pass];[e setRenderPipelineState:render[4]];[e setFragmentTexture:mode ? hdr : taa atIndex:0];[e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];[e endEncoding];
+        pass=[MTLRenderPassDescriptor new];pass.colorAttachments[0].texture=scene;pass.colorAttachments[0].loadAction=MTLLoadActionDontCare;pass.colorAttachments[0].storeAction=MTLStoreActionStore;e=[b renderCommandEncoderWithDescriptor:pass];[e setRenderPipelineState:render[4]];[e setFragmentTexture:mode ? hdr : toneSource atIndex:0];[e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];[e endEncoding];
         if(!mode){auto c=[b computeCommandEncoder];[c setComputePipelineState:cas];[c setTexture:scene atIndex:0];[c setTexture:sharpened atIndex:1];
-            [c dispatchThreads:MTLSizeMake(out,out,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];[c endEncoding];}
+            [c dispatchThreads:MTLSizeMake(out,out,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];[c endEncoding];
+            // The UI model effect (or, negatively, an unrecognized draw) lands on the CAS output CombineUI reads.
+            if(overlay && !noTAA)fullscreen(overlay==2 ? @"PPUnknownOverlay_PS" : vfxName,sharpened,texture(device,16,MTLPixelFormatRGBA8Unorm,MTLTextureUsageShaderRead|MTLTextureUsageRenderTarget),MTLLoadActionLoad);}
         pass=[MTLRenderPassDescriptor new];pass.colorAttachments[0].texture=ui;pass.colorAttachments[0].loadAction=MTLLoadActionClear;pass.colorAttachments[0].storeAction=MTLStoreActionStore;pass.colorAttachments[0].clearColor=MTLClearColorMake(.8,.2,.4,1);e=[b renderCommandEncoderWithDescriptor:pass];[e endEncoding];
         // Scaled output clears to a bar color and draws the scene into a centered viewport.
         pass.colorAttachments[0].texture=final;pass.colorAttachments[0].loadAction=scaledOutput ? MTLLoadActionClear : MTLLoadActionDontCare;pass.colorAttachments[0].clearColor=MTLClearColorMake(.1,.7,.3,1);
@@ -129,6 +159,8 @@ int main(int argc,char **argv) { @autoreleasepool {
             if(presented()!=0){fprintf(stderr,"Presentation worker used or retained for menu choice %d\n",choice);return 11;}
             printf("Native presentation for menu choice %d; no frame-generation worker.\n",choice);return 0;
         }
+        if(!outputs && overlay==2){[b commit];[b waitUntilCompleted];if(b.error){fprintf(stderr,"Unpaired overlay frame failed: %s\n",b.error.description.UTF8String);return 8;}
+            printf("Unrecognized draw on the final scene image presented unpaired for menu choice %d.\n",choice);return 0;}
         if(!outputs){fprintf(stderr,"No generated pair for mode %d\n",mode);return 7;}
         NSMutableArray *reads=[NSMutableArray array];auto blit=[b blitCommandEncoder];
         for(id<MTLTexture> t in @[final,outputs[@"generated"]]){auto r=[device newBufferWithLength:width*height*4 options:MTLResourceStorageModeShared];[reads addObject:r];[blit copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(width,height,1) toBuffer:r destinationOffset:0 destinationBytesPerRow:width*4 destinationBytesPerImage:width*height*4];}[blit endEncoding];[b commit];[b waitUntilCompleted];
@@ -202,6 +234,16 @@ int main(int argc,char **argv) { @autoreleasepool {
     @autoreleasepool { id d=[layer nextDrawable]; if(![d isKindOfClass:standIn]){fprintf(stderr,"Frames without TAA inputs turned Frame Generation off\n");return 21;} }
     if(int status=frame(6,false)){fprintf(stderr,"Frame Generation did not resume once TAA returned\n");return status;}
     puts("Frames without TAA inputs presented unpaired; Frame Generation resumed with the next TAA frame.");
+
+    if(overlays){
+        // Off + Frame Generation with BG3's live chain pairs; an unrecognized draw on the
+        // final scene image breaks it, and that frame is presented unpaired.
+        for(int i=0;i<2;++i)if(int status=frame(6,false,0,false,false,1)){fprintf(stderr,"Off + Frame Generation with scene overlays did not pair\n");return status;}
+        puts("Off + Frame Generation paired through color grading in place, three EoCSight passes and a UI model VFX overlay.");
+        if(int status=frame(6,false,0,false,false,2))return status;
+        if(int status=frame(6,false,0,false,false,1)){fprintf(stderr,"Frame Generation did not resume after the unrecognized overlay\n");return status;}
+        puts("Overlay checks passed: an unrecognized draw on the scene image left the frame unpaired and pairing resumed.");
+    }
 
     // A Temporal frame whose FSR input matches no captured scene (a loading or
     // view transition) must fall back to BG3's own FSR + RCAS, not stop the game.

@@ -283,3 +283,23 @@ without Documents access starts BG3 with a blank profile.
 
 Moving-scene image quality and pacing remain pending. Logs remain ignored in
 `build/`.
+
+### 2026-10-19 chain breaks found in a live diagnostic trace
+
+A live diagnostic trace (`build/evidence/2026-10-19-diagnostic/`) had 5807
+unpaired frames, from three breaks in the pass chain between TAA and `CombineUI`.
+`PPColorGradingApplyLUTPS` with bloom off (4602 frames, including the 1728x1080
+menu-background and loading frames and the MetalFX Spatial "Could not match FSR
+input" fallback with bloom off) reads the untagged TAA input but writes the
+tagged TAA output, and the write cleared the tag. `EoCSight` during the Shift
+visibility overlay (533 frames) ping-pongs two textures 2-7 times and was not
+forwarded. The `Shared_UI_VFX_UI_Model_*` VFX blends onto the CAS output that
+`CombineUI` reads (masked by the ColorGrading break). The Bink title video
+(672 frames, no TAA) stays unpaired by design. The fix forwards EoCSight and
+keeps an existing tag in place for ColorGrading (RG11B10Float target) and the UI
+model VFX. It is covered synthetically by `frame-generation-hook-smoke ...
+overlays` (and a negative frame with an unrecognized draw on the scene image,
+which must stay unpaired). Live with the quiet runtime (2026-10-19), Frame
+Generation stayed on with bloom off and during the Shift overlay, and photo mode
+camera modes paired; the UI model VFX case and moving-scene image quality were
+not checked separately.

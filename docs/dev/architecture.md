@@ -108,6 +108,14 @@ runtime records the recent pass chain in each `frameGenerationNoScene` event.
 A live trace (October 13) showed Off + Frame Generation losing the scene at
 CAS, which reads the tone-mapped RGB10A2 scene and writes the one `CombineUI`
 composes; with the CAS forward, Off + Frame Generation works live.
+EoCSight (the stealth/visibility overlay, which ping-pongs a variable number of
+times) forwards the inputs like the other color passes. Two passes draw onto an
+image that already carries them, so they keep it in place instead of clearing it:
+`PPColorGradingApplyLUTPS` with bloom off (it reads the untagged TAA input and
+writes the tagged TAA output; with bloom on it reads the tagged output and
+forwards normally) and the `Shared_UI_VFX_UI_Model_*` 3D UI effects alpha-blended
+onto the final scene image. An unrecognized draw later in the same encoder still
+clears the tag.
 
 Presentation follows Apple's present-thread model. While Frame Generation is on, a
 `CAMetalLayer nextDrawable` hook gives BG3 stand-in drawables backed by three
