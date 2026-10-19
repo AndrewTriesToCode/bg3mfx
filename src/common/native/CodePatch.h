@@ -20,6 +20,7 @@ enum class BG3MFXCodePatchResult { Patched, NotWritable, NotRestored };
 // Makes every page of `ranges` (address, length) writable before any write,
 // runs `write`, flushes the instruction cache for each range, and restores
 // read+execute. If a page cannot be made writable, nothing is written.
+// NotRestored means the code was written but a page is still not executable.
 BG3MFXCodePatchResult BG3MFXPatchCode(const std::vector<std::pair<uintptr_t, size_t>> &ranges,
     const std::function<void()> &write);
 // Encodes an ARM64 B from `from` to `to` (which must be in range).

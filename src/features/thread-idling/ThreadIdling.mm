@@ -128,7 +128,7 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), N
         memcpy(reinterpret_cast<void *>(wait), &toWait, 4);
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the idle loops writable.");
-    if (result == BG3MFXCodePatchResult::NotRestored) return fail(@"Could not restore idle loop code protection.");
-    if (report) report(@{@"event": @"threadIdlingInstalled"});
+    // Written but not executable again: report it as installed, not skipped.
+    if (report) report(@{@"event": @"threadIdlingInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
     return YES;
 }

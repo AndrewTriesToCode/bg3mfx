@@ -64,8 +64,14 @@ BG3MFXCodePatchResult BG3MFXPatchCode(const std::vector<std::pair<uintptr_t, siz
     }
     write();
     for (auto &range:ranges) sys_icache_invalidate(reinterpret_cast<void *>(range.first),range.second);
+    // The bytes are already written and cannot be safely unwritten, and a page
+    // left writable is not executable: retry before reporting failure.
     bool restored=true;
-    for (uintptr_t page:pages)
-        restored&=vm_protect(mach_task_self(),page,vm_page_size,FALSE,VM_PROT_READ|VM_PROT_EXECUTE)==KERN_SUCCESS;
+    for (uintptr_t page:pages) {
+        bool pageRestored=false;
+        for (int attempt=0; attempt<3 && !pageRestored; ++attempt)
+            pageRestored=vm_protect(mach_task_self(),page,vm_page_size,FALSE,VM_PROT_READ|VM_PROT_EXECUTE)==KERN_SUCCESS;
+        restored&=pageRestored;
+    }
     return restored ? BG3MFXCodePatchResult::Patched : BG3MFXCodePatchResult::NotRestored;
 }

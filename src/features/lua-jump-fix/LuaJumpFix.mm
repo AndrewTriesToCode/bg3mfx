@@ -60,7 +60,7 @@ BOOL BG3MFXInstallLuaJumpFix(intptr_t slide, void (*report)(NSDictionary *), NSE
         memcpy(reinterpret_cast<void *>(protectCall), &call, 4);
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make Lua error handling writable.");
-    if (result == BG3MFXCodePatchResult::NotRestored) return fail(@"Could not restore Lua error handling protection.");
-    if (report) report(@{@"event": @"luaJumpFixInstalled"});
+    // Written but not executable again: report it as installed, not skipped.
+    if (report) report(@{@"event": @"luaJumpFixInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
     return YES;
 }

@@ -34,7 +34,7 @@ BOOL BG3MFXInstallShadowDuplicateFix(intptr_t slide, void (*report)(NSDictionary
         memcpy(reinterpret_cast<void *>(call),&nop,4);
     });
     if (result==BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the frame-stage setup writable.");
-    if (result==BG3MFXCodePatchResult::NotRestored) return fail(@"Could not restore frame-stage code protection.");
-    if(report) report(@{@"event":@"shadowDuplicateFixInstalled"});
+    // Written but not executable again: report it as installed, not skipped.
+    if(report) report(@{@"event":@"shadowDuplicateFixInstalled",@"protectionRestored":@(result==BG3MFXCodePatchResult::Patched)});
     return YES;
 }
