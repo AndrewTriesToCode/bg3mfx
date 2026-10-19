@@ -117,6 +117,13 @@ inline constexpr size_t VTable = 0, FrameIndex = 8, FrameIndexOffset = 12;
 inline constexpr size_t JitterIslandStride = 64;
 }
 
+// WorkerThreadBatch: atomic flags word; the completer sets Done, then opens
+// the inline completion event if a blocking waiter set Waiter.
+namespace ThreadIdling::Layout {
+inline constexpr size_t BatchFlags = 0x4;
+inline constexpr uint32_t BatchDone = 0x10, BatchWaiter = 0x20;
+}
+
 namespace ServerPacing::Layout {
 inline constexpr size_t Target = 0x18, Debt = 0x28;
 inline constexpr size_t WorkerTarget = 0x98, WorkerDebt = 0xa8;

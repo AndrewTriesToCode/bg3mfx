@@ -51,6 +51,27 @@ const size_t waitIslandOffset = BG3MFXBuild::Islands::ThreadWait.offset, waitIsl
     idleIslandOffset = BG3MFXBuild::Islands::ThreadIdle.offset, idleIslandBytes = BG3MFXBuild::Islands::ThreadIdle.bytes;
 
 uint64_t usTicks;
+#ifndef BG3MFX_NO_TRACE
+// Diagnostics: the batch's completion event holds one semaphore handle, which
+// each blocking waiter resets. A second waiter on the same batch would strand
+// the first. BG3's own helpers rarely block; count the cases this patch adds.
+void (*reportEvent)(NSDictionary *);
+std::atomic<uint64_t> helperBlocks{0}, sharedBlocks{0};
+void noteBlock(void *batch) {
+    auto *flags = reinterpret_cast<std::atomic<uint32_t> *>(static_cast<char *>(batch) + Native::Layout::BatchFlags);
+    uint32_t value = flags->load(std::memory_order_acquire);
+    uint64_t blocks = ++helperBlocks;
+    bool shared = (value & Native::Layout::BatchWaiter) && !(value & Native::Layout::BatchDone);
+    uint64_t sharedCount = shared ? ++sharedBlocks : sharedBlocks.load();
+    // Rare after the first few; report the first and then at powers of two.
+    if (reportEvent && (shared ? !(sharedCount & (sharedCount - 1)) : !(blocks & (blocks - 1)))) {
+        @autoreleasepool {
+            reportEvent(@{@"event": @"threadIdlingBlock", @"helperBlocks": @(blocks),
+                          @"sharedWaiterBlocks": @(sharedCount), @"shared": @(shared)});
+        }
+    }
+}
+#endif
 
 void capIdle() {
     mach_wait_until(mach_absolute_time() + capIdleSleepUs * usTicks);
@@ -69,6 +90,9 @@ int waitOrYield(void *batch) {
     previous = now;
     if (now - first >= waitSpinUs * usTicks) {
         current = nullptr;
+#ifndef BG3MFX_NO_TRACE
+        noteBlock(batch);
+#endif
         return 1;
     }
     pthread_yield_np();
@@ -105,6 +129,9 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), N
     mach_timebase_info_data_t timebase;
     mach_timebase_info(&timebase);
     usTicks = 1000ull * timebase.denom / timebase.numer;
+#ifndef BG3MFX_NO_TRACE
+    reportEvent = report;
+#endif
     auto result = BG3MFXPatchCode({{waitIsland, waitIslandBytes}, {idleIsland, idleIslandBytes}, {worker, 4},
                                    {schedulerWindows[0] + slide, 8}, {schedulerWindows[1] + slide, 8}, {idle, 4}, {wait, 4}}, [&] {
         // ldr x16, #8; br x16; .quad capIdle (CapFrame's BL returns past it)
