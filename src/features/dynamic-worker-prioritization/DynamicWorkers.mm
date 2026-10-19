@@ -42,19 +42,24 @@ void report(const char *format, ...) {
     va_start(arguments, format);
     vsnprintf(text, sizeof text, format, arguments);
     va_end(arguments);
-    os_log(os_log_create("com.bg3mfx", "threads"), "bg3mfx dynamic workers: %{public}s", text);
+    static os_log_t log = os_log_create("com.bg3mfx", "threads");
+    os_log(log, "bg3mfx dynamic workers: %{public}s", text);
 }
 
 void setBackground(bool on) {
     if (inBackground.exchange(on) != on) generation.fetch_add(1);
 }
 
-bool managedThread() {
+// An unnamed thread may be named later, so it is rechecked, but only once per
+// placement change rather than on every wait.
+bool managedThread(uint32_t current) {
     thread_local int managed = -1;
+    thread_local uint32_t unnamedAt;
     if (managed < 0) {
+        if (unnamedAt == current) return false;
         char name[64] = {};
         pthread_getname_np(pthread_self(), name, sizeof name);
-        if (!name[0]) return false;  // not named yet
+        if (!name[0]) { unnamedAt = current; return false; }  // not named yet
         managed = !strncmp(name, "WT/High/", 8) || !strcmp(name, "WorkerThreadScheduler");
     }
     return managed;
@@ -65,7 +70,7 @@ void applyPlacement() {
     thread_local uint32_t seen;
     thread_local int placed = -1;
     uint32_t current = generation.load(std::memory_order_relaxed);
-    if (current == seen || !managedThread()) return;
+    if (current == seen || !managedThread(current)) return;
     seen = current;
     int wanted = inBackground.load(std::memory_order_relaxed);
     if (wanted == placed) return;
@@ -111,7 +116,8 @@ void tick(uint64_t now) {
     trial.lastFrames = frames;
     if (!delta) return;  // menus, loading, or not rendering
     // macOS throttles BG3 when it is not the active app; those frame rates say
-    // nothing about the workers. Abandon a trial and stay at normal.
+    // nothing about the workers. Abandon a running trial at normal; otherwise
+    // keep the current placement (background saves power while inactive).
     if (!NSRunningApplication.currentApplication.active) {
         if (trial.active) {
             trial.active = false;
@@ -175,7 +181,8 @@ BOOL BG3MFXInstallDynamicWorkers(void (*reportEvent)(NSDictionary *)) {
     std::thread([] {
         for (;;) {
             usleep(250000);
-            tick(mach_absolute_time());
+            // This thread has no run loop; drain AppKit's autoreleases each tick.
+            @autoreleasepool { tick(mach_absolute_time()); }
         }
     }).detach();
     if (reportEvent) reportEvent(@{@"event": @"dynamicWorkersInstalled"});
