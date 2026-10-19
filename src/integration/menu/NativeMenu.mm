@@ -388,7 +388,7 @@ static void upscaleChanged(void *storage, const void *item) {
 // These native types/functions use BG3's observed ARM64 ABI. In particular,
 // AddTranslatedString returns its nontrivial Handle through explicit argument 0,
 // consumes argument 2, and takes StringView in registers 3/4.
-static BOOL makeText(Text &text, const char *identifier, const char *literal) {
+static BOOL makeText(Text &text, const char *identifier, const char *literal, bool &constructed) {
     void *repository = *at<void **>(Native::TranslationRepository);
     if (!repository) return NO;
     Handle input{}, output{};
@@ -399,6 +399,7 @@ static BOOL makeText(Text &text, const char *identifier, const char *literal) {
     at<void(*)(Handle *,void *,Handle *,const char *,uint32_t,void *,uint32_t)>(Native::AddTranslatedString)
         (&output,repository,&input,literal,static_cast<uint32_t>(strlen(literal)),map,0);
     at<void(*)(Text *,const Handle *)>(Native::MakeText)(&text,&output);
+    constructed = true;
     at<void(*)(Handle *)>(Native::DestroyHandle)(&output);
     View resolved = at<View(*)(const Text *,uint32_t,uint32_t)>(Native::ResolveText)(&text,0,0);
     BOOL matches = resolved.size == strlen(literal) && resolved.data && memcmp(resolved.data,literal,resolved.size) == 0;
@@ -450,21 +451,33 @@ static void menuInit(void *manager) {
         return;
     }
     Text spatialName{}, spatialDescription{}, temporalName{}, temporalDescription{}, hudName{}, hudDescription{}, frameName{}, frameDescription{};
-    BOOL ok = makeText(spatialName,"h00000000g0000g0000g0000g00000000f001","MetalFX Spatial") &&
-        makeText(spatialDescription,"h00000000g0000g0000g0000g00000000f002","Upscales each frame with MetalFX Spatial. Anti-aliasing remains a separate setting.") &&
-        makeText(temporalName,"h00000000g0000g0000g0000g00000000f005","MetalFX Temporal") &&
-        makeText(temporalDescription,"h00000000g0000g0000g0000g00000000f006","Uses MetalFX Temporal history to upscale each frame and replaces TAA.") &&
-        makeText(hudName,"h00000000g0000g0000g0000g00000000f003","Show Metal HUD") &&
-        makeText(hudDescription,"h00000000g0000g0000g0000g00000000f004","Shows Apple's Metal performance overlay. Changes take effect immediately.") &&
-        makeText(frameName,"h00000000g0000g0000g0000g00000000f00b","MetalFX Frame Generation") &&
-        makeText(frameDescription,"h00000000g0000g0000g0000g00000000f00c","Adds a MetalFX-generated frame between rendered frames, with any Upscaling Type. Uses the game's TAA depth and motion data. The FPS limiter controls rendered frames.");
-    if (!ok) { event(@{@"event":@"nativeMenuError",@"error":@"Could not register menu text"}); return; }
+    // A Text that failed its check is still constructed; one never constructed
+    // stays zero and must not be destroyed.
+    Text *made[8];
+    unsigned madeCount = 0;
+    auto make = [&](Text &text, const char *identifier, const char *literal) {
+        bool constructed = false;
+        BOOL matches = makeText(text,identifier,literal,constructed);
+        if (constructed) made[madeCount++] = &text;
+        return matches;
+    };
+    auto destroyTexts = [&] { for (unsigned i=0;i<madeCount;++i) destroyText(*made[i]); };
+    BOOL ok = make(spatialName,"h00000000g0000g0000g0000g00000000f001","MetalFX Spatial") &&
+        make(spatialDescription,"h00000000g0000g0000g0000g00000000f002","Upscales each frame with MetalFX Spatial. Anti-aliasing remains a separate setting.") &&
+        make(temporalName,"h00000000g0000g0000g0000g00000000f005","MetalFX Temporal") &&
+        make(temporalDescription,"h00000000g0000g0000g0000g00000000f006","Uses MetalFX Temporal history to upscale each frame and replaces TAA.") &&
+        make(hudName,"h00000000g0000g0000g0000g00000000f003","Show Metal HUD") &&
+        make(hudDescription,"h00000000g0000g0000g0000g00000000f004","Shows Apple's Metal performance overlay. Changes take effect immediately.") &&
+        make(frameName,"h00000000g0000g0000g0000g00000000f00b","MetalFX Frame Generation") &&
+        make(frameDescription,"h00000000g0000g0000g0000g00000000f00c","Adds a MetalFX-generated frame between rendered frames, with any Upscaling Type. Uses the game's TAA depth and motion data. The FPS limiter controls rendered frames.");
+    if (!ok) { destroyTexts(); event(@{@"event":@"nativeMenuError",@"error":@"Could not register menu text"}); return; }
     if (nativeOptions) {
         at<void(*)(void *,int,const Text *,const Text *)>(Native::AppendComboValue)(upscale,2,&spatialName,&spatialDescription);
         at<void(*)(void *,int,const Text *,const Text *)>(Native::AppendComboValue)(upscale,3,&temporalName,&temporalDescription);
     }
     if (field<uint32_t>(upscale,Layout::ComboCount) != extendedValues.count) {
         event(@{@"event":@"nativeMenuError",@"error":@"Could not append the MetalFX options"});
+        destroyTexts();
         return;
     }
     void *selectionCall = field<void *>(upscale,Layout::SelectionCallback);
@@ -489,6 +502,7 @@ static void menuInit(void *manager) {
     if (metalFXValue(mode)) {
         if (field<void *>(upscale,Layout::CapturedManager) != manager || !originalUpscaleCall) {
             event(@{@"event":@"nativeMenuError",@"error":@"Unsupported native upscaling callback storage."});
+            destroyTexts();
             return;
         }
         field<int32_t>(upscale,Layout::ComboSelection) = mode;
@@ -530,10 +544,7 @@ static void menuInit(void *manager) {
             }
         }
     }
-    destroyText(frameName); destroyText(frameDescription);
-    destroyText(spatialName); destroyText(spatialDescription);
-    destroyText(temporalName); destroyText(temporalDescription);
-    destroyText(hudName); destroyText(hudDescription);
+    destroyTexts();
     if (NSThread.isMainThread) applyHUD(); else dispatch_async(dispatch_get_main_queue(),^{ applyHUD(); });
     event(@{@"event":@"nativeMenuReady",@"upscalingOptions":@[@"Off",@"AMD FSR 1.0",@"MetalFX Spatial",@"MetalFX Temporal"],
             @"frameGenerationOption":@(frameGeneration),@"frameGeneration":@(frameGenerationChecked.load()),
