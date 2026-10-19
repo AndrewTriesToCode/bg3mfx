@@ -77,7 +77,7 @@ void BG3MFXPreparePrepassDepth(id device, SEL selector, MTLDepthStencilDescripto
         MTLDepthStencilDescriptor *writes = [desc copy];
         writes.depthCompareFunction = MTLCompareFunctionGreaterEqual;
         writes.depthWriteEnabled = YES;
-        id replacement = create(device,selector,writes);
+        id replacement = (__bridge_transfer id)create(device,selector,writes);
         if (replacement) objc_setAssociatedObject(state, &depthReplacementKey, replacement, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }

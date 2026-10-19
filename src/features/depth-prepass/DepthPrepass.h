@@ -10,7 +10,10 @@ struct BG3MFXPrepassState {
     __unsafe_unretained id depthState;
 };
 using BG3MFXMarkPrepassPipeline = void (*)(id, TrimPipeline);
-using BG3MFXCreateDepthState = id (*)(id, SEL, id);
+// The original newDepthStencilStateWithDescriptor:, which returns +1. Typed as
+// void * so ARC does not assume +0 and retain it again; take it with
+// __bridge_transfer.
+using BG3MFXCreateDepthState = void *(*)(id, SEL, id);
 using BG3MFXSetDepthState = void (*)(__unsafe_unretained id, __unsafe_unretained id);
 void BG3MFXClassifyPrepass(MTLRenderPipelineDescriptor *, id, BG3MFXMarkPrepassPipeline);
 TrimRole BG3MFXPrepassRole(MTLRenderPassDescriptor *);
