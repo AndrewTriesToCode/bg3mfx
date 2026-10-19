@@ -176,6 +176,7 @@ struct OriginalCacheEntry { Class cls; SEL selector; IMP imp; unsigned generatio
 struct HookThreadCache {
     const void *encoder;          // last encoder looked up and its state
     void *state;
+    unsigned encoderGeneration;   // encoderGeneration when it was cached
     PipelineCacheEntry pipelines[64];
     OriginalCacheEntry originals[256];
 };
@@ -191,17 +192,22 @@ static inline void *pipelineInfoPointer(__unsafe_unretained id state) {
 }
 static char encoderStateKey;
 // Encoders are used one at a time on a thread, so remember the last lookup.
-// instrumentEncoder refreshes and endEncoder clears it, so a recycled encoder
-// address never returns a previous encoder's state.
+// instrumentEncoder refreshes and endEncoder clears it on its own thread. Any
+// thread's instrumentEncoder may release a state (or follow an encoder's
+// dealloc at a reused address), so it bumps this generation and every other
+// thread's cached state is looked up again: an encoder ended on another
+// thread and then recycled never returns a freed state.
+static std::atomic<unsigned> encoderGeneration{1};
 // Returns a plain pointer: ARC would otherwise retain and release the state
 // around every hooked call. The encoder keeps its state alive; callers hold it
 // unretained through the encoderState macro below.
 static inline __attribute__((always_inline)) void *encoderStatePointer(__unsafe_unretained id encoder) {
     if (!encoder) return nullptr;
     HookThreadCache &cache = hookCache;
-    if ((__bridge const void *)encoder == cache.encoder) return cache.state;
+    unsigned generation = encoderGeneration.load(std::memory_order_acquire);
+    if ((__bridge const void *)encoder == cache.encoder && generation == cache.encoderGeneration) return cache.state;
     __unsafe_unretained BG3MFXEncoderState *state = objc_getAssociatedObject(encoder,&encoderStateKey);
-    cache.encoder = (__bridge const void *)encoder; cache.state = (__bridge void *)state;
+    cache.encoder = (__bridge const void *)encoder; cache.state = (__bridge void *)state; cache.encoderGeneration = generation;
     return (__bridge void *)state;
 }
 #define encoderState(encoder) ((__bridge BG3MFXEncoderState *)encoderStatePointer(encoder))
@@ -2038,8 +2044,10 @@ static void instrumentEncoder(id encoder) {
     if (stale & AssocComposition) objc_setAssociatedObject(encoder,&frameCompositionKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (encoder) {
         BG3MFXEncoderState *state = [BG3MFXEncoderState new];
+        unsigned generation = encoderGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
         objc_setAssociatedObject(encoder,&encoderStateKey,state,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         hookCache.encoder = (__bridge const void *)encoder; hookCache.state = (__bridge void *)state;
+        hookCache.encoderGeneration = generation;
     }
     if (stale & AssocBindings) objc_setAssociatedObject(encoder, &bindingsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (stale & AssocAttachments) objc_setAssociatedObject(encoder, &attachmentsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
