@@ -510,15 +510,18 @@ static void menuInit(void *manager) {
         void *frameItem = at<void *(*)(void *,uint16_t,const Text *,const Text *,bool)>(Native::AddTickBox)
             (manager,frameGenerationID,&frameName,&frameDescription,frameGenerationChecked.load());
         field<void *>(frameItem,Layout::SelectionCallback) = reinterpret_cast<void *>(frameGenerationChanged);
-        // Put Frame Generation right after the upscaling controls (Upscaling
-        // Type, then Upscaling Quality when BG3 lists it).
+        // Put Frame Generation right below VSync (combo 82, EVSyncMode), which
+        // also governs presentation; without it, after the upscaling controls
+        // (Upscaling Type, then Upscaling Quality when BG3 lists it).
         items = field<void **>(manager,Layout::Items); count = field<uint32_t>(manager,Layout::ItemCount);
         if (count && items[count-1] == frameItem) {
-            uint32_t anchor = count;
+            uint32_t anchor = count, vsync = count;
             for (uint32_t i=0;i+1<count;++i) {
                 uint16_t id = field<uint8_t>(items[i],Layout::ItemType) == 3 ? field<uint16_t>(items[i],Layout::ItemID) : 0;
                 if (id == 99 || id == 100) anchor = i;
+                if (id == 82) vsync = i;
             }
+            if (vsync < count) anchor = vsync;
             if (anchor+2 < count) {
                 memmove(items+anchor+2,items+anchor+1,(count-anchor-2)*sizeof(void *)); items[anchor+1] = frameItem;
             }
