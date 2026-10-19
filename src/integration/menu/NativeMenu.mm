@@ -81,10 +81,13 @@ static void setContentViewWithFocusRepair(NSWindow *window, SEL selector, NSView
 
     original(window, selector, view);
 
-    if (!view || pendingFocusWindow != window || pendingFocusView != view) return;
+    if (!view || pendingFocusWindow != window) return;
+    // Any view set in this window ends the pair; a different view must not
+    // keep the old render view (and its layer) alive.
     NSView *restoreView = pendingFocusView;
     pendingFocusWindow = nil;
     pendingFocusView = nil;
+    if (restoreView != view) return;
 
     NSWindow *modalWindow = NSApp.modalWindow;
     bool eligible = NSThread.isMainThread && NSApp.isActive && window.isKeyWindow &&
