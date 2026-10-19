@@ -14,7 +14,7 @@ import bg3mfx
 
 
 class LaunchTests(unittest.TestCase):
-    def run_launch(self, returncode=0, executable_hash=None):
+    def run_launch(self, returncode=0, executable_hash=None, hud=False):
         executable = Path("/test/BG3.app/Contents/MacOS/BG3")
         runtime = Path(bg3mfx.__file__).resolve().parents[2] / "build/bin/libBG3MetalFX.dylib"
         with patch.dict(os.environ, {
@@ -24,6 +24,7 @@ class LaunchTests(unittest.TestCase):
         }, clear=True), \
                 patch.object(bg3mfx, "bundle", return_value=(Path("/test/BG3.app"), {}, executable)), \
                 patch.object(bg3mfx, "require_stopped"), \
+                patch.object(bg3mfx, "metal_hud_preference", return_value=hud), \
                 patch.object(bg3mfx, "digest", return_value=executable_hash or bg3mfx.SUPPORTED_EXECUTABLE_SHA256), \
                 patch.object(Path, "is_file", return_value=True), \
                 patch.object(bg3mfx, "run_streaming", return_value=subprocess.CompletedProcess([], returncode)) as run, \
@@ -33,6 +34,7 @@ class LaunchTests(unittest.TestCase):
             env = run.call_args.kwargs["env"]
             self.assertEqual(env["DYLD_INSERT_LIBRARIES"], str(runtime))
             self.assertEqual(env["MTL_HUD_ENABLED"], "1")
+            self.assertEqual(env.get("MTL_HUD_HIDDEN"), None if hud else "1")
             self.assertEqual(env["BG3MFX_ENABLE_METALFX"], "1")
             self.assertFalse({"BG3MFX_TRACE", "BG3MFX_TRACE_CONSTANTS", "BG3MFX_SCENE_PROBE"} & env.keys())
             return run
@@ -137,6 +139,9 @@ class LaunchTests(unittest.TestCase):
 
     def test_quiet_launch_enables_features_hud_and_launcher_bypass(self):
         self.run_launch()
+
+    def test_hud_starts_shown_only_when_the_checkbox_was_left_on(self):
+        self.run_launch(hud=True)
 
     def test_metal_failure_is_reported_without_a_trace_requirement(self):
         with self.assertRaisesRegex(ValueError, "after displaying an error"):

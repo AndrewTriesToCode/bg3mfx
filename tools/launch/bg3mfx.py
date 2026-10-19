@@ -59,6 +59,15 @@ def bundle(path):
     return path, info, executable
 
 
+def metal_hud_preference():
+    """The in-game Show Metal HUD checkbox, saved in BG3's preferences."""
+    result = subprocess.run(
+        ["defaults", "read", "com.larian.bg3", "BG3MFXMetalHUD"],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "1"
+
+
 def require_stopped(executable):
     listing = subprocess.check_output(["ps", "-ww", "-axo", "pid=,comm="], text=True)
     for line in listing.splitlines():
@@ -136,11 +145,20 @@ def launch(app_arg, diagnostic_output=None):
         MTL_HUD_ENABLED="1",
         BG3MFX_ENABLE_METALFX="1",
     )
-
-    if output:
-        print("Launching MetalFX with diagnostics and the Metal HUD enabled.", flush=True)
+    # As the player launcher does: Metal loads its HUD only when MTL_HUD_ENABLED
+    # is set at launch, so the in-game checkbox can toggle it. Start hidden
+    # unless the checkbox was left on.
+    hud = metal_hud_preference()
+    if hud:
+        env.pop("MTL_HUD_HIDDEN", None)
     else:
-        print("Launching the quiet MetalFX runtime with the Metal HUD enabled.", flush=True)
+        env["MTL_HUD_HIDDEN"] = "1"
+
+    shown = "shown" if hud else "hidden until enabled in Options"
+    if output:
+        print(f"Launching MetalFX with diagnostics; Metal HUD {shown}.", flush=True)
+    else:
+        print(f"Launching the quiet MetalFX runtime; Metal HUD {shown}.", flush=True)
     print("Skipping the Larian launcher with -NoLauncher 1; app bundle remains unchanged.", flush=True)
     result = run_streaming(
         [str(executable), "-NoLauncher", "1"], cwd=executable.parent, env=env
