@@ -727,22 +727,27 @@ static void declineFrameGeneration(NSString *reason) {
         [alert addButtonWithTitle:@"OK"]; [alert runModal];
     });
 }
+// frameInterpolator, frameConfiguration and previousFrameTime belong to BG3's
+// render thread. framePresenter is also read by layerNextDrawable, so it is
+// written under the guard.
 static BG3MFXFrameInterpolation *frameInterpolator;
 static BG3MFXFramePresenter *framePresenter;
 static NSString *frameConfiguration;
 static double previousFrameTime;
+// Menu callbacks run on another thread; the render thread applies their reset
+// at its next generated frame instead of touching its objects concurrently.
+static std::atomic<bool> frameGenerationResetPending{false};
 // Unchecking Frame Generation frees the interpolator and
 // presentation worker instead of leaving an idle effect alive. The worker joins
 // its thread after draining queued pairs, so release it off the render thread.
 static void releaseFrameGeneration(void) {
-    BG3MFXFramePresenter *presenter=framePresenter;
-    frameInterpolator=nil; framePresenter=nil; frameConfiguration=nil; previousFrameTime=0;
+    BG3MFXFramePresenter *presenter;
+    { std::lock_guard<std::recursive_mutex> lock(guard()); presenter=framePresenter; framePresenter=nil; }
+    frameInterpolator=nil; frameConfiguration=nil; previousFrameTime=0;
     if (presenter) dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{ (void)presenter; });
     record(@{@"event":@"frameGenerationReleased"});
 }
-static void resetFrameGeneration(void) {
-    [frameInterpolator resetHistory]; previousFrameTime=0;
-}
+static void resetFrameGeneration(void) { frameGenerationResetPending=true; }
 static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *request);
 
 static void failFeature(BOOL temporal, NSString *reason) {
@@ -1405,7 +1410,9 @@ static void recordDisplayed(BOOL generated, CFTimeInterval time, CFTimeInterval 
     auto ms=[](std::vector<double> v, double p){
         if (v.empty()) return 0.0; std::sort(v.begin(),v.end()); return 1000*v[(size_t)(p*(v.size()-1))]; };
     auto spread=[&](const std::vector<double> &v){ return @[@(ms(v,.1)),@(ms(v,.5)),@(ms(v,.9))]; };
-    if (BG3MFXFramePresenter *presenter=framePresenter)
+    BG3MFXFramePresenter *presenter;
+    { std::lock_guard<std::recursive_mutex> guardLock(guard()); presenter=framePresenter; }
+    if (presenter)
         record(@{@"event":@"frameGenerationPresenterTiming",@"timing":[presenter takeTimingSummary],@"gpu":takeGPUTiming()});
     record(@{@"event":@"frameGenerationDisplayed",@"generatedShown":@(shown[1]),@"generatedDropped":@(dropped[1]),
         @"generatedNoDrawable":@(missing[1]),@"realShown":@(shown[0]),@"realDropped":@(dropped[0]),@"realNoDrawable":@(missing[0]),
@@ -1419,7 +1426,8 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
     id<MTLTexture> scene=request[@"scene"], ui=request[@"ui"], target=request[@"target"];
     // Only frames composed into a stand-in drawable can be paired. A frame that
     // began on a real drawable (Frame Generation just selected) stays native.
-    BG3MFXFramePresenter *presenter=framePresenter;
+    BG3MFXFramePresenter *presenter;
+    { std::lock_guard<std::recursive_mutex> lock(guard()); presenter=framePresenter; }
     if(![presenter ownsTexture:target]) return;
     NSDictionary *inputs=request[@"inputs"];
     id<MTLTexture> depth=inputs[@"depth"], motion=inputs[@"motion"];
@@ -1438,6 +1446,7 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
             @"input":texture(depth),@"scene":texture(scene),@"direct":@[@(frameInterpolator.directColor),
             @(frameInterpolator.directDepth),@(frameInterpolator.directMotion)]});
     }
+    if(frameGenerationResetPending.exchange(false)) { [frameInterpolator resetHistory]; previousFrameTime=0; }
     double now=NSProcessInfo.processInfo.systemUptime;
     double interval=previousFrameTime>0 ? now-previousFrameTime : 1.0/60;
     previousFrameTime=now;
