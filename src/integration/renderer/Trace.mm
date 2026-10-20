@@ -472,7 +472,8 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
 [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
-        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"];
+        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"] ||
+        [kind isEqualToString:@"metal4Residency"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
@@ -2438,6 +2439,11 @@ __attribute__((constructor)) static void start() {
         }
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
 #ifndef BG3MFX_NO_TRACE
+        // Growth at a steady size means a set still holds textures BG3 replaced.
+        BG3MFXResidencyHook = [](NSString *label, NSUInteger allocations, uint64_t bytes, NSUInteger added, BOOL replaced) {
+            record(@{@"event":@"metal4Residency",@"label":label ?: @"",@"allocations":@(allocations),
+                @"megabytes":@(bytes/1048576.0),@"added":@(added),@"replaced":@(replaced)});
+        };
         NSMutableDictionary *startup = [@{@"event": @"start", @"mode": metalFXEnabled ? @"metalfx-menu" : @"diagnostic", @"device": device.name ?: @"unavailable",
                  @"spatial": @([MTLFXSpatialScalerDescriptor supportsDevice:device]),
                  @"temporal": @([MTLFXTemporalScalerDescriptor supportsDevice:device])} mutableCopy];

@@ -9,6 +9,7 @@ extern "C" NSUInteger BG3MFXTexturePoolAllocations(void) { return poolAllocation
 #endif
 #ifndef BG3MFX_NO_TRACE
 extern "C" void (*BG3MFXGPUTimingHook)(NSString *, double) = nullptr;
+extern "C" void (*BG3MFXResidencyHook)(NSString *, NSUInteger, uint64_t, NSUInteger, BOOL) = nullptr;
 #endif
 
 static NSError *resourceError(NSString *reason) {
@@ -92,19 +93,29 @@ static NSError *resourceError(NSString *reason) {
     return self;
 }
 - (id<MTLResidencySet>)residencyFor:(NSArray<id<MTLAllocation>> *)allocations error:(NSError **)error {
-    std::lock_guard<std::mutex> lock(_mutex);
-    // A full set is replaced rather than cleared: in-flight submissions keep
-    // using the previous one. Replacement bounds growth from resized inputs.
-    if (!_residency || _residency.allocationCount+allocations.count>64) {
-        auto descriptor=[MTLResidencySetDescriptor new]; descriptor.initialCapacity=16;
-        _residency=[_device newResidencySetWithDescriptor:descriptor error:error];
-        if (!_residency) return nil;
-    }
-    BOOL changed=NO;
-    for (id<MTLAllocation> allocation in allocations)
-        if (![_residency containsAllocation:allocation]) { [_residency addAllocation:allocation]; changed=YES; }
-    if (changed) [_residency commit];
-    return _residency;
+    id<MTLResidencySet> residency;
+    NSUInteger added=0; BOOL replaced=NO;
+    { std::lock_guard<std::mutex> lock(_mutex);
+      // A full set is replaced rather than cleared: in-flight submissions keep
+      // using the previous one. Replacement bounds growth from resized inputs.
+      if (!_residency || _residency.allocationCount+allocations.count>64) {
+          replaced=_residency!=nil;
+          auto descriptor=[MTLResidencySetDescriptor new]; descriptor.initialCapacity=16;
+          _residency=[_device newResidencySetWithDescriptor:descriptor error:error];
+          if (!_residency) return nil;
+      }
+      for (id<MTLAllocation> allocation in allocations)
+          if (![_residency containsAllocation:allocation]) { [_residency addAllocation:allocation]; ++added; }
+      if (added) [_residency commit];
+      residency=_residency; }
+#ifndef BG3MFX_NO_TRACE
+    // Outside the bridge lock: the hook records through the tracer's guard.
+    if (added) if (auto hook=BG3MFXResidencyHook)
+        hook(_label,residency.allocationCount,residency.allocatedSize,added,replaced);
+#else
+    (void)replaced;
+#endif
+    return residency;
 }
 - (void)releaseResidency {
     std::lock_guard<std::mutex> lock(_mutex);

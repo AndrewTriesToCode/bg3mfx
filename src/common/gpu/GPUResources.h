@@ -40,6 +40,11 @@ NS_ASSUME_NONNULL_BEGIN
 // Diagnostics: when set, receives each Metal 4 bridge submission's GPU time.
 #ifndef BG3MFX_NO_TRACE
 extern "C" void (*_Nullable BG3MFXGPUTimingHook)(NSString *label, double gpuSeconds);
+// Diagnostics: when set, receives each change to a bridge's residency set: its
+// allocation count and bytes after the change, how many allocations were added,
+// and whether the set was replaced (on reaching its 64-allocation bound).
+extern "C" void (*_Nullable BG3MFXResidencyHook)(NSString *label, NSUInteger allocations, uint64_t bytes,
+    NSUInteger added, BOOL replaced);
 #endif
 
 NS_ASSUME_NONNULL_END
