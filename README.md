@@ -39,7 +39,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **MetalFX Frame Generation** | Creates extra in-between frames for smoother motion. | **~100% more FPS** |
 | **MetalFX Spatial Upscaling** | Upscales a smaller rendered image to the final game resolution. | **~30% more FPS** |
 | **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. | **~20% more FPS** |
-| **Shadow Rendering Optimizations** | Fixes shadow rendering bugs and adds other optimizations. | **~15% more FPS** |
+| **Shadow Rendering Optimizations** | Fixes base game shadow rendering bugs and adds other optimizations. | **~15% more FPS** |
 | **Depth Prepass Optimization** | Skips some repeated work when drawing scene depth. | **~2% more FPS** |
 
 ### CPU features
