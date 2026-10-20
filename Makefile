@@ -1,4 +1,4 @@
-VERSION ?= 0.3.0
+VERSION ?= 0.3.1
 PREFIX ?= /usr/local
 BIN_DIR ?= build/bin
 EVIDENCE_DIR ?= build/evidence
