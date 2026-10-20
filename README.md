@@ -111,6 +111,9 @@ Baldur's Gate 3 starts with features available. In the game, go to
   FPS limiter to half the frame rate you want to see (for example, 60 on a
   120 Hz display).
 - The frame limiter will significantly reduce cpu and gpu usage.
+- After you untick **Frame Generation**, the Metal HUD keeps showing its frame
+  interpolation panel until the game restarts. That is the HUD, not Frame
+  Generation: when the HUD's FPS matches its rendered FPS, it is off.
 
 ## Troubleshooting
 
