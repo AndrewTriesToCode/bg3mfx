@@ -83,7 +83,15 @@ static NSError *resourceError(NSString *reason) {
     NSString *_label;
     std::mutex _mutex;
     NSMutableArray<BG3MFXMetal4Slot *> *_free;
+    // Submission count, and the last submission that used each member of
+    // _residency (keyed by identity; the set keeps every key alive).
+    uint64_t _submissions;
+    std::unordered_map<const void *, uint64_t> _lastUse;
 }
+// A member unused this many submissions is dropped when the set is rebuilt.
+// Pools rotate their textures within a few submissions; a BG3 render target
+// replaced at the same size (live: save loads, settings changes) never returns.
+static constexpr uint64_t ResidencyIdleSubmissions = 16;
 - (instancetype)initWithDevice:(id<MTLDevice>)device label:(NSString *)label error:(NSError **)error {
     if (!(self=[super init])) return nil;
     auto descriptor=[MTL4CommandQueueDescriptor new]; descriptor.label=label;
@@ -96,21 +104,41 @@ static NSError *resourceError(NSString *reason) {
     id<MTLResidencySet> residency;
     NSUInteger added=0; BOOL replaced=NO;
     { std::lock_guard<std::mutex> lock(_mutex);
-      // A full set is replaced rather than cleared: in-flight submissions keep
-      // using the previous one. Replacement bounds growth from resized inputs.
-      if (!_residency || _residency.allocationCount+allocations.count>64) {
-          replaced=_residency!=nil;
-          auto descriptor=[MTLResidencySetDescriptor new]; descriptor.initialCapacity=16;
-          _residency=[_device newResidencySetWithDescriptor:descriptor error:error];
-          if (!_residency) return nil;
-      }
+      uint64_t now=++_submissions;
+      // The set retains its members, so BG3 textures it no longer uses would
+      // stay allocated. Look for idle members periodically; scanning at most 64
+      // entries every few submissions costs nothing measurable.
+      bool idle=false;
+      if (_residency && now%ResidencyIdleSubmissions==0)
+          for (auto &use:_lastUse) if (now-use.second>ResidencyIdleSubmissions) { idle=true; break; }
+      NSUInteger missing=0;
       for (id<MTLAllocation> allocation in allocations)
+          if (!_residency || ![_residency containsAllocation:allocation]) ++missing;
+      // Rebuild rather than remove: in-flight submissions keep the previous set.
+      if (!_residency || idle || _residency.allocationCount+missing>64) {
+          auto descriptor=[MTLResidencySetDescriptor new]; descriptor.initialCapacity=16;
+          id<MTLResidencySet> next=[_device newResidencySetWithDescriptor:descriptor error:error];
+          if (!next) return nil;
+          std::unordered_map<const void *, uint64_t> kept;
+          if (_residency) {
+              replaced=YES;
+              for (id<MTLAllocation> allocation in _residency.allAllocations) {
+                  auto use=_lastUse.find((__bridge const void *)allocation);
+                  if (use==_lastUse.end() || now-use->second>ResidencyIdleSubmissions) continue;
+                  [next addAllocation:allocation]; kept.insert(*use);
+              }
+          }
+          _residency=next; _lastUse.swap(kept);
+      }
+      for (id<MTLAllocation> allocation in allocations) {
           if (![_residency containsAllocation:allocation]) { [_residency addAllocation:allocation]; ++added; }
-      if (added) [_residency commit];
+          _lastUse[(__bridge const void *)allocation]=now;
+      }
+      if (added || replaced) [_residency commit];
       residency=_residency; }
 #ifndef BG3MFX_NO_TRACE
     // Outside the bridge lock: the hook records through the tracer's guard.
-    if (added) if (auto hook=BG3MFXResidencyHook)
+    if (added || replaced) if (auto hook=BG3MFXResidencyHook)
         hook(_label,residency.allocationCount,residency.allocatedSize,added,replaced);
 #else
     (void)replaced;
@@ -119,7 +147,7 @@ static NSError *resourceError(NSString *reason) {
 }
 - (void)releaseResidency {
     std::lock_guard<std::mutex> lock(_mutex);
-    _residency = nil;
+    _residency = nil; _lastUse.clear();
 }
 - (BOOL)encodeIntoBuffer:(id<MTLCommandBuffer>)buffer allocations:(NSArray<id<MTLAllocation>> *)allocations
                 retained:(NSArray *)retained encode:(void (^)(id<MTL4CommandBuffer>))encode

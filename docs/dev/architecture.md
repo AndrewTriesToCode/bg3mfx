@@ -233,6 +233,14 @@ the Metal 4 bridge keeps them for the GPU), and the previous size's scaler drops
 its residency set when the size changes. `temporal-hook-smoke` checks that no
 earlier size's textures survive (24 of 32 did before).
 
+BG3 also replaces render targets at the same size (live: save loads and
+settings changes), which no size change releases. Each Metal 4 bridge records
+the submission that last used each member of its residency set and rebuilds the
+set without members idle for 16 submissions; pooled textures rotate well within
+that. `metal4-bridge-smoke` replaces its inputs at the same size and checks that
+the old ones are freed (the earlier set kept them until it reached 64
+allocations). The diagnostic runtime logs each set change as `metal4Residency`.
+
 Spatial uses the same 0.3 s settle and keeps at most two sizes, the current one
 and the one before it; MetalFX frees evicted Spatial scalers. Keeping every size
 held each one's scaler and pooled textures for the session: `spatial-hook-smoke

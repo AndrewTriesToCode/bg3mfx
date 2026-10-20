@@ -174,6 +174,18 @@ change, a 10 s Spatial window drag in BG3 (SMAA, 1280×800 window) retained
 first was BG3's own resize cost was not isolated. Live re-measurement after the
 change is pending.
 
+## Metal 4 residency at a steady size (October 19, 2026)
+
+Live in BG3 with Frame Generation on, then MetalFX Temporal, in a window and
+without changing the output size, the diagnostic `metal4Residency` events
+showed sets gaining entries for replaced BG3 targets: Frame Generation from 4
+to 7 allocations (+13.5 MB at that size) with no settings change, plausibly a
+save load, and Temporal by one allocation twice after settings changes. The
+sets were rebuilt only when the render size changed or at 64 allocations. Each
+bridge now drops members idle for 16 submissions; `metal4-bridge-smoke`
+reproduced the retention before the change and passes after it (offscreen).
+Live re-measurement after the change is pending.
+
 ## Metal 4 Temporal path
 
 Temporal now chooses the Metal 4 scaler on supported devices and retains the

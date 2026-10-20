@@ -42,7 +42,8 @@ NS_ASSUME_NONNULL_BEGIN
 extern "C" void (*_Nullable BG3MFXGPUTimingHook)(NSString *label, double gpuSeconds);
 // Diagnostics: when set, receives each change to a bridge's residency set: its
 // allocation count and bytes after the change, how many allocations were added,
-// and whether the set was replaced (on reaching its 64-allocation bound).
+// and whether the set was rebuilt (dropping members idle for 16 submissions,
+// or on reaching its 64-allocation bound).
 extern "C" void (*_Nullable BG3MFXResidencyHook)(NSString *label, NSUInteger allocations, uint64_t bytes,
     NSUInteger added, BOOL replaced);
 #endif

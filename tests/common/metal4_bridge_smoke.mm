@@ -60,5 +60,43 @@ int main() { @autoreleasepool {
         }
     }
     printf("%s bridge: eight in-flight GPU producers, scalers and consumers passed after backend destruction.\n",metal4 ? "Metal4" : "Metal3");
+    if(!metal4) return 0;
+    // BG3 can replace its render targets at the same size (live: save loads).
+    // The Metal 4 residency set must not keep the replaced inputs allocated.
+    pipeline=[[BG3MFXPipeline alloc] initWithDevice:device inputWidth:256 inputHeight:128
+        outputWidth:512 outputHeight:256 colorFormat:MTLPixelFormatRGBA16Float depthFormat:MTLPixelFormatR32Float
+        motionFormat:MTLPixelFormatRG16Float outputFormat:MTLPixelFormatRGBA16Float error:&error];
+    if(!pipeline) return 7;
+    auto makeInputs=[&](NSMutableArray *into){
+        MTLPixelFormat formats[]={MTLPixelFormatRGBA16Float,MTLPixelFormatR32Float,MTLPixelFormatRG16Float};
+        for(unsigned i=0;i<3;++i) {
+            MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:formats[i] width:256 height:128 mipmapped:NO];
+            d.storageMode=MTLStorageModePrivate;d.usage=MTLTextureUsageShaderRead|MTLTextureUsageShaderWrite;
+            [into addObject:[device newTextureWithDescriptor:d]];
+        }
+    };
+    auto run=[&](NSArray<id<MTLTexture>> *inputs)->BOOL{ @autoreleasepool {
+        id<MTLCommandBuffer> b=[queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder=[b computeCommandEncoder];
+        float value=0.5f;[encoder setComputePipelineState:fill];
+        for(unsigned i=0;i<3;++i) [encoder setTexture:inputs[i] atIndex:i];
+        [encoder setBytes:&value length:sizeof(value) atIndex:0];
+        [encoder dispatchThreads:MTLSizeMake(256,128,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];[encoder endEncoding];
+        BG3MFXFrameParameters p={};p.motionScaleX=p.motionScaleY=1;p.depthReversed=YES;
+        if(![pipeline encodeColor:inputs[0] depth:inputs[1] motion:inputs[2] parameters:p commandBuffer:b error:nil]) return NO;
+        [b commit];[b waitUntilCompleted];return b.status==MTLCommandBufferStatusCompleted;
+    }};
+    __weak id<MTLTexture> replaced[3];
+    { NSMutableArray *first=[NSMutableArray array]; makeInputs(first);
+      for(unsigned i=0;i<3;++i) replaced[i]=first[i];
+      for(unsigned frame=0;frame<4;++frame) if(!run(first)) return 8; }
+    NSMutableArray *second=[NSMutableArray array]; makeInputs(second);
+    for(unsigned frame=0;frame<40;++frame) if(!run(second)) return 9;
+    // GPU feedback releases each submission's references shortly after completion.
+    for(unsigned wait=0;wait<100 && (replaced[0] || replaced[1] || replaced[2]);++wait) [NSThread sleepForTimeInterval:0.01];
+    if(replaced[0] || replaced[1] || replaced[2]) {
+        fprintf(stderr,"The Metal 4 residency set kept replaced same-size inputs alive\n");return 10;
+    }
+    puts("Metal4 bridge: inputs replaced at the same size were released after 40 submissions.");
     return 0;
 }}
