@@ -184,7 +184,11 @@ save load, and Temporal by one allocation twice after settings changes. The
 sets were rebuilt only when the render size changed or at 64 allocations. Each
 bridge now drops members idle for 16 submissions; `metal4-bridge-smoke`
 reproduced the retention before the change and passes after it (offscreen).
-Live re-measurement after the change is pending.
+Live after the change, same window and settings toggles (bloom, ambient
+occlusion, shadows) plus save loads: each time BG3 replaced targets the sets
+returned to their steady size within 1–3 s (`replaced`): Temporal 11 → 9 → 4
+allocations (18.9 → 7.8 MB), Frame Generation 7 → 4 (21.2 → 14.5 MB). The run
+before it, accidentally on the unfixed library, grew Temporal to 14.
 
 ## Metal 4 Temporal path
 
