@@ -849,8 +849,9 @@ static BOOL upscaleSpatial(id<MTLCommandBuffer> buffer, NSDictionary *inputs) {
 static std::atomic<unsigned> temporalScalersCreated{0};
 #endif
 static NSMutableDictionary *temporalUpscalerCache() {
-    static NSMutableDictionary *value;
-    if (!value) value = [NSMutableDictionary dictionary];
+    // Initialized once, thread-safely; temporalSizeSettled reads it before
+    // taking the guard.
+    static NSMutableDictionary *value = [NSMutableDictionary dictionary];
     return value;
 }
 // On macOS 27.0.1 a Temporal scaler whose output is 1512 px tall or less is
