@@ -122,10 +122,12 @@ release for the new game version yet, play from Steam as usual in the meantime.
 If you opened the app, it lets you choose the game's location. In Terminal, use
 `bg3mfx --game "/path/to/Baldur's Gate 3.app"`.
 
-**The game shows a "MetalFX … could not continue" message and closes.** Please
+**"MetalFX Spatial is off" or "MetalFX Temporal is off."** MetalFX ran into a
+problem, so the game switched to AMD FSR 1.0 and keeps running. To try again,
+choose another Upscaling Type and then the MetalFX one in Options > Video. If
+it keeps happening, please
 [open an issue](https://github.com/AndrewTriesToCode/bg3mfx/issues) with the
-message text, your Mac model, and what you were doing. In the meantime, choose
-Off or AMD FSR 1.0 in Upscaling Type, or play from Steam as usual.
+message text, your Mac model, and what you were doing.
 
 **"MetalFX Frame Generation is off."** Frame Generation couldn't handle the
 game's frames, so it turned itself off. The game keeps running with your
