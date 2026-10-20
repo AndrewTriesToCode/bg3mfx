@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <vector>
 #import "common/gpu/MetalFXPipeline.h"
+#import "features/cluster-buffer-guard/ClusterBufferGuard.h"
 #import "features/depth-prepass/DepthPrepass.h"
 #import "features/render-thread-optimizations/BindFilter.h"
 #import "features/dynamic-worker-prioritization/DynamicWorkers.h"
@@ -93,6 +94,8 @@ static bool prepassTrim;
 // pipeline about 12% of the time. Bindings persist for the encoder's lifetime,
 // so only changed slots and pipelines are forwarded to the driver.
 static bool bindDedup;
+// Cluster buffer guard (features/cluster-buffer-guard).
+static bool clusterGuard;
 // Diagnostics: binds that repeat the encoder's current binding.
 static bool redundantProbe;
 enum RedundantCount { TextureCalls, TextureCallsRedundant, TextureSlots, TextureSlotsRedundant,
@@ -138,6 +141,8 @@ struct CompositionDraw {
     __unsafe_unretained id seenBuffer[2][32];
     NSUInteger seenOffset[2][32];
     __unsafe_unretained id seenPipeline, seenDepth;
+    // Cluster buffer guard: what compute indices 1 and 6 hold.
+    __unsafe_unretained id clusterSlot[2];
 #endif
     // Bind dedup: fragment textures this encoder has actually forwarded.
     BG3MFXBindFilter bindFilter;
@@ -443,6 +448,50 @@ static void bindBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> cons
         if (ConstantBinding *b=constantSlot(self,stage,range.location+i)) { b->buffer=buffers[i]; b->offset=offsets[i]; b->hasBytes=false; b->length=0; }
     }
 }
+#ifndef BG3MFX_NO_TRACE
+// Diagnostics: which buffer BG3 leaves at the cluster indices of a compute
+// encoder, so dispatches show whether the guard's stand-in was read.
+static void noteClusterSlot(__unsafe_unretained id encoder, NSUInteger index, __unsafe_unretained id buffer) {
+    int slot = index == BG3MFXClusterInfoIndex ? 0 : index == BG3MFXClusterInfoWriteIndex ? 1 : -1;
+    if (slot < 0) return;
+    if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(encoder)) s->clusterSlot[slot] = buffer;
+}
+static void computeBindBuffer(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger index) {
+    ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,buffer,offset,index);
+    noteClusterSlot(self,index,buffer);
+}
+static void computeBindBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> const *buffers, const NSUInteger *offsets, NSRange range) {
+    ((void(*)(id,SEL,id<MTLBuffer> const *,const NSUInteger *,NSRange))original(self,cmd))(self,cmd,buffers,offsets,range);
+    for (NSUInteger i=0; i<range.length; ++i) noteClusterSlot(self,range.location+i,buffers[i]);
+}
+static void computeBindBytes(__unsafe_unretained id self, SEL cmd, const void *bytes, NSUInteger length, NSUInteger index) {
+    ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,bytes,length,index);
+    noteClusterSlot(self,index,bytes && length ? (id)kCFNull : nil);  // any non-nil marker: BG3 filled the slot
+}
+// The passes Metal validation reported without ClusterInfoBuffer;
+// VolumetricFogGather and the debug views don't declare it.
+static BOOL clusterPass(NSString *name) {
+    return ([name hasPrefix:@"ClusteredLighting_"] && ![name hasPrefix:@"ClusteredLighting_Debug"])
+        || [name isEqualToString:@"VolumetricFogInitialize"] || [name isEqualToString:@"VolumetricFogLighting"]
+        || [name isEqualToString:@"ClusterAssignment"];
+}
+// Reports cluster passes that read the stand-in (BG3 left the slot unbound) or
+// an explicit nil (which the guard cannot cover): the first few, then every 256th.
+static void noteClusterDispatch(__unsafe_unretained id encoder, NSString *name) {
+    if (!clusterGuard || !clusterPass(name)) return;
+    __unsafe_unretained BG3MFXEncoderState *s = encoderState(encoder);
+    if (!s) return;
+    int slot = [name isEqualToString:@"ClusterAssignment"] ? 1 : 0;
+    __unsafe_unretained id bound = s->clusterSlot[slot];
+    bool standIn = BG3MFXIsClusterStandIn(bound);
+    if (!standIn && bound) return;
+    static std::atomic<unsigned> standIns{0}, nils{0};
+    unsigned count = standIn ? ++standIns : ++nils;
+    if (count <= 8 || count % 256 == 0)
+        record(@{@"event":@"clusterBufferGuard",@"pipeline":name,@"bound":standIn ? @"standIn" : @"nil",
+            @"count":@(count),@"frame":@(BG3MFXRenderedFrames.load())});
+}
+#endif
 static void bufferOffset(__unsafe_unretained id self, SEL cmd, NSUInteger offset, NSUInteger index) {
     if (diagnostics && redundantProbe) countBuffers(self,cmd,nullptr,&offset,NSMakeRange(index,1),true);
     ((void(*)(id,SEL,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,offset,index);
@@ -473,7 +522,7 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
 [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
         [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"] ||
-        [kind isEqualToString:@"metal4Residency"];
+        [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"clusterBufferGuard"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
@@ -2011,6 +2060,9 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
         }
     }
 native:
+#ifndef BG3MFX_NO_TRACE
+    if (diagnostics) noteClusterDispatch(self,pipelineName);
+#endif
     if (metalFXEnabled && buffer && frameGeneration(buffer)) forwardNativeCompute(self,pipelineName,textures,buffer,mode);
     if (traceConstants) {
         NSDictionary *state = pipelineDescription(self);
@@ -2094,6 +2146,13 @@ static void instrumentEncoder(id encoder) {
         if (prepassTrim) hook(encoder,"setDepthStencilState:",(IMP)setDepthStencilHook);
     }
     if (diagnostics) hook(encoder,"setLabel:",(IMP)label);
+#ifndef BG3MFX_NO_TRACE
+    if (diagnostics && clusterGuard) {
+        hook(encoder,"setBuffer:offset:atIndex:",(IMP)computeBindBuffer);
+        hook(encoder,"setBuffers:offsets:withRange:",(IMP)computeBindBuffers);
+        hook(encoder,"setBytes:length:atIndex:",(IMP)computeBindBytes);
+    }
+#endif
     if (diagnostics) hook(encoder,"pushDebugGroup:",(IMP)group);
     hook(encoder,"setViewport:",(IMP)bindViewport);
     hook(encoder,"setScissorRect:",(IMP)bindScissor);
@@ -2146,6 +2205,7 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     }
     id encoder = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
     instrumentEncoder(encoder);
+    if (clusterGuard) BG3MFXBindClusterStandIns(encoder,NO);
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
     flushRedundantCounts();
     if (prepassTrim && encoder) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) {
@@ -2174,6 +2234,7 @@ static id computeEncoder(id self, SEL cmd) {
     id encoder = ((id(*)(id,SEL))original(self,cmd))(self,cmd);
     record(@{@"event": @"computeEncoderCreated", @"method": NSStringFromSelector(cmd), @"class": NSStringFromClass([encoder class])});
     instrumentEncoder(encoder);
+    if (clusterGuard) BG3MFXBindClusterStandIns(encoder,YES);
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
     if (metalFXEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) state->buffer=self;
     return encoder;
@@ -2194,6 +2255,7 @@ static id computeEncoderType(id self, SEL cmd, MTLDispatchType type) {
     activeBuffer = previous;
     record(@{@"event": @"computeEncoderCreated", @"method": NSStringFromSelector(cmd), @"dispatchType": @(type), @"class": NSStringFromClass([encoder class])});
     instrumentEncoder(encoder);
+    if (clusterGuard) BG3MFXBindClusterStandIns(encoder,YES);
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
     if (metalFXEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) state->buffer=self;
     return encoder;
@@ -2415,6 +2477,8 @@ __attribute__((constructor)) static void start() {
         bindDedup = metalFXEnabled && !(getenv("BG3MFX_RENDER_THREAD_OPTIMIZATIONS") && strcmp(getenv("BG3MFX_RENDER_THREAD_OPTIMIZATIONS"),"0") == 0);
         redundantProbe = diagnostics && metalFXEnabled && getenv("BG3MFX_TRACE_REDUNDANT") && strcmp(getenv("BG3MFX_TRACE_REDUNDANT"),"1") == 0;
         prepassTrim = metalFXEnabled && !(getenv("BG3MFX_DEPTH_PREPASS_OPTIMIZATION") && strcmp(getenv("BG3MFX_DEPTH_PREPASS_OPTIMIZATION"),"0") == 0);
+        // Cluster buffer guard; BG3MFX_CLUSTER_BUFFER_GUARD=0 leaves BG3's bindings alone for comparison.
+        clusterGuard = metalFXEnabled && !(getenv("BG3MFX_CLUSTER_BUFFER_GUARD") && strcmp(getenv("BG3MFX_CLUSTER_BUFFER_GUARD"),"0") == 0);
         if (diagnostics) {
             constantSamples = [NSMutableDictionary dictionary];
             shaderBufferSizes = [NSMutableDictionary dictionary];

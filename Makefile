@@ -62,6 +62,7 @@ $(BIN_DIR):
 	mkdir -p "$(BIN_DIR)"
 
 RUNTIME_SOURCES = \
+	src/features/cluster-buffer-guard/ClusterBufferGuard.mm \
 	src/features/depth-prepass/DepthPrepass.mm \
 	src/features/metalfx-spatial-upscaling/SpatialUpscaler.mm \
 	src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm \
@@ -84,6 +85,7 @@ DIAGNOSTIC_SOURCES = \
 
 RUNTIME_HEADERS = \
 	src/common/native/SupportedBuild.h \
+	src/features/cluster-buffer-guard/ClusterBufferGuard.h \
 	src/features/depth-prepass/DepthPrepass.h \
 	src/features/render-thread-optimizations/BindFilter.h \
 	src/features/metalfx-spatial-upscaling/SpatialUpscaler.h \

@@ -365,6 +365,12 @@ fixtures keep independent layouts/expected instructions to catch drift.
   next block in an interposed `semaphore_wait`/`semaphore_timedwait`, and the
   present hooks in `Trace.mm` count frames. Decisions are logged to subsystem
   `com.bg3mfx`, category `threads`.
+- `src/features/cluster-buffer-guard/ClusterBufferGuard.*`: Cluster Buffer Guard (on by default;
+  `BG3MFX_CLUSTER_BUFFER_GUARD=0` disables it). `Trace.mm` binds a zero-filled,
+  untracked stand-in at compute buffer indices 1 and 6 and fragment index 1 on
+  each new encoder, so a clustered-lighting pass that BG3 dispatches without
+  `ClusterInfoBuffer` reads no lights instead of faulting the GPU. Diagnostic
+  builds record `clusterBufferGuard` when one of those passes reads the stand-in.
 - `src/features/lua-jump-fix/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
   avoiding two system calls per protected call (on by default;
   `BG3MFX_LUA_SYSTEM_CALL_ELIMINATION=0` disables it).

@@ -190,6 +190,39 @@ returned to their steady size within 1–3 s (`replaced`): Temporal 11 → 9 →
 allocations (18.9 → 7.8 MB), Frame Generation 7 → 4 (21.2 → 14.5 MB). The run
 before it, accidentally on the unfixed library, grew Temporal to 14.
 
+## Character creation GPU hang (October 19, 2026)
+
+Unmodified BG3 4.1.1.7631656 hung the GPU on entering character creation in
+fullscreen 2336×1460 with AMD FSR 1.0 Ultra Quality (render 1796×1123). The
+AGX driver wedged, WindowServer hit its watchdog, and the process stayed until
+a reboot. bg3mfx 0.3.0 and 0.3.1 reached it only through a saved MetalFX
+Ultra Quality setting; Off and other FSR qualities passed. Metal API validation
+showed, within about 110 ms before the fault, `ClusterAssignment` (index 6),
+`ClusteredLighting_0..13`, `VolumetricFogInitialize`, `VolumetricFogLighting`
+(index 1) and the character lash and tearline fragment shaders (fragment index
+1) running without `ClusterInfoBuffer`. The hang was intermittent: one run at
+the same settings passed.
+
+The [cluster buffer guard](../../../src/features/cluster-buffer-guard/README.md)
+binds a zero-filled stand-in at those indices on each new encoder. Live with
+the diagnostic runtime and API validation, at the same settings, a first run of
+many character-creation entries (some at higher output resolutions) never
+reproduced the trigger: BG3 bound the buffer itself every time. In a second
+run, the first entry into character creation did reproduce it.
+`ClusterAssignment`, `VolumetricFogInitialize` and `VolumetricFogLighting` ran
+on the stand-in every frame for about 1 min 47 s: about 2,100 frames, 6,400
+dispatches, at render 1796×1123 for 2336×1460 output. There was no hang and no
+validation error, and the user saw normal lighting and fog. The reads stopped
+when the user returned to the menu. Later entries, including one made with
+Upscaling Off and then switched to FSR inside character creation, bound the
+buffer normally. `ClusteredLighting_*` and the fragment shaders bound it in
+this run. Changing the starting character loaded geometry slowly under
+validation and tracing; this has not been compared on the quiet runtime. The
+first run's `VolumetricFogGather`/`VolumetricFogLighting` stand-in events were
+a diagnostic gap (compute `setBytes`, and passes that don't declare the
+buffer), fixed before the second run. Evidence:
+`build/evidence/2026-10-19-cc-crash/` (`trace-guard-2.jsonl`).
+
 ## Metal 4 Temporal path
 
 Temporal now chooses the Metal 4 scaler on supported devices and retains the
