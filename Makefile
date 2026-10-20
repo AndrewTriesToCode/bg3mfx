@@ -146,6 +146,8 @@ test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/f
 	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib no-taa
 	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib resize
 	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib resize
+	BG3MFX_TEST_ERRORS_STDERR=1 $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib bad-format
+	BG3MFX_TEST_ERRORS_STDERR=1 $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib bad-format
 	$(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/libBG3MetalFXTrace.dylib
 	BG3MFX_DEPTH_PREPASS_OPTIMIZATION=1 $(BIN_DIR)/prepass-trim-smoke $(BIN_DIR)/libBG3MetalFX.dylib expect-trim

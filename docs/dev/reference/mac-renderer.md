@@ -190,7 +190,9 @@ succeeded and completion status was 4, and the HUD displayed Spatial
 853×533 → 1280×800. It exited normally after baseline settings were restored;
 the original executable hash remained unchanged. An isolated AppKit harness
 verified the visible failure reason and Close Game action (exit 78); the error
-does not contain a sentence about FSR fallback.
+does not contain a sentence about FSR fallback. (Superseded on October 19: a
+failed upscaler now turns off and BG3's native FSR renders instead; see
+[architecture](../architecture.md#failure-and-diagnostics).)
 
 The first scaling attempt deadlocked because the driver's recycled encoder retained a
 replacement request while a later wrapper bypassed encoder-creation cleanup.

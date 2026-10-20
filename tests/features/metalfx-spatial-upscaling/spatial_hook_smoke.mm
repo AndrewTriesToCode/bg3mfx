@@ -123,6 +123,16 @@ int main(int argc, char **argv) {
             [encoder dispatchThreads:MTLSizeMake(512,512,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];
             [encoder endEncoding]; [buffer commit]; [buffer waitUntilCompleted];
             if (buffer.status != MTLCommandBufferStatusCompleted) return 6;
+            // "bad-format": MetalFX cannot write BG3's destination. The first
+            // frame's failure must turn Spatial off without ending the process,
+            // and BG3's own FSR and RCAS must run on every later frame.
+            if ([mode isEqualToString:@"bad-format"]) {
+                uint32_t native = *(uint32_t *)nativeDispatches.contents;
+                if (native != 2u*frame) {
+                    fprintf(stderr,"Frame %d after a Spatial failure ran %u native FSR/RCAS dispatches, expected %u\n",frame,native,2u*frame); return 24;
+                }
+                continue;
+            }
             // Steady-state frames must reuse pooled intermediates, not allocate.
             if (frame == 0) warm = allocations();
             else if (allocations() != warm) { fprintf(stderr,"Spatial allocated textures after warmup\n"); return 12; }
@@ -189,6 +199,10 @@ int main(int argc, char **argv) {
             // At most one other size (the cache keeps two) stays: about 7 MB here,
             // against 170 MB when every size was kept.
             if (grown>24 || pinned) { fprintf(stderr,"Spatial kept resources for earlier sizes\n"); return 23; }
+        }
+        if ([mode isEqualToString:@"bad-format"]) {
+            puts("A MetalFX Spatial failure turned Spatial off without closing; BG3's native FSR/RCAS ran on the following frames.");
+            return 0;
         }
         if ([mode isEqualToString:@"no-taa"]) puts("MetalFX Spatial without TAA scaled FSR_Tonemap's linear HDR input across three frames; native FSR/RCAS stayed suppressed.");
         else puts("MetalFX Spatial scaled post-bloom/color-grade linear HDR across three frames; native FSR/RCAS stayed suppressed, including a displaced creation hook.");

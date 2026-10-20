@@ -703,13 +703,16 @@ static void bindTextures(__unsafe_unretained id self, SEL cmd, id<MTLTexture> co
     for (NSUInteger i=0; i<range.length; ++i) rememberTexture(self,cmd,textures[i],range.location+i);
 }
 static void probeScene(id<MTLCommandBuffer> buffer, NSDictionary *inputs);
-static std::atomic<bool> frameGenerationFailed{false};
-static void failFrameGeneration(NSString *reason) {
-    if(frameGenerationFailed.exchange(true)) return;
+// Failures never close the game: the player may have unsaved progress. Each
+// turns off the part that failed and tells the player once, on the main run
+// loop (never from a hook or from dyld's constructor).
+static void showNotice(NSString *title, NSString *text) {
+    // Noninteractive regressions read the message from stderr instead.
+    if (getenv("BG3MFX_TEST_ERRORS_STDERR") && strcmp(getenv("BG3MFX_TEST_ERRORS_STDERR"),"1") == 0) return;
     dispatch_async(dispatch_get_main_queue(),^{
-        NSAlert *alert=[NSAlert new]; alert.messageText=@"MetalFX Frame Generation could not continue";
-        alert.informativeText=[reason stringByAppendingString:@"\n\nThe game will close."];
-        [alert addButtonWithTitle:@"Close Game"]; [alert runModal]; _exit(78);
+        [NSApplication sharedApplication];
+        NSAlert *alert=[NSAlert new]; alert.messageText=title; alert.informativeText=text;
+        [alert addButtonWithTitle:@"OK"]; [alert runModal];
     });
 }
 // A frame whose inputs or composition Frame Generation cannot reproduce turns it
@@ -720,12 +723,10 @@ static std::atomic<bool> frameGenerationDeclined{false};
 static void declineFrameGeneration(NSString *reason) {
     if(frameGenerationDeclined.exchange(true)) return;
     record(@{@"event":@"frameGenerationDeclined",@"reason":reason ?: @""});
-    dispatch_async(dispatch_get_main_queue(),^{
-        NSAlert *alert=[NSAlert new]; alert.messageText=@"MetalFX Frame Generation is off";
-        alert.informativeText=[(reason ?: @"") stringByAppendingString:@"\n\nThe game continues with the selected Upscaling Type and without Frame Generation. "
-            "To retry, turn Frame Generation off and on again in Video options."];
-        [alert addButtonWithTitle:@"OK"]; [alert runModal];
-    });
+    fprintf(stderr,"MetalFX Frame Generation is off: %s\n",(reason ?: @"").UTF8String); fflush(stderr);
+    showNotice(@"MetalFX Frame Generation is off",[(reason ?: @"") stringByAppendingString:
+        @"\n\nThe game continues with the selected Upscaling Type and without Frame Generation. "
+        "To retry, turn Frame Generation off and on again in Video options."]);
 }
 // frameInterpolator, frameConfiguration and previousFrameTime belong to BG3's
 // render thread. framePresenter is also read by layerNextDrawable, so it is
@@ -750,35 +751,44 @@ static void releaseFrameGeneration(void) {
 static void resetFrameGeneration(void) { frameGenerationResetPending=true; }
 static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *request);
 
+// A failed MetalFX upscaler is off until the player chooses an Upscaling Type
+// again: BG3's TAA and FSR, which the menu has already set up underneath,
+// render instead (see dispatch and suppressTemporalTAA).
 static void failFeature(BOOL temporal, NSString *reason) {
     { std::lock_guard<std::recursive_mutex> lock(guard());
       if (temporal ? temporalFailed : spatialFailed) return;
       if (temporal) temporalFailed = YES; else spatialFailed = YES; }
+    if (temporal) temporalResetPending = true;
     NSString *feature = temporal ? @"Temporal" : @"Spatial";
     if (![reason isKindOfClass:NSString.class] || reason.length == 0)
         reason = @"MetalFX could not initialize or validate the requested frame.";
     NSString *message = [[@"MetalFX " stringByAppendingString:feature] stringByAppendingFormat:@" stopped: %@",reason];
     fprintf(stderr,"%s\n",message.UTF8String); fflush(stderr);
     record(@{@"event":temporal ? @"temporalUpscaleError" : @"spatialUpscaleError",@"error":message});
-    // Noninteractive mode is for the subprocess failure regression only.
-    if (getenv("BG3MFX_TEST_ERRORS_STDERR") && strcmp(getenv("BG3MFX_TEST_ERRORS_STDERR"),"1") == 0) _exit(78);
-    void (^showError)(void) = ^{
-        [NSApplication sharedApplication];
-        NSAlert *alert = [NSAlert new];
-        alert.messageText = [NSString stringWithFormat:@"MetalFX %@ could not continue",feature];
-        alert.informativeText = [reason stringByAppendingString:@"\n\nThe game will close."];
-        alert.alertStyle = NSAlertStyleCritical; [alert addButtonWithTitle:@"Close Game"];
-        [alert runModal]; _exit(78);
-    };
-    if ([NSThread isMainThread]) showError();
-        else dispatch_async(dispatch_get_main_queue(),showError);
+    showNotice([NSString stringWithFormat:@"MetalFX %@ is off",feature],[reason stringByAppendingString:
+        @"\n\nThe game continues with AMD FSR 1.0 upscaling. To retry, choose another Upscaling Type "
+        "and then this one again in Video options."]);
 }
 static void failSpatial(NSString *reason) { failFeature(NO,reason); }
 static void failTemporal(NSString *reason) { failFeature(YES,reason); }
+// Menu integration problems leave BG3's own options working; say so once.
+static void noticeMenuProblem(NSString *reason) {
+    static std::atomic<bool> shown{false};
+    if (![reason isKindOfClass:NSString.class] || reason.length == 0) reason = @"The Video options could not be extended.";
+    fprintf(stderr,"MetalFX menu integration: %s\n",reason.UTF8String); fflush(stderr);
+    if (shown.exchange(true)) return;
+    showNotice(@"MetalFX options may be unavailable",[reason stringByAppendingString:
+        @"\n\nThe game continues with its own video options."]);
+}
 static void menuReport(NSDictionary *event) {
     record(event);
     if ([event[@"event"] isEqualToString:@"nativeMenuError"])
-        failFeature(NO,event[@"error"]);
+        noticeMenuProblem(event[@"error"]);
+    // Choosing a different Upscaling Type retries a failed MetalFX upscaler.
+    if ([event[@"event"] isEqualToString:@"upscalingModeChanged"] && [event[@"changed"] boolValue]) {
+        std::lock_guard<std::recursive_mutex> lock(guard());
+        spatialFailed = temporalFailed = NO;
+    }
     if ([event[@"event"] isEqualToString:@"frameGenerationChanged"] || [event[@"event"] isEqualToString:@"upscalingModeChanged"]) {
         resetFrameGeneration();
         // Changing either way starts the next enabled run with fresh history.
@@ -1440,7 +1450,7 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
     if(![configuration isEqualToString:frameConfiguration]) {
         frameInterpolator=[[BG3MFXFrameInterpolation alloc] initWithDevice:buffer.device scene:scene depth:depth motion:motion error:&error];
         if(!frameInterpolator) {declineFrameGeneration(error.localizedDescription ?: @"Could not initialize frame generation.");return;}
-        frameInterpolator.failureHandler=^(NSError *e){failFrameGeneration(e.localizedDescription);};
+        frameInterpolator.failureHandler=^(NSError *e){declineFrameGeneration(e.localizedDescription ?: @"Metal could not complete frame generation.");};
         frameConfiguration=configuration;previousFrameTime=0;
         record(@{@"event":@"frameGenerationCreated",@"api":frameInterpolator.usesMetal4 ? @"metal4" : @"metal3",
             @"input":texture(depth),@"scene":texture(scene),@"direct":@[@(frameInterpolator.directColor),
@@ -1454,11 +1464,11 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
     encodingFrameGeneration=true;
     id<MTLTexture> interpolated=[frameInterpolator encodeScene:scene depth:depth motion:motion camera:inputs[@"camera"]
         parameters:parameters deltaTime:interval commandBuffer:buffer error:&error];
-    if(!interpolated) {encodingFrameGeneration=false;failFrameGeneration(error.localizedDescription);return;}
+    if(!interpolated) {encodingFrameGeneration=false;declineFrameGeneration(error.localizedDescription ?: @"Could not encode the generated frame.");return;}
     // BG3's own CombineUI already composes the real frame into the stand-in;
     // compose only the generated scene with the same UI, pipeline and constants.
     id<MTLTexture> generated=[presenter generatedTargetLike:target];
-    if(!generated){encodingFrameGeneration=false;failFrameGeneration(@"Could not allocate the frame generation composition output.");return;}
+    if(!generated){encodingFrameGeneration=false;declineFrameGeneration(@"Could not allocate the frame generation composition output.");return;}
     // Replay BG3's draw exactly: its viewport and scissor, and outside them the
     // real frame's pixels (letterbox bars, or whatever its load action left).
     MTLViewport viewport={0,0,double(target.width),double(target.height),0,1};
@@ -1939,7 +1949,7 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
     BOOL temporal = mode == 3;
     BOOL selectedMetalFX = (mode == 2 && metalFXEnabled) || (temporal && metalFXEnabled);
     if (selectedMetalFX) {
-        if (temporal ? temporalFailed : spatialFailed) return;
+        if (temporal ? temporalFailed : spatialFailed) goto native;
         if ([pipelineName isEqualToString:@"FSR"]) {
             id<MTLTexture> source = textures[@"0"], scaled = textures[@"1"];
             if (pending || !source || !scaled || !buffer) {
@@ -2294,7 +2304,7 @@ static void layerSetMaximumDrawableCount(id self, SEL cmd, NSUInteger count) {
 static id layerNextDrawable(id self, SEL cmd) {
     if ([BG3MFXFramePresenter isPresentationThread]) return ((id(*)(id,SEL))original(self,cmd))(self,cmd);
     CAMetalLayer *layer=self;
-    if (!metalFXEnabled || frameGenerationFailed || frameGenerationDeclined || !BG3MFXFrameGenerationEnabled()) {
+    if (!metalFXEnabled || frameGenerationDeclined || !BG3MFXFrameGenerationEnabled()) {
         NSNumber *saved=objc_getAssociatedObject(layer,&bg3DrawableCountKey);
         if (saved) {
             objc_setAssociatedObject(layer,&bg3DrawableCountKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -2324,7 +2334,7 @@ static id layerNextDrawable(id self, SEL cmd) {
           framePresenter=[[BG3MFXFramePresenter alloc] initWithDevice:layer.device format:layer.pixelFormat error:&error];
           if (!framePresenter) { declineFrameGeneration(error.localizedDescription ?: @"Could not initialize frame presentation.");
               return ((id(*)(id,SEL))original(self,cmd))(self,cmd); }
-          framePresenter.failureHandler=^(NSError *e){failFrameGeneration(e.localizedDescription);};
+          framePresenter.failureHandler=^(NSError *e){declineFrameGeneration(e.localizedDescription ?: @"Metal could not present a generated frame.");};
 #ifndef BG3MFX_NO_TRACE
           BG3MFXGPUTimingHook=recordGPUSubmission;
           framePresenter.presentedHandler=^(BOOL generated, CFTimeInterval time, CFTimeInterval target, double interval){
@@ -2417,8 +2427,14 @@ __attribute__((constructor)) static void start() {
         }
         if (metalFXEnabled && [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) {
             NSError *menuError = nil;
-            if (!BG3MFXInstallNativeMenu(menuReport,&menuError))
-                failFeature([menuError.domain isEqualToString:@"BG3MFXTemporalJitter"],menuError.localizedDescription);
+            // Without the menu nothing selects MetalFX, so BG3 renders as usual.
+            if (!BG3MFXInstallNativeMenu(menuReport,&menuError)) {
+                NSString *reason = menuError.localizedDescription ?: @"The native integration could not be installed.";
+                fprintf(stderr,"MetalFX could not start: %s\n",reason.UTF8String); fflush(stderr);
+                record(@{@"event":@"nativeMenuInstallFailed",@"error":reason});
+                showNotice(@"MetalFX could not start",[reason stringByAppendingString:
+                    @"\n\nThe game continues without MetalFX and BG3MFX's other optimizations."]);
+            }
         }
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
 #ifndef BG3MFX_NO_TRACE

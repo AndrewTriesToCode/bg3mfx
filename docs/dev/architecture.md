@@ -250,15 +250,24 @@ at 4K); it is kept because it removes passes and memory, not for frame rate.
 
 ## Failure and diagnostics
 
-MetalFX initialization, resource, encoding, or GPU-completion failure presents
-an AppKit error and closes BG3 with exit code 78. The runtime does not continue
-through FSR after a failed MetalFX frame.
+No failure closes BG3: the player may have unsaved progress. Each turns off
+what failed and shows one notice on the main run loop (`showNotice` in
+`Trace.mm`); with `BG3MFX_TEST_ERRORS_STDERR=1` the message goes only to stderr.
 
-Frame Generation is the exception for frames it cannot reproduce: unexpected
-composition bindings or scene format, camera parameters, or an interpolator or
-presenter that cannot be created. It turns itself off with a notice naming the
-mismatch, the selected Upscaling Type continues, and turning the checkbox off
-and on again retries. Encoding and GPU failures after it starts still close BG3.
+- A MetalFX Spatial or Temporal initialization, resource, sequencing,
+  encoding, or GPU-completion failure turns that upscaler off. BG3's TAA and
+  FSR + RCAS, which the menu already configured underneath, render instead:
+  the FSR dispatches are forwarded and the TAA draw is no longer replaced.
+  Choosing another Upscaling Type clears the failure, so selecting the
+  MetalFX type again retries.
+- Frame Generation turns itself off with a notice naming the problem for
+  frames it cannot reproduce (unexpected composition bindings or scene
+  format, camera parameters) and for interpolator or presenter creation,
+  encoding, allocation, and GPU failures. The selected Upscaling Type
+  continues, and turning the checkbox off and on again retries.
+- Native menu problems leave BG3's own options working and show one notice.
+  If the native integration cannot be installed at startup, BG3 runs without
+  MetalFX or the other optimizations.
 
 `libBG3MetalFX.dylib` is the quiet development runtime. `libBG3MetalFXTrace.dylib`
 adds JSONL traces, shader reflection, and opt-in captures. Diagnostics are not
