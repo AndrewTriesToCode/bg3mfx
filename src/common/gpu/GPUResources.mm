@@ -70,7 +70,8 @@ static NSError *resourceError(NSString *reason) {
 @interface BG3MFXMetal4Slot : NSObject
 @property(nonatomic) id<MTL4CommandAllocator> allocator;
 @property(nonatomic) id<MTL4CommandBuffer> commands;
-@property(nonatomic) id<MTLEvent> event;
+// Shared so the CPU can release the Metal 4 queue if BG3's buffer fails.
+@property(nonatomic) id<MTLSharedEvent> event;
 @property(nonatomic) uint64_t value;
 @end
 @implementation BG3MFXMetal4Slot
@@ -158,7 +159,7 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
     { std::lock_guard<std::mutex> lock(_mutex); slot=_free.lastObject; if (slot) [_free removeLastObject]; }
     if (!slot) {
         slot=[BG3MFXMetal4Slot new];
-        slot.allocator=[_device newCommandAllocator]; slot.commands=[_device newCommandBuffer]; slot.event=[_device newEvent];
+        slot.allocator=[_device newCommandAllocator]; slot.commands=[_device newCommandBuffer]; slot.event=[_device newSharedEvent];
         if (!slot.allocator || !slot.commands || !slot.event) {
             if (error) *error=resourceError(@"Could not allocate a Metal 4 submission."); return NO;
         }
@@ -187,6 +188,14 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
         std::lock_guard<std::mutex> lock(bridge->_mutex); [bridge->_free addObject:slot];
     }];
     id<MTL4CommandBuffer> commands=slot.commands;
+    // The Metal 4 queue waits for BG3's buffer to reach this point. If that
+    // buffer fails first and never signals, the queue would wait forever and
+    // every later submission behind it would stall; release it instead (its
+    // results are discarded with the failed frame).
+    id<MTLSharedEvent> event=slot.event;
+    [buffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+        if (completed.status==MTLCommandBufferStatusError && event.signaledValue<ready) event.signaledValue=ready;
+    }];
     [buffer encodeSignalEvent:slot.event value:ready];
     [_queue waitForEvent:slot.event value:ready];
     [_queue commit:&commands count:1 options:options];

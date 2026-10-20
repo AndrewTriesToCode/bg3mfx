@@ -241,6 +241,13 @@ that. `metal4-bridge-smoke` replaces its inputs at the same size and checks that
 the old ones are freed (the earlier set kept them until it reached 64
 allocations). The diagnostic runtime logs each set change as `metal4Residency`.
 
+The Metal 4 queue waits on an event that BG3's command buffer signals before
+the FX work. If that buffer fails before signaling, the queue would wait
+forever and stall every later submission, so each slot's event is a shared
+event and BG3's buffer completion raises it when the buffer ended in error.
+This path has no regression: a command buffer cannot be made to fail on
+demand.
+
 Spatial uses the same 0.3 s settle and keeps at most two sizes, the current one
 and the one before it; MetalFX frees evicted Spatial scalers. Keeping every size
 held each one's scaler and pooled textures for the session: `spatial-hook-smoke
