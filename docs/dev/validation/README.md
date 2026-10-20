@@ -223,6 +223,19 @@ a diagnostic gap (compute `setBytes`, and passes that don't declare the
 buffer), fixed before the second run. Evidence:
 `build/evidence/2026-10-19-cc-crash/` (`trace-guard-2.jsonl`).
 
+Live lldb tracing (diagnostic runtime, guard on) of a reproduced entry found
+the mechanism. Entering character creation loads `ecl::BasicGameObjectRenderer`
+with its own scene graph and a 300×300 `ClusteredAssignmentStage`. The main
+scene graph's next `rf::SceneGraph::ConfigureAliasing` cleared the main stage's
+`ClusterInfoBuffer` entry: the binding at entry `+0x80`, written at
+`0x106433e38`. The next call's create pass (`0x106438798`) copied a null view
+into it. In a normal resize the same call clears and refills the entry. The
+main stage stayed marked rendering with the null entry until the preview
+renderer was destroyed, when two more main-graph reconfigurations restored a
+buffer. Why the create pass found no view is not pinned down. lldb scripts and
+logs: `build/evidence/2026-10-19-cc-crash/cluster_lldb*.py` and
+`lldb-cluster*.txt`.
+
 ## Metal 4 Temporal path
 
 Temporal now chooses the Metal 4 scaler on supported devices and retains the

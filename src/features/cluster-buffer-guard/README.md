@@ -1,4 +1,4 @@
-# Cluster Buffer Guard
+# Character Creation Crash Fix
 
 Technical name: `cluster-buffer-guard`.
 
@@ -12,6 +12,16 @@ and tearline fragment shaders. The GPU fault that follows wedges the AGX
 driver: WindowServer hits its watchdog, and the process cannot be killed until
 a reboot. Unmodified BG3 does the same thing, so the bug is BG3's own; bg3mfx
 reached it only when the saved MetalFX quality was Ultra Quality.
+
+Live lldb tracing found the cause. Entering character creation creates
+`ecl::BasicGameObjectRenderer`, a 300×300 preview renderer with its own scene
+graph and `ClusteredAssignmentStage`. The main scene graph's next
+`rf::SceneGraph::ConfigureAliasing` clears the main stage's `ClusterInfoBuffer`
+entry. The create pass that normally refills the entry in the same call writes
+a null buffer instead, one call later. The main stage keeps rendering with that
+null entry, so BG3 skips the bind. This lasts until BG3 destroys the preview
+renderer on leaving character creation and reconfigures the main graph again.
+Why the create pass finds no buffer is not yet pinned down.
 
 [`ClusterBufferGuard.mm`](ClusterBufferGuard.mm) owns one 8 MB zero-filled
 stand-in per device. It uses shared storage and is untracked, so encoders

@@ -57,6 +57,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | --- | --- |
 | **Metal HUD** | Shows Apple's on-screen performance overlay. |
 | **Video Options Menu Fix** | Fixes a base game bug that can make the video menu unresponsive in fullscreen. |
+| **Character Creation Crash Fix** | Fixes a base game bug that can freeze or crash the game when entering character creation at certain screen resolutions. |
 
 ## How it works
 

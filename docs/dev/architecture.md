@@ -365,7 +365,7 @@ fixtures keep independent layouts/expected instructions to catch drift.
   next block in an interposed `semaphore_wait`/`semaphore_timedwait`, and the
   present hooks in `Trace.mm` count frames. Decisions are logged to subsystem
   `com.bg3mfx`, category `threads`.
-- `src/features/cluster-buffer-guard/ClusterBufferGuard.*`: Cluster Buffer Guard (on by default;
+- `src/features/cluster-buffer-guard/ClusterBufferGuard.*`: Character Creation Crash Fix (on by default;
   `BG3MFX_CLUSTER_BUFFER_GUARD=0` disables it). `Trace.mm` binds a zero-filled,
   untracked stand-in at compute buffer indices 1 and 6 and fragment index 1 on
   each new encoder, so a clustered-lighting pass that BG3 dispatches without
