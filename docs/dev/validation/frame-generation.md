@@ -183,6 +183,18 @@ choppier):
   rate would save GPU time but turn about 118 shown images into 80-90 at the
   switch. An apparent 30 fps cap in a window came from low power mode, not the
   presenter: rerun without it, windowed ran at 68-110 fps.
+- Windowed VSync off (October 19, live, 120 Hz): the Metal HUD showed the window
+  alternating between Direct and Composited. Capped below about 55 fps it stayed
+  Composited: the minimum-duration presents composite the window, while the
+  spaced path's plain presents go direct, and the method switched near half the
+  refresh rate. VSync off now always uses spaced presents; the user reported the
+  window no longer alternates. Spaced presents with one stand-in held BG3 at
+  about 40 rendered fps (diagnostic frame log: 6.4 ms of each 25 ms frame
+  waiting for a stand-in, 68 overflows in 2 s), so VSync off keeps BG3's own
+  buffering at every rate. The user then reported it "perfect" uncapped in the
+  quiet runtime. Displayed pacing was not measured; the earlier diagnostic run
+  at a 30 fps cap with one stand-in dropped 11-22% of generated images, and
+  that cap has not been rechecked with BG3's buffering.
 - `MTL_CAPTURE_ENABLED=1` slows the whole session (Temporal measured 23-34 fps
   instead of about 55), so do not combine capture-enabled launches with pacing
   or frame-rate comparisons. A GPU profile of plain Temporal at 3840x2160 output

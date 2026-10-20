@@ -423,9 +423,9 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     // GPU at about the same time. To look smooth they must reach the display
     // about half a frame interval apart, generated first.
     //
-    // Vsync on, and vsync off while a frame spans at least two refreshes: each
-    // image is presented with presentDrawable:afterMinimumDuration:, which
-    // rounds up to whole refreshes. The frame's whole refreshes are split
+    // Vsync on (and formerly vsync off while a frame spanned at least two
+    // refreshes): each image is presented with
+    // presentDrawable:afterMinimumDuration:, which rounds up to whole refreshes. The frame's whole refreshes are split
     // between the generated image (the smaller half) and the real one, each
     // minimum set just under its refresh count. Using half the interval instead
     // rounded up past the frame time between about 30 and 60 fps: the presenter
@@ -437,7 +437,8 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     // presents: 59 of 120 shown); live at about 20 rendered fps this was much
     // smoother than plain presents, which dropped 20-28% of generated images.
     //
-    // Vsync off and faster: the minimum durations would cap the frame rate
+    // Vsync off, at any rate: timed presents composite a window and the
+    // minimum durations would cap a faster BG3's frame rate
     // (standalone at 125 pairs/s: exactly 120 images/s, falling behind), and
     // presenting both images at once shows the generated one for a sliver at
     // most (live: very jittery). This thread presents the generated image when
@@ -457,7 +458,7 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     // real copy completes, before any wait: BG3 never waits for this thread's
     // pacing. (Earlier designs that waited for display held stand-ins and slowed
     // BG3 to about 13 fps.)
-    double smoothed=0, smoothedCadence=0; bool fast=false;
+    double smoothedCadence=0;
     // The display's refresh interval, read on the main thread from the layer's
     // window and refreshed periodically (the window can move between displays).
     // A conservative startup fallback; use the window's screen as soon as the
@@ -481,13 +482,10 @@ static void waitUntilMediaTime(CFTimeInterval target) {
 #ifndef BG3MFX_NO_TRACE
         void (^diagnostic)(BOOL,CFTimeInterval,CFTimeInterval,double)=self.presentedHandler;
 #endif
-        if (task.interval>0) {
-            double sample=fmin(fmax(task.interval,1.0/240),0.1);
-            smoothed=smoothed>0 ? smoothed*0.75+sample*0.25 : sample;
-            sample=fmin(fmax(task.cadence,1.0/240),0.1);
+        if (task.cadence>0) {
+            double sample=fmin(fmax(task.cadence,1.0/240),0.1);
             smoothedCadence=smoothedCadence>0 ? smoothedCadence*0.75+sample*0.25 : sample;
         }
-        double work=smoothed>0 ? smoothed : 1.0/60;
         // Presentation follows BG3's actual frame interval.
         double interval=smoothedCadence>0 ? smoothedCadence : 1.0/60;
         if (refreshCheck++%30==0) {
@@ -501,16 +499,13 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         }
         bool synced=task.layer.displaySyncEnabled;
         double frameRefresh=refresh->load();
-        // Vsync off and BG3 able to exceed half the refresh rate: it is held at
-        // about half the refresh rate while its work time is shorter. Work time
-        // alone misleads with one stand-in: a GPU-bound BG3 at 32 fps spends
-        // much of each frame waiting for it, so its work time looked fast and
-        // the method and stand-in count flipped every few frames (live: 66 ms,
-        // 2-11% of generated images dropped). Leave only once BG3 is clearly
-        // slower than half the refresh rate.
-        if (interval<2*frameRefresh*1.05 && work<2*frameRefresh*0.95) fast=true;
-        else if (interval>2*frameRefresh*1.15) fast=false;
-        BG3MFXPresentMethod method=synced ? BG3MFXPresentSynced : fast ? BG3MFXPresentSpaced : BG3MFXPresentMinimum;
+        // Vsync off always uses plain presents with BG3's own buffering. Timed
+        // presents make a window composited while plain ones go direct, so
+        // switching methods near half the refresh rate flipped the window
+        // between the two (live, windowed: composited below about 55 fps,
+        // alternating near 60 fps at 120 Hz). One stand-in with plain presents
+        // held BG3 at about 40 fps: it waited on the presenter's spacing.
+        BG3MFXPresentMethod method=synced ? BG3MFXPresentSynced : BG3MFXPresentSpaced;
         bool spaced=method==BG3MFXPresentSpaced;
         // Whole refreshes per frame (at least two), split between the generated
         // and the real image; each minimum just under its count of refreshes.

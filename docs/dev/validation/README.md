@@ -95,7 +95,9 @@ Temporal, Spatial and FSR with Frame Generation worked; Off first did not pair
 because BG3's CAS sharpening pass broke the scene chain. With CAS followed, all
 four worked live, and the October 13 presentation pacing (minimum-duration and
 spaced presents, see [Frame Generation](frame-generation.md)) was reported
-working very well with VSync on and off. Live tests of the
+working very well with VSync on and off. Since October 19, VSync off always
+uses spaced presents so a window no longer alternates between Direct and
+Composited. Live tests of the
 first presentation design showed generated frames reaching the display at
 roughly twice the rendered rate. The user found it slower and choppier: the HUD
 did not show a higher FPS and motion did not look smoother. Presentation has

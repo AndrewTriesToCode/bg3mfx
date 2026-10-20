@@ -12,8 +12,8 @@
 typedef NS_ENUM(int, BG3MFXPresentMethod) {
     BG3MFXPresentNative = 0,       // Frame Generation off: BG3's own presents
     BG3MFXPresentSynced = 1,       // vsync on: minimum duration, refresh-aligned
-    BG3MFXPresentMinimum = 2,      // vsync off, at most half the refresh rate
-    BG3MFXPresentSpaced = 3,       // vsync off, faster: generated, wait, real
+    BG3MFXPresentMinimum = 2,      // unused: vsync off now always spaces
+    BG3MFXPresentSpaced = 3,       // vsync off: generated, wait, real
 };
 
 #ifdef __cplusplus
