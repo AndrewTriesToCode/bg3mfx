@@ -2,7 +2,9 @@
 
 Technical name: `reduce-locking`.
 
-Enabled by default; `BG3MFX_REDUCE_LOCKING=0` disables it. BG3 allocates
+Experimental. The `bg3mfx` launcher turns it off unless the player sets
+`BG3MFX_REDUCE_LOCKING=1`; the runtime alone enables it when the variable is unset,
+and `BG3MFX_REDUCE_LOCKING=0` disables it. BG3 allocates
 every draw's uniforms from one per-frame bump offset on its `MetalRenderer`,
 guarded by one `os_unfair_lock`, and the lock-and-bump is inlined at about 130
 sites. Draw-recording jobs on every worker queue on it. The two hottest sites,

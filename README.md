@@ -49,7 +49,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **CPU Thread Idling** | Lets idle game workers sleep instead of repeatedly checking for work. | **~50% less thread CPU usage** |
 | **Render Thread Optimizations** | Skips repeated texture and pipeline commands to reduce graphics-driver work. | **~1% more FPS**; **~25% less thread CPU usage** |
 | **Lua System Call Elimination** | Removes signal-mask and alternate-stack system calls from protected Lua calls. | **~14% less thread CPU usage** |
-| **Reduced Locking** | Gives each worker its own share of the frame's draw-constant memory instead of taking a shared lock for every draw. | **~20% less CPU usage** |
+| **Reduced Locking** (experimental, off by default) | Gives each worker its own share of the frame's draw-constant memory instead of taking a shared lock for every draw. | **~20% less CPU usage** |
 
 ### Other
 
@@ -57,7 +57,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | --- | --- |
 | **Metal HUD** | Shows Apple's on-screen performance overlay. |
 | **Video Options Menu Fix** | Fixes a base game bug that can make the video menu unresponsive in fullscreen. |
-| **Character Creation Crash Fix** | Fixes a base game bug that can freeze or crash the game when entering character creation at certain screen resolutions. |
+| **Character Creation Crash Fix** (experimental, off by default) | Fixes a base game bug that can freeze or crash the game when entering character creation at certain screen resolutions. |
 
 ## How it works
 
@@ -158,7 +158,22 @@ variable in the environment used to launch `bg3mfx`:
 | **Render Thread Optimizations** | `BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0` |
 | **CPU Thread Idling** | `BG3MFX_CPU_THREAD_IDLING=0` |
 | **Lua System Call Elimination** | `BG3MFX_LUA_SYSTEM_CALL_ELIMINATION=0` |
-| **Reduced Locking** | `BG3MFX_REDUCE_LOCKING=0` |
+
+## Experimental features
+
+These features are off by default while they're tested. To try one, set its
+variable to `1` when you start `bg3mfx` from Terminal. The BG3MFX app made by
+`bg3mfx install-app` doesn't pass these variables.
+
+| Feature | Environment variable |
+| --- | --- |
+| **Reduced Locking** | `BG3MFX_REDUCE_LOCKING=1` enables the feature. |
+| **Character Creation Crash Fix** | `BG3MFX_CHARACTER_CREATION_CRASH_FIX=1` |
+
+For example: `BG3MFX_REDUCE_LOCKING=1 BG3MFX_CHARACTER_CREATION_CRASH_FIX=1 bg3mfx`.
+If you try them, please
+[open an issue](https://github.com/AndrewTriesToCode/bg3mfx/issues) with what
+you see.
 
 ## Uninstall
 
