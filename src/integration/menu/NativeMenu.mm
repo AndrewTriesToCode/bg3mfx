@@ -7,7 +7,7 @@
 #import "integration/diagnostics/ServerPacingProbe.h"
 #endif
 #import "features/thread-idling/ThreadIdling.h"
-#import "features/uniform-slices/UniformSlices.h"
+#import "features/reduce-locking/UniformSlices.h"
 #import "features/dynamic-worker-prioritization/DynamicWorkers.h"
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
@@ -605,7 +605,7 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
             event(@{@"event":@"threadIdlingSkipped",@"reason":idlingError.localizedDescription ?: @""});
     }
     // Reduced locking: the hottest uniform allocations take per-thread slices
-    // instead of BG3's shared lock each time (src/features/uniform-slices/UniformSlices.mm).
+    // instead of BG3's shared lock each time (src/features/reduce-locking/UniformSlices.mm).
     // A mismatch leaves BG3 unchanged. BG3MFX_REDUCE_LOCKING=0 keeps BG3's lock for comparison.
     if (!(getenv("BG3MFX_REDUCE_LOCKING") && strcmp(getenv("BG3MFX_REDUCE_LOCKING"),"0") == 0)) {
         NSError *slicesError = nil;

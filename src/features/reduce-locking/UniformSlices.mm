@@ -1,5 +1,5 @@
 #include "common/native/SupportedBuild.h"
-#import "features/uniform-slices/UniformSlices.h"
+#import "features/reduce-locking/UniformSlices.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
 #include <os/lock.h>

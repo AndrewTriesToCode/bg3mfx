@@ -358,7 +358,7 @@ fixtures keep independent layouts/expected instructions to catch drift.
   `BG3MFX_CPU_THREAD_IDLING=0` disables it). BG3's idle workers, job scheduler,
   and frame limiter (`GameClock::CapFrame`, the server tick and client frame
   cap) sleep instead of spinning; batch completion waits keep BG3's yield.
-- `src/features/uniform-slices/UniformSlices.*`: Reduced Locking (on by
+- `src/features/reduce-locking/UniformSlices.*`: Reduced Locking (on by
   default; `BG3MFX_REDUCE_LOCKING=0` disables it). `BindMaterialParameters` and
   `SetupEngineParameters` take their uniform allocations from a per-thread
   slice reserved through BG3's own `MetalRenderer` lock; a hook on

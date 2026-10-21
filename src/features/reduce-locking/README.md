@@ -20,7 +20,7 @@ copy), so slices only need the per-frame reset.
   largest offset a frame reached, against the 21 MiB buffer.
 
 The implementation is in
-[`UniformSlices.mm`](../../../src/features/uniform-slices/UniformSlices.mm),
+[`UniformSlices.mm`](../../../src/features/reduce-locking/UniformSlices.mm),
 installed through [`NativeMenu.mm`](../../../src/integration/menu/NativeMenu.mm).
 It checks the replaced instructions at each site, the island space and branch
 reach before patching.
