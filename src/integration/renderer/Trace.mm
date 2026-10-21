@@ -2478,8 +2478,8 @@ __attribute__((constructor)) static void start() {
         bindDedup = metalFXEnabled && !(getenv("BG3MFX_RENDER_THREAD_OPTIMIZATIONS") && strcmp(getenv("BG3MFX_RENDER_THREAD_OPTIMIZATIONS"),"0") == 0);
         redundantProbe = diagnostics && metalFXEnabled && getenv("BG3MFX_TRACE_REDUNDANT") && strcmp(getenv("BG3MFX_TRACE_REDUNDANT"),"1") == 0;
         prepassTrim = metalFXEnabled && !(getenv("BG3MFX_DEPTH_PREPASS_OPTIMIZATION") && strcmp(getenv("BG3MFX_DEPTH_PREPASS_OPTIMIZATION"),"0") == 0);
-        // Cluster buffer guard; BG3MFX_CLUSTER_BUFFER_GUARD=0 leaves BG3's bindings alone for comparison.
-        clusterGuard = metalFXEnabled && !(getenv("BG3MFX_CLUSTER_BUFFER_GUARD") && strcmp(getenv("BG3MFX_CLUSTER_BUFFER_GUARD"),"0") == 0);
+        // Character Creation Crash Fix; BG3MFX_CHARACTER_CREATION_CRASH_FIX=0 leaves BG3's bindings alone for comparison.
+        clusterGuard = metalFXEnabled && !(getenv("BG3MFX_CHARACTER_CREATION_CRASH_FIX") && strcmp(getenv("BG3MFX_CHARACTER_CREATION_CRASH_FIX"),"0") == 0);
         if (diagnostics) {
             constantSamples = [NSMutableDictionary dictionary];
             shaderBufferSizes = [NSMutableDictionary dictionary];

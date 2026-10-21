@@ -2,7 +2,7 @@
 
 Technical name: `cluster-buffer-guard`.
 
-Enabled by default; `BG3MFX_CLUSTER_BUFFER_GUARD=0` disables it. BG3 4.1.1
+Enabled by default; `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0` disables it. BG3 4.1.1
 sometimes dispatches its clustered-lighting passes without binding
 `ClusterInfoBuffer`. This happens at some render sizes; live, it happened at
 1796×1123 (FSR 1.0 Ultra Quality, fullscreen 2336×1460) when entering

@@ -63,7 +63,7 @@ class LauncherTests(unittest.TestCase):
             self.assertIn("Arguments: -NoLauncher 1", result.stdout)
             self.assertIn("was not started", result.stdout)
             # Held-back features are off unless the player opts in.
-            self.assertIn("BG3MFX_CLUSTER_BUFFER_GUARD=0", result.stdout)
+            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=0", result.stdout)
             self.assertIn("BG3MFX_REDUCE_LOCKING=0", result.stdout)
 
     def test_held_back_features_can_be_opted_in(self):
@@ -78,7 +78,7 @@ class LauncherTests(unittest.TestCase):
                 "BG3MFX_REDUCE_LOCKING": "1"})
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("BG3MFX_REDUCE_LOCKING=1", result.stdout)
-            self.assertIn("BG3MFX_CLUSTER_BUFFER_GUARD=0", result.stdout)
+            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=0", result.stdout)
 
     def test_test_hash_override_only_applies_to_dry_runs(self):
         with tempfile.TemporaryDirectory() as root:

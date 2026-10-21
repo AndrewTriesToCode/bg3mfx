@@ -245,7 +245,7 @@ static int launch(NSString *appOverride, BOOL dryRun) {
     } mutableCopy];
     if (![hud isKindOfClass:NSNumber.class] || !hud.boolValue) environment[@"MTL_HUD_HIDDEN"] = @"1";
     // Features held back from this release; set the variable to 1 to try one.
-    for (NSString *key in @[@"BG3MFX_CLUSTER_BUFFER_GUARD", @"BG3MFX_REDUCE_LOCKING"])
+    for (NSString *key in @[@"BG3MFX_CHARACTER_CREATION_CRASH_FIX", @"BG3MFX_REDUCE_LOCKING"])
         environment[key] = NSProcessInfo.processInfo.environment[key] ?: @"0";
     NSArray *arguments = @[@"-NoLauncher", @"1"];
     if (dryRun) {

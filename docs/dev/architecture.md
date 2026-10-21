@@ -364,7 +364,7 @@ fixtures keep independent layouts/expected instructions to catch drift.
   slice reserved through BG3's own `MetalRenderer` lock; a hook on
   `BeginFrame`'s reset retires the slices.
 - `src/features/cluster-buffer-guard/ClusterBufferGuard.*`: Character Creation Crash Fix (on by default;
-  `BG3MFX_CLUSTER_BUFFER_GUARD=0` disables it). `Trace.mm` binds a zero-filled,
+  `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0` disables it). `Trace.mm` binds a zero-filled,
   untracked stand-in at compute buffer indices 1 and 6 and fragment index 1 on
   each new encoder, so a clustered-lighting pass that BG3 dispatches without
   `ClusterInfoBuffer` reads no lights instead of faulting the GPU. Diagnostic
