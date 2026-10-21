@@ -7,6 +7,7 @@
 #import "integration/diagnostics/ServerPacingProbe.h"
 #endif
 #import "features/thread-idling/ThreadIdling.h"
+#import "features/uniform-slices/UniformSlices.h"
 #import "features/dynamic-worker-prioritization/DynamicWorkers.h"
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
@@ -602,6 +603,14 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
         NSError *idlingError = nil;
         if (!BG3MFXInstallThreadIdling(slide,report,&idlingError))
             event(@{@"event":@"threadIdlingSkipped",@"reason":idlingError.localizedDescription ?: @""});
+    }
+    // Opt-in: the hottest uniform allocations take per-thread slices instead
+    // of BG3's shared lock each time (src/features/uniform-slices/UniformSlices.mm).
+    // BG3MFX_UNIFORM_SLICES=1 enables it. A mismatch leaves BG3 unchanged.
+    if (getenv("BG3MFX_UNIFORM_SLICES") && strcmp(getenv("BG3MFX_UNIFORM_SLICES"),"1") == 0) {
+        NSError *slicesError = nil;
+        if (!BG3MFXInstallUniformSlices(slide,report,&slicesError))
+            event(@{@"event":@"uniformSlicesSkipped",@"reason":slicesError.localizedDescription ?: @""});
     }
     // Dynamic worker core prioritization: render workers on the lower-tier
     // cores while that costs no frame rate (src/features/dynamic-worker-prioritization/DynamicWorkers.mm).

@@ -71,6 +71,7 @@ RUNTIME_SOURCES = \
 	src/features/metalfx-frame-generation/FrameInterpolation.mm \
 	src/features/shadows/ShadowDuplicateFix.mm \
 	src/features/thread-idling/ThreadIdling.mm \
+	src/features/uniform-slices/UniformSlices.mm \
 	src/features/dynamic-worker-prioritization/DynamicWorkers.mm \
 	src/features/lua-jump-fix/LuaJumpFix.mm \
 	src/common/gpu/GPUResources.mm \
@@ -95,6 +96,7 @@ RUNTIME_HEADERS = \
 	src/features/metalfx-frame-generation/FrameLog.h \
 	src/features/shadows/ShadowDuplicateFix.h \
 	src/features/thread-idling/ThreadIdling.h \
+	src/features/uniform-slices/UniformSlices.h \
 	src/features/dynamic-worker-prioritization/DynamicWorkers.h \
 	src/features/lua-jump-fix/LuaJumpFix.h \
 	src/common/gpu/GPUResources.h \

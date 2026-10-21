@@ -46,6 +46,17 @@ inline constexpr uintptr_t SchedulerWindowSecond = 0x106551c84;
 inline constexpr uintptr_t CapIdleYield = 0x1064d1e94;
 inline constexpr uintptr_t CapTargetSelect = 0x1064d1c54;
 }
+namespace UniformSlices {
+// The uniform allocator inlined in AppliedMaterial::BindMaterialParameters
+// (14 instructions, then `b BindResume`) and RenderableObject::
+// SetupEngineParameters (13, falling through to SetupResume), and
+// MetalRenderer::BeginFrame's reset of the offset.
+inline constexpr uintptr_t BindAlloc = 0x105d07dc0;
+inline constexpr uintptr_t BindResume = 0x105d07ffc;
+inline constexpr uintptr_t SetupAlloc = 0x1060e0174;
+inline constexpr uintptr_t SetupResume = 0x1060e01a8;
+inline constexpr uintptr_t FrameReset = 0x10645da54;
+}
 namespace Lua {
 inline constexpr uintptr_t LongjmpCall = 0x100769e8c;
 inline constexpr uintptr_t SetjmpCall = 0x100769f64;
@@ -122,6 +133,15 @@ namespace ThreadIdling::Layout {
 inline constexpr size_t ClockStart = 0x8, ClockStarted = 0x10;
 }
 
+// rf::metal::MetalRenderer: an os_unfair_lock guarding the bump offset into the
+// frame's uniform buffer (BufferBytes each, four in a ring; with unified memory
+// the GPU reads it directly). SetupEngineParameters reaches the renderer at
+// SetupRenderer past the object it loads.
+namespace UniformSlices::Layout {
+inline constexpr size_t Lock = 0x8, Offset = 0x2090, SetupRenderer = 0x1f0;
+inline constexpr uint64_t BufferBytes = 0x1500000;
+}
+
 namespace ServerPacing::Layout {
 inline constexpr size_t Target = 0x18, Debt = 0x28;
 inline constexpr size_t WorkerTarget = 0x98, WorkerDebt = 0xa8;
@@ -135,7 +155,8 @@ inline constexpr Island Temporal{0x000, 3 * 64};
 inline constexpr Island Lua{0x700, 32};
 inline constexpr Island ServerPacing{0x800, 4 * 24};
 inline constexpr Island ThreadIdle{0x9c0, 32};
-inline constexpr Island All[] = {Temporal, Lua, ServerPacing, ThreadIdle};
+inline constexpr Island UniformSlices{0xa00, 64};
+inline constexpr Island All[] = {Temporal, Lua, ServerPacing, ThreadIdle, UniformSlices};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];

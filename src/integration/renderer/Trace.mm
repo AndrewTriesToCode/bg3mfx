@@ -521,7 +521,7 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
 [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
-        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"] ||
+        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"uniformSlices"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"] ||
         [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"clusterBufferGuard"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
