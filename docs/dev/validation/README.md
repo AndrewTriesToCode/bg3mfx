@@ -67,7 +67,11 @@ from 23.7 W to 7.4 W at the same 95–96 fps; server ticks stayed at 30.0/s
 [`docs/dev/performance.md`](../performance.md).
 
 - CPU Thread Idling alone: about 11 W. The in-game Frame Cap now idles
-  between frames (user-confirmed lower CPU with the cap on).
+  between frames (user-confirmed lower CPU with the cap on). That build also
+  blocked batch waiters (about −1 W), since removed because its single
+  completion semaphore could strand a second waiter. On October 20, uncapped
+  and CPU-bound on Low, the current defaults matched stock fps (185 vs 186)
+  at 596% CPU against 727%; worker or scheduler polls added CPU without fps.
 - Dynamic Worker Prioritization: 7.4 W where background costs nothing.
   Running through Lower City crowds, trials kept the `WT/High` workers at normal
   where background would have cost 6–11% (108.7 vs 102.0, 144.0 vs 128.7 fps),

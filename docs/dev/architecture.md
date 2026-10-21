@@ -356,8 +356,8 @@ fixtures keep independent layouts/expected instructions to catch drift.
   [`docs/dev/performance.md`](performance.md).
 - `src/features/thread-idling/ThreadIdling.*`: CPU Thread Idling (on by default;
   `BG3MFX_CPU_THREAD_IDLING=0` disables it). BG3's idle workers, job scheduler,
-  frame limiter (`GameClock::CapFrame`, the server tick and client frame cap)
-  and batch waits sleep instead of spinning.
+  and frame limiter (`GameClock::CapFrame`, the server tick and client frame
+  cap) sleep instead of spinning; batch completion waits keep BG3's yield.
 - `src/features/dynamic-worker-prioritization/DynamicWorkers.*`: Dynamic Worker Prioritization (on by default;
   `BG3MFX_DYNAMIC_WORKER_PRIORITIZATION=0` disables it). Puts the `WT/High` workers and the
   job scheduler in Darwin background while frame-rate trials show it costs no
@@ -378,7 +378,7 @@ fixtures keep independent layouts/expected instructions to catch drift.
   (`BG3MFX_TRACE_SERVER_PACING=1`, diagnostic runtime) of the server tick's work,
   CPU time and limiter, logged to category `pacing`.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
-  pacing probe `0x800`, thread idling `0x9a0` and `0x9c0` (offsets from
+  pacing probe `0x800`, thread idling `0x9c0` (offsets from
   `0x100004000`). Each install checks its range is still zero.
 - `src/integration/renderer/Trace.mm`: Metal hooks, exact texture association, pass replacement,
   diagnostic instrumentation.
