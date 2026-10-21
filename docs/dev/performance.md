@@ -299,6 +299,52 @@ varied by up to 4.6 W between windows.
 - Not measured: burst-heavy scenes (combat, crowds), frame-time percentiles,
   and Macs with fewer workers.
 
+### Uniform allocator lock (October 20, 2026)
+
+The lock time in the thread-state tables is one lock. `AppliedMaterial::BindMaterialParameters`
+(lock call at 0x105d07dcc) and `RenderableObject::SetupEngineParameters`
+(0x1060e0180) both run BG3's per-frame uniform allocator inline: lock
+`MetalRenderer` +0x8 (`os_unfair_lock`), round the offset at +0x2090 up to 16,
+add the size, unlock. `MetalRenderer::AllocUniformsBuffer` (0x10645ed44) is the
+same code and ignores its alignment argument; `MetalRenderer::BeginFrame`
+zeroes the offset (0x10645da54), and nothing checks it against the buffer's
+size. The sequence is inlined in about 70 functions (about 130 sites: post
+process, shadows, fog, terrain, Noesis UI). The critical section is five
+instructions; the cost is the contended handoff (`__ulock_wait`/`__ulock_wake`
+and context switches). In the thread-state traces it is about 0.65 cores at a
+60 fps cap and 0.9 cores uncapped, about a quarter of BG3's CPU once thread
+idling removes the spins.
+
+Making only the hot sites lock-free would race with the locked sites. The
+candidate fix keeps BG3's protocol: the hot sites take a per-thread slice
+(16 KB) through the same lock and bump within it without the lock, starting a
+new slice after `BeginFrame`.
+
+Synthetic model (`tools/probes/uniform_lock_sim.cpp`; not BG3): worker threads
+record draws of 0.25–1.75× a mean cost, each allocating 64–512 bytes; 10% of
+allocations stay on the locked path in slice mode. Means of 2–3 runs (repeats
+within about 1%):
+
+| Threads, mean cost | Mode | Frame (parallel part) | Worker CPU | Contended locks |
+|---|---|--:|--:|--:|
+| 6, 500 ns, uncapped | locked | 0.77 ms | 521% | 18% |
+| | slices | 0.62 ms | 512% | 0.2% |
+| | no allocator | 0.62 ms | 523% | – |
+| 12, 500 ns, uncapped | locked | 1.01 ms | 1048% | 32% |
+| | slices | 0.43 ms | 930% | 1.9% |
+| | no allocator | 0.41 ms | 949% | – |
+| 6, 500 ns, 20k draws, 60 fps cap | locked | 3.95 ms | 118% | 27% |
+| | slices | 2.59 ms | 77% | 0.4% |
+| | no allocator | 2.52 ms | 74% | – |
+
+Slices came within 2–5% of no allocator. Every run checked each allocation for
+alignment and overlap with locked and slice allocations mixed: no errors. 16 KB
+slices used 130–210 KB more per frame than the 5.7 MB of data (4 KB slices
+wasted more in partly used tails). With uniform draw costs the threads stagger
+and contention stays under 1%, so the model's gain depends on how bursty BG3's
+recording is. Not yet known: the uniform buffer's size (its headroom bounds
+the slices), BG3's allocations per draw, and the live effect.
+
 ### CPU Thread Idling (`src/features/thread-idling/ThreadIdling.mm`)
 
 BG3 spins wherever it waits:
@@ -387,5 +433,8 @@ samples) and cut its protected Lua call time by 14%.
 - `tools/analysis/thread_states.py record PID SECONDS OUT.trace` and
   `analyze OUT.trace [--json FILE]`: per thread, work, spin, lock, runnable and
   asleep time and Super/Performance core time, from an Instruments System Trace.
+- `tools/probes/uniform_lock_sim.cpp` (`make build/bin/uniform-lock-sim`):
+  `uniform-lock-sim locked|chunked|none THREADS DRAWS WORK_NS [FRAMES]
+  [COLD_PERCENT] [CHUNK_BYTES] [FPS_CAP]`, the synthetic uniform allocator model.
 - Dynamic worker decisions: `log stream --predicate 'subsystem == "com.bg3mfx"
   AND category == "threads"'`.
