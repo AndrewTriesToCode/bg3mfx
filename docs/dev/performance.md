@@ -269,9 +269,12 @@ of two 60 s windows: `procpower` CPU and power, and fps from the Metal HUD log
 | **Default** | 0 | 0 | 185.4 | **596%** | 452% | 144% | 16.7 W |
 | Short worker poll | 50 µs | 0 | 187.2 | 643% | 491% | 152% | 18.1 W |
 | BG3's scheduler window | 0 | 101 µs | 187.1 | 662% | 486% | 176% | 18.5 W |
+| Short scheduler window | 0 | 25 µs | 184.6 | 636% | 473% | 163% | 21.0 W |
+| Default, second launch | 0 | 0 | 188.6 | 585% | 445% | 140% | 17.9 W |
 
-The scheduler-window row is one window: its second (165.6 fps and 11.6 W at
-the same CPU) was disturbed. Within a run the first window read about 189 fps
+The two scheduler-window rows are one window each: their second windows were
+disturbed (165.6 fps at 11.6 W, and a stall to 30 fps). The second default
+launch took one window. Within a run the first window read about 189 fps
 and the second about 183, so fps differences under about 2% are noise; power
 varied by up to 4.6 W between windows.
 
@@ -280,9 +283,19 @@ varied by up to 4.6 W between windows.
 - The `CapFrame` sleep alone, with BG3's polls, costs CPU: the jobs
   `ServerWorker` no longer steals go to workers that spin 500 µs and spill onto
   the Performance cores.
-- With the 101 µs window the scheduler never sleeps (a 15 s trace: 0.91 cores,
-  91% spin), as its wakes come more often than the window. The render thread
-  was on a core 98% of the time, 23% of it waiting on jobs.
+- Any scheduler window keeps the scheduler awake; at 0 it sleeps most of the
+  time. Each idle worker signals its semaphore, and with a window the pending
+  signals arrive before it blocks. 15 s traces after the 60 s windows:
+
+  | Scheduler window | Scheduler cores | Spin | Asleep | Render thread waiting on jobs |
+  |---|--:|--:|--:|--:|
+  | 101 µs | 0.91 | 91% | 0.1% | 23% |
+  | 25 µs | 0.84 | 84% | 0% | – |
+  | 0 (default) | 0.15 | 15% | 79% | 20% |
+
+  The 25 µs trace caught a lighter moment (the render thread 57% asleep, 4.0
+  cores in all), but the scheduler still never slept. The 101 µs and default
+  traces were CPU-bound (the render thread on a core 92–98% of the time).
 - Not measured: burst-heavy scenes (combat, crowds), frame-time percentiles,
   and Macs with fewer workers.
 
