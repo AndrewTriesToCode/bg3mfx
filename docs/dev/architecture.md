@@ -359,7 +359,7 @@ fixtures keep independent layouts/expected instructions to catch drift.
   and frame limiter (`GameClock::CapFrame`, the server tick and client frame
   cap) sleep instead of spinning; batch completion waits keep BG3's yield.
 - `src/features/uniform-slices/UniformSlices.*`: Uniform Allocation Slices
-  (opt-in; `BG3MFX_UNIFORM_SLICES=1`). `BindMaterialParameters` and
+  (opt-in; `BG3MFX_REDUCE_LOCKING=1`). `BindMaterialParameters` and
   `SetupEngineParameters` take their uniform allocations from a per-thread
   slice reserved through BG3's own `MetalRenderer` lock; a hook on
   `BeginFrame`'s reset retires the slices.

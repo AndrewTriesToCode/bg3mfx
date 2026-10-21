@@ -606,8 +606,8 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     }
     // Opt-in: the hottest uniform allocations take per-thread slices instead
     // of BG3's shared lock each time (src/features/uniform-slices/UniformSlices.mm).
-    // BG3MFX_UNIFORM_SLICES=1 enables it. A mismatch leaves BG3 unchanged.
-    if (getenv("BG3MFX_UNIFORM_SLICES") && strcmp(getenv("BG3MFX_UNIFORM_SLICES"),"1") == 0) {
+    // BG3MFX_REDUCE_LOCKING=1 enables it. A mismatch leaves BG3 unchanged.
+    if (getenv("BG3MFX_REDUCE_LOCKING") && strcmp(getenv("BG3MFX_REDUCE_LOCKING"),"1") == 0) {
         NSError *slicesError = nil;
         if (!BG3MFXInstallUniformSlices(slide,report,&slicesError))
             event(@{@"event":@"uniformSlicesSkipped",@"reason":slicesError.localizedDescription ?: @""});

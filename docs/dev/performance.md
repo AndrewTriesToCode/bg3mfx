@@ -348,7 +348,7 @@ In the executable, each frame's uniform buffer is 21 MiB (`0x1500000`, four in
 a ring). `MetalRenderer::CommitCommandBuffer` copies new uniform bytes to a
 private GPU buffer only without unified memory; on Apple Silicon BG3 binds the
 shared buffer directly, so `BeginFrame` is the only point slices must reset.
-The opt-in feature `src/features/uniform-slices` (`BG3MFX_UNIFORM_SLICES=1`)
+The opt-in feature `src/features/uniform-slices` (`BG3MFX_REDUCE_LOCKING=1`)
 patches the two sites and that reset. Not yet known: BG3's allocations per
 draw, how much contention the other sites keep, and the live effect.
 
