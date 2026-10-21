@@ -1,8 +1,8 @@
-# Uniform Allocation Slices
+# Reduced Locking
 
-Technical name: `uniform-slices`.
+Technical name: `reduce-locking`.
 
-Opt-in for measurement: `BG3MFX_REDUCE_LOCKING=1` enables it. BG3 allocates
+Enabled by default; `BG3MFX_REDUCE_LOCKING=0` disables it. BG3 allocates
 every draw's uniforms from one per-frame bump offset on its `MetalRenderer`,
 guarded by one `os_unfair_lock`, and the lock-and-bump is inlined at about 130
 sites. Draw-recording jobs on every worker queue on it. The two hottest sites,

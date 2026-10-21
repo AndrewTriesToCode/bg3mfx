@@ -86,6 +86,18 @@ from 23.7 W to 7.4 W at the same 95–96 fps; server ticks stayed at 30.0/s
 - Not covered: Macs with fewer or slower cores (the `CapFrame` job stealing is
   kept for them), and a GPU capture.
 
+## Reduced Locking
+
+Live on October 20 (quiet runtime, Ultra, Upscaling Off, Frame Cap 60, Lower
+City, M5 Pro; every run held 60 fps): with Dynamic Worker Prioritization off,
+BG3 used 162% CPU and 5.8 W with per-thread uniform slices against 205% and
+6.6 W without; with it on, 238% and 4.9 W against 257% and 5.6 W. Slices
+removed 98% of the lock samples in System Traces. The diagnostic runtime ran
+about 33,000 slices in play with no rendering errors; the largest frame used
+0.47 MB of the 21 MiB uniform buffer. Not covered: uncapped (CPU-bound) frame
+rate, and Macs with fewer cores. Details:
+[`docs/dev/performance.md`](../performance.md).
+
 `make test` exercises neither feature: both patch BG3's own code or threads.
 
 ## Frame Generation

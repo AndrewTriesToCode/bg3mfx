@@ -50,6 +50,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **Dynamic Worker Prioritization** | Moves background-capable workers to lower-power cores when frame rate allows. | **~33% less thread CPU usage** |
 | **Render Thread Optimizations** | Skips repeated texture and pipeline commands to reduce graphics-driver work. | **~1% more FPS**; **~25% less thread CPU usage** |
 | **Lua System Call Elimination** | Removes signal-mask and alternate-stack system calls from protected Lua calls. | **~14% less thread CPU usage** |
+| **Reduced Locking** | Gives each worker its own share of the frame's draw-constant memory instead of taking a shared lock for every draw. | **~20% less CPU usage** |
 
 ### Other
 
@@ -159,6 +160,7 @@ variable in the environment used to launch `bg3mfx`:
 | **CPU Thread Idling** | `BG3MFX_CPU_THREAD_IDLING=0` |
 | **Dynamic Worker Prioritization** | `BG3MFX_DYNAMIC_WORKER_PRIORITIZATION=0` |
 | **Lua System Call Elimination** | `BG3MFX_LUA_SYSTEM_CALL_ELIMINATION=0` |
+| **Reduced Locking** | `BG3MFX_REDUCE_LOCKING=0` |
 
 ## Uninstall
 

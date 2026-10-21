@@ -604,10 +604,10 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
         if (!BG3MFXInstallThreadIdling(slide,report,&idlingError))
             event(@{@"event":@"threadIdlingSkipped",@"reason":idlingError.localizedDescription ?: @""});
     }
-    // Opt-in: the hottest uniform allocations take per-thread slices instead
-    // of BG3's shared lock each time (src/features/uniform-slices/UniformSlices.mm).
-    // BG3MFX_REDUCE_LOCKING=1 enables it. A mismatch leaves BG3 unchanged.
-    if (getenv("BG3MFX_REDUCE_LOCKING") && strcmp(getenv("BG3MFX_REDUCE_LOCKING"),"1") == 0) {
+    // Reduced locking: the hottest uniform allocations take per-thread slices
+    // instead of BG3's shared lock each time (src/features/uniform-slices/UniformSlices.mm).
+    // A mismatch leaves BG3 unchanged. BG3MFX_REDUCE_LOCKING=0 keeps BG3's lock for comparison.
+    if (!(getenv("BG3MFX_REDUCE_LOCKING") && strcmp(getenv("BG3MFX_REDUCE_LOCKING"),"0") == 0)) {
         NSError *slicesError = nil;
         if (!BG3MFXInstallUniformSlices(slide,report,&slicesError))
             event(@{@"event":@"uniformSlicesSkipped",@"reason":slicesError.localizedDescription ?: @""});
