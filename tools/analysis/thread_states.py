@@ -107,11 +107,20 @@ def classify(stack, spin_frames):
     return "working"
 
 
+def lock_caller(stack):
+    # The first frame past the lock and wait machinery: the code that took it.
+    for frame in stack:
+        if not any(part in frame for part in WAIT_MACHINERY):
+            return frame.split("(")[0]
+    return "?"
+
+
 def analyze(trace, spin_frames):
     # Samples first: they bound the recorded window (thread-state also has a
     # synthetic interval from time 0 to each thread's first event) and give
     # each thread's working/spinning split.
     samples = collections.defaultdict(collections.Counter)
+    callers = collections.Counter()
     first = last = None
     for row in export(trace, "time-profile"):
         time = row.get("time")
@@ -119,7 +128,10 @@ def analyze(trace, spin_frames):
         last = time if last is None else max(last, time)
         thread = row.get("thread") or {}
         if thread.get("tid") is not None:
-            samples[thread["tid"]][classify(row.get("stack") or (), spin_frames)] += 1
+            kind = classify(row.get("stack") or (), spin_frames)
+            samples[thread["tid"]][kind] += 1
+            if kind == "lock":
+                callers[lock_caller(row.get("stack") or ())] += 1
     threads = collections.defaultdict(collections.Counter)
     names = {}
     for row in export(trace, "thread-state"):
@@ -155,7 +167,7 @@ def analyze(trace, spin_frames):
                      "runnable_ns": counts["runnable"], "asleep_ns": counts["asleep"],
                      "super_ns": counts["super"], "performance_ns": counts["performance"],
                      "unknown_core_ns": counts["unknown"], "samples": dict(sampled)})
-    return {"trace": trace, "window_ns": last - first, "threads": rows}
+    return {"trace": trace, "window_ns": last - first, "threads": rows, "lock_callers": dict(callers.most_common())}
 
 
 def report(result):
@@ -177,6 +189,12 @@ def report(result):
         print(f"{name[:34]:34s} {len(rows):3d} {cores:6.2f} {pct('working_ns'):6.1f} {pct('spinning_ns'):6.1f} {pct('lock_ns'):6.1f} "
               f"{pct('runnable_ns'):6.1f} {pct('asleep_ns'):6.1f} {tier('super_ns'):6.1f} {tier('performance_ns'):6.1f}")
     print(f"total on-core: {total_cores:.2f} cores over {result['window_ns'] / 1e9:.2f} s")
+    callers = result.get("lock_callers") or {}
+    if callers:
+        total = sum(callers.values())
+        print(f"lock samples by caller ({total}):")
+        for caller, count in list(callers.items())[:12]:
+            print(f"  {100 * count / total:5.1f}%  {caller[:110]}")
 
 
 def main():

@@ -349,8 +349,30 @@ a ring). `MetalRenderer::CommitCommandBuffer` copies new uniform bytes to a
 private GPU buffer only without unified memory; on Apple Silicon BG3 binds the
 shared buffer directly, so `BeginFrame` is the only point slices must reset.
 The opt-in feature `src/features/uniform-slices` (`BG3MFX_REDUCE_LOCKING=1`)
-patches the two sites and that reset. Not yet known: BG3's allocations per
-draw, how much contention the other sites keep, and the live effect.
+patches the two sites and that reset.
+
+Live A/B (Lower City, Ultra, Upscaling Off, Frame Cap 60, all runs at 60 fps;
+two 10–30 s `procpower` windows each, within 3 points of each other):
+
+| Dynamic Worker Prioritization | Slices | CPU | Super | CPU power |
+|---|---|--:|--:|--:|
+| on | off | 257% | 130% | 5.6 W |
+| on | on | 238% | 115% | 4.9 W |
+| off | off | 205% | 175% | 6.6 W |
+| off | on | 162% | 143% | 5.8 W |
+
+10 s System Traces of the last two (`thread_states.py` now lists lock samples
+by caller): 4,448 lock samples against 90; `BindMaterialParameters` held 50%
+and `SetupEngineParameters` 41% of them, and the rest is spread thinly
+(`IAppStage::BindViewport`, `BindAtmosphere`, `DecalObject::PrepareDraw`,
+post-process steps). `WT/High` fell from 1.02 to 0.61 cores and the render
+thread's spin waiting on jobs from 9.6% to 2.7%. Dynamic Worker Prioritization
+hides much of the CPU difference: background workers on the Performance cores
+take more CPU time (+76 points with slices) for about 0.9 W less. In play with
+the diagnostic runtime there were no rendering errors in about 33,000 slices,
+and the largest frame used 0.47 MB of the 21 MiB buffer (the diagnostic
+runtime's own logging held that session to about 27 fps). Not yet measured:
+uncapped (CPU-bound) frame rate.
 
 ### CPU Thread Idling (`src/features/thread-idling/ThreadIdling.mm`)
 

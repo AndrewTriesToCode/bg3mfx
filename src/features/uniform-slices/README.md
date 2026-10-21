@@ -25,8 +25,21 @@ installed through [`NativeMenu.mm`](../../../src/integration/menu/NativeMenu.mm)
 It checks the replaced instructions at each site, the island space and branch
 reach before patching.
 
-Estimated improvement: in thread-state traces the lock costs about 0.65 cores
-at a 60 fps cap and 0.9 cores uncapped. In a synthetic model of the allocator
-(`tools/probes/uniform_lock_sim.cpp`), slices came within 2–5% of no allocator
-and cut the model's capped worker CPU by about 35%. Not yet measured live; the
-other inlined sites keep the lock. See [performance analysis](../../../docs/dev/performance.md).
+Measured live on October 20 (Lower City, Ultra, Upscaling Off, Frame Cap 60,
+M5 Pro, quiet runtime, two 10–30 s `procpower` windows per run, all at 60 fps):
+
+| Dynamic Worker Prioritization | Slices | CPU | CPU power |
+|---|---|--:|--:|
+| on (default) | off | 257% | 5.6 W |
+| on (default) | on | 238% | 4.9 W |
+| off | off | 205% | 6.6 W |
+| off | on | 162% | 5.8 W |
+
+With Dynamic Worker Prioritization off, System Traces put 91% of lock samples in
+the two patched functions; slices removed 98% of lock samples, the `WT/High`
+workers fell from 1.02 to 0.61 cores, and the render thread's waiting on jobs
+from 9.6% to 2.7% of its time. The remaining lock time is spread over many
+other sites. No rendering errors in play with the diagnostic runtime (about
+33,000 slices); the largest frame used 0.47 MB of the 21 MiB buffer.
+Uncapped (CPU-bound) frame rate is not yet measured. See
+[performance analysis](../../../docs/dev/performance.md).
