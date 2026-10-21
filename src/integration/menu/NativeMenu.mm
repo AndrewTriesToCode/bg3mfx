@@ -8,7 +8,6 @@
 #endif
 #import "features/thread-idling/ThreadIdling.h"
 #import "features/reduce-locking/UniformSlices.h"
-#import "features/dynamic-worker-prioritization/DynamicWorkers.h"
 #import <MetalFX/MetalFX.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -612,11 +611,6 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
         if (!BG3MFXInstallUniformSlices(slide,report,&slicesError))
             event(@{@"event":@"uniformSlicesSkipped",@"reason":slicesError.localizedDescription ?: @""});
     }
-    // Dynamic worker core prioritization: render workers on the lower-tier
-    // cores while that costs no frame rate (src/features/dynamic-worker-prioritization/DynamicWorkers.mm).
-    // BG3MFX_DYNAMIC_WORKER_PRIORITIZATION=0 keeps BG3's placement.
-    if (!(getenv("BG3MFX_DYNAMIC_WORKER_PRIORITIZATION") && strcmp(getenv("BG3MFX_DYNAMIC_WORKER_PRIORITIZATION"),"0") == 0))
-        BG3MFXInstallDynamicWorkers(report);
     // Diagnostic opt-in: time BG3's server tick, its CPU time and its limiter
     // (src/integration/diagnostics/ServerPacingProbe.h).
 #ifndef BG3MFX_NO_TRACE

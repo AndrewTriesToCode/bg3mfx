@@ -401,7 +401,14 @@ each): worker and scheduler spins 23.7 → 14.0 W; `CapFrame` 14.0 → ~11.9 W
 (250 µs steps with BG3's 1 ms spin tail). Server ticks stayed at 30.0/s with a 33.4 ms worst interval; the in-game
 Frame Cap now idles between frames.
 
-### Dynamic Worker Prioritization (`src/features/dynamic-worker-prioritization/DynamicWorkers.mm`)
+### Dynamic Worker Prioritization (removed October 21, 2026)
+
+Removed: once thread idling let the workers sleep, it saved about 0.9 W at a
+60 fps cap (Reduced Locking A/B above) while background workers took about
+75 points more CPU time, and it could cost frame rate in CPU-bound scenes,
+likely more on Macs with few efficiency cores. The code remains in the
+repository's history (`src/features/dynamic-worker-prioritization/`). The
+original findings:
 
 BG3 sets thread priorities by hand (QoS changes fail with `EPERM`), so
 everything runs on the Super cores. Darwin background
@@ -465,5 +472,3 @@ samples) and cut its protected Lua call time by 14%.
 - `tools/probes/uniform_lock_sim.cpp` (`make build/bin/uniform-lock-sim`):
   `uniform-lock-sim locked|chunked|none THREADS DRAWS WORK_NS [FRAMES]
   [COLD_PERCENT] [CHUNK_BYTES] [FPS_CAP]`, the synthetic uniform allocator model.
-- Dynamic worker decisions: `log stream --predicate 'subsystem == "com.bg3mfx"
-  AND category == "threads"'`.

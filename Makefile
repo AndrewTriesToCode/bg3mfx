@@ -72,7 +72,6 @@ RUNTIME_SOURCES = \
 	src/features/shadows/ShadowDuplicateFix.mm \
 	src/features/thread-idling/ThreadIdling.mm \
 	src/features/reduce-locking/UniformSlices.mm \
-	src/features/dynamic-worker-prioritization/DynamicWorkers.mm \
 	src/features/lua-jump-fix/LuaJumpFix.mm \
 	src/common/gpu/GPUResources.mm \
 	src/common/gpu/MetalFXPipeline.mm \
@@ -97,7 +96,6 @@ RUNTIME_HEADERS = \
 	src/features/shadows/ShadowDuplicateFix.h \
 	src/features/thread-idling/ThreadIdling.h \
 	src/features/reduce-locking/UniformSlices.h \
-	src/features/dynamic-worker-prioritization/DynamicWorkers.h \
 	src/features/lua-jump-fix/LuaJumpFix.h \
 	src/common/gpu/GPUResources.h \
 	src/common/gpu/MetalFXPipeline.h \

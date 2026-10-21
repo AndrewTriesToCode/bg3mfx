@@ -363,13 +363,6 @@ fixtures keep independent layouts/expected instructions to catch drift.
   `SetupEngineParameters` take their uniform allocations from a per-thread
   slice reserved through BG3's own `MetalRenderer` lock; a hook on
   `BeginFrame`'s reset retires the slices.
-- `src/features/dynamic-worker-prioritization/DynamicWorkers.*`: Dynamic Worker Prioritization (on by default;
-  `BG3MFX_DYNAMIC_WORKER_PRIORITIZATION=0` disables it). Puts the `WT/High` workers and the
-  job scheduler in Darwin background while frame-rate trials show it costs no
-  frame rate. It changes no BG3 code: threads apply their placement when they
-  next block in an interposed `semaphore_wait`/`semaphore_timedwait`, and the
-  present hooks in `Trace.mm` count frames. Decisions are logged to subsystem
-  `com.bg3mfx`, category `threads`.
 - `src/features/cluster-buffer-guard/ClusterBufferGuard.*`: Character Creation Crash Fix (on by default;
   `BG3MFX_CLUSTER_BUFFER_GUARD=0` disables it). `Trace.mm` binds a zero-filled,
   untracked stand-in at compute buffer indices 1 and 6 and fragment index 1 on

@@ -11,7 +11,6 @@
 #import "features/cluster-buffer-guard/ClusterBufferGuard.h"
 #import "features/depth-prepass/DepthPrepass.h"
 #import "features/render-thread-optimizations/BindFilter.h"
-#import "features/dynamic-worker-prioritization/DynamicWorkers.h"
 #import "features/metalfx-spatial-upscaling/SpatialUpscaler.h"
 #import "features/metalfx-temporal-upscaling/TemporalUpscaler.h"
 #import "integration/menu/NativeMenu.h"
@@ -42,6 +41,8 @@ static std::map<std::pair<Class, SEL>, IMP> &originals() {
 static NSMutableSet<NSString *> *seen;
 static NSFileHandle *output;
 static unsigned long frames;
+// BG3's presented frames (not the Frame Generation presenter's).
+static std::atomic<uint64_t> renderedFrames{0};
 static unsigned long resourceCounter;
 static char resourceKey, pipelineKey, bindingsKey, attachmentsKey;
 static BOOL traceConstants;
@@ -489,7 +490,7 @@ static void noteClusterDispatch(__unsafe_unretained id encoder, NSString *name) 
     unsigned count = standIn ? ++standIns : ++nils;
     if (count <= 8 || count % 256 == 0)
         record(@{@"event":@"clusterBufferGuard",@"pipeline":name,@"bound":standIn ? @"standIn" : @"nil",
-            @"count":@(count),@"frame":@(BG3MFXRenderedFrames.load())});
+            @"count":@(count),@"frame":@(renderedFrames.load())});
 }
 #endif
 static void bufferOffset(__unsafe_unretained id self, SEL cmd, NSUInteger offset, NSUInteger index) {
@@ -521,7 +522,7 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"upscalingModeChanged"] || [kind isEqualToString:@"metalHUDChanged"] ||
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
 [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
-        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"uniformSlices"] || [kind hasPrefix:@"dynamicWorkers"] || [kind hasPrefix:@"luaJumpFix"] ||
+        [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"uniformSlices"] || [kind hasPrefix:@"luaJumpFix"] ||
         [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"clusterBufferGuard"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
@@ -2290,14 +2291,14 @@ static void logNativePresent(id buffer, id drawable) {
 // (they hook every queue's command buffers); they are not BG3 frames.
 static void present(id self, SEL cmd, id drawable) {
     if([BG3MFXFramePresenter isPresentationThread]) { ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable); return; }
-    BG3MFXRenderedFrames.fetch_add(1,std::memory_order_relaxed);
+    renderedFrames.fetch_add(1,std::memory_order_relaxed);
     if(deferPresent(self,cmd,drawable)) return;
     countPresent(drawable,cmd); logNativePresent(self,drawable);
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable);
 }
 static void presentTimed(id self, SEL cmd, id drawable, double time) {
     if([BG3MFXFramePresenter isPresentationThread]) { ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time); return; }
-    BG3MFXRenderedFrames.fetch_add(1,std::memory_order_relaxed);
+    renderedFrames.fetch_add(1,std::memory_order_relaxed);
     if(deferPresent(self,cmd,drawable)) return;
     countPresent(drawable,cmd); logNativePresent(self,drawable);
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time);
