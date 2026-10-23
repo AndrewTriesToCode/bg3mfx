@@ -1,5 +1,5 @@
 # Build output, local captures, traces and downloaded references (see AGENTS.md).
-build/
+/build/
 
 # Game files: never commit BG3 executables, extracted shaders or assets.
 *.app/
