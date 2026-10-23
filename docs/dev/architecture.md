@@ -359,13 +359,13 @@ fixtures keep independent layouts/expected instructions to catch drift.
   and frame limiter (`GameClock::CapFrame`, the server tick and client frame
   cap) sleep instead of spinning; batch completion waits keep BG3's yield.
 - `src/features/reduce-locking/UniformSlices.*`: Reduced Locking
-  (experimental; the launcher passes `BG3MFX_REDUCE_LOCKING=0` unless the
-  player sets `=1`). `BindMaterialParameters` and
+  (experimental; on unless the player sets
+  `BG3MFX_REDUCE_LOCKING=0`). `BindMaterialParameters` and
   `SetupEngineParameters` take their uniform allocations from a per-thread
   slice reserved through BG3's own `MetalRenderer` lock; a hook on
   `BeginFrame`'s reset retires the slices.
 - `src/features/cluster-buffer-guard/ClusterBufferGuard.*`: Character Creation Crash Fix (experimental;
-  the launcher passes `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0` unless the player sets `=1`). `Trace.mm` binds a zero-filled,
+  on unless the player sets `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0`). `Trace.mm` binds a zero-filled,
   untracked stand-in at compute buffer indices 1 and 6 and fragment index 1 on
   each new encoder, so a clustered-lighting pass that BG3 dispatches without
   `ClusterInfoBuffer` reads no lights instead of faulting the GPU. Diagnostic

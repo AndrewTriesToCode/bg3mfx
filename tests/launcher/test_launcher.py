@@ -62,11 +62,11 @@ class LauncherTests(unittest.TestCase):
             self.assertIn("MTL_HUD_ENABLED=1", result.stdout)
             self.assertIn("Arguments: -NoLauncher 1", result.stdout)
             self.assertIn("was not started", result.stdout)
-            # Held-back features are off unless the player opts in.
-            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=0", result.stdout)
-            self.assertIn("BG3MFX_REDUCE_LOCKING=0", result.stdout)
+            # Experimental features are on unless the player opts out.
+            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=1", result.stdout)
+            self.assertIn("BG3MFX_REDUCE_LOCKING=1", result.stdout)
 
-    def test_held_back_features_can_be_opted_in(self):
+    def test_experimental_features_can_be_opted_out(self):
         with tempfile.TemporaryDirectory() as root:
             payload = b"pretend supported build"
             game = fake_game(root, payload=payload)
@@ -75,10 +75,10 @@ class LauncherTests(unittest.TestCase):
             result = self.run_launcher("--dry-run", "--game", str(game), env={
                 "BG3MFX_TEST_SUPPORTED_SHA256": hashlib.sha256(payload).hexdigest(),
                 "BG3MFX_RUNTIME": str(runtime),
-                "BG3MFX_REDUCE_LOCKING": "1"})
+                "BG3MFX_REDUCE_LOCKING": "0"})
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("BG3MFX_REDUCE_LOCKING=1", result.stdout)
-            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=0", result.stdout)
+            self.assertIn("BG3MFX_REDUCE_LOCKING=0", result.stdout)
+            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=1", result.stdout)
 
     def test_test_hash_override_only_applies_to_dry_runs(self):
         with tempfile.TemporaryDirectory() as root:

@@ -2,9 +2,8 @@
 
 Technical name: `cluster-buffer-guard`.
 
-Experimental. The `bg3mfx` launcher turns it off unless the player sets
-`BG3MFX_CHARACTER_CREATION_CRASH_FIX=1`; the runtime alone enables it when the variable is unset,
-and `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0` disables it. BG3 4.1.1
+Experimental. The `bg3mfx` launcher and the runtime enable it unless the
+player sets `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0`. BG3 4.1.1
 sometimes dispatches its clustered-lighting passes without binding
 `ClusterInfoBuffer`. This happens at some render sizes; live, it happened at
 1796×1123 (FSR 1.0 Ultra Quality, fullscreen 2336×1460) when entering

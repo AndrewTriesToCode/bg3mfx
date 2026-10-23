@@ -348,8 +348,8 @@ In the executable, each frame's uniform buffer is 21 MiB (`0x1500000`, four in
 a ring). `MetalRenderer::CommitCommandBuffer` copies new uniform bytes to a
 private GPU buffer only without unified memory; on Apple Silicon BG3 binds the
 shared buffer directly, so `BeginFrame` is the only point slices must reset.
-Reduced Locking, `src/features/reduce-locking` (experimental; the launcher
-passes `BG3MFX_REDUCE_LOCKING=0` unless the player sets `=1`), patches the two sites and that reset.
+Reduced Locking, `src/features/reduce-locking` (experimental; on unless the
+player sets `BG3MFX_REDUCE_LOCKING=0`), patches the two sites and that reset.
 
 Live A/B (Lower City, Ultra, Upscaling Off, Frame Cap 60, all runs at 60 fps;
 two 10–30 s `procpower` windows each, within 3 points of each other):
