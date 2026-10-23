@@ -376,6 +376,23 @@ fixtures keep independent layouts/expected instructions to catch drift.
 - `src/integration/diagnostics/ServerPacingProbe.*`: opt-in measurement
   (`BG3MFX_TRACE_SERVER_PACING=1`, diagnostic runtime) of the server tick's work,
   CPU time and limiter, logged to category `pacing`.
+- `src/features/dynamic-resolution/DynamicResolution.*`: the Dynamic Upscaling
+  Quality (4: keeps the Upscaler Target Minimum FPS slider as a minimum (limited by the refresh rate and Max Frame Rate), at native resolution when it can; the Dynamic Upscaler Thermal Guard checkbox also lowers a ceiling on the area while `NSProcessInfo` reports a thermal state above nominal; MetalFX Temporal only, with or without Frame Generation; installed by
+  default, `BG3MFX_DYNAMIC_RESOLUTION=0` skips it). Before each on-screen frame
+  records it sets BG3's unused render-viewport reduction (`RenderFrame` +0x4368)
+  from a GPU-busy controller and recalculates the frame's and views' viewports,
+  so render-resolution passes draw a sub-rectangle of the same targets. The area
+  spans the device's MetalFX Temporal input content scale range. The TAA
+  capture accepts the reduced viewport, a dynamic-resolution scaler upscales
+  just that region, and `Trace.mm`'s commit hook reports BG3's command-buffer
+  GPU intervals to the controller. Diagnostic runtime: `BG3MFX_DYNAMIC_RESOLUTION_AREA=<area>`
+  or `<min>,<max>,<seconds>` overrides the controller; logged to category
+  `resolution`. It also patches the volumetric fog history's previous
+  viewport loads, the auto-exposure scene UV load, the SSR history viewport, an SSR history discard after each area change, and loads of the full view rectangle for forward lighting clamps, bloom and DOF radii and the projection jitter divisor; `Trace.mm` gives the fog composite a viewport-mapped vertex
+  shader (`viewportFogDescriptor`, whenever the feature is installed) and
+  corrects surface grid draws (`SurfaceGridDraw`) and subsurface scattering
+  widths (`SubsurfaceDraw`) while reducing. See
+  [validation](validation/README.md#dynamic-resolution-probe-october-21-2026).
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
   pacing probe `0x800`, thread idling `0x9c0`, uniform slices `0xa00` (offsets from
   `0x100004000`). Each install checks its range is still zero.

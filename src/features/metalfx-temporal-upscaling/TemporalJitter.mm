@@ -2,6 +2,8 @@
 #import "features/metalfx-temporal-upscaling/TemporalJitter.h"
 #include "common/native/CodePatch.h"
 #import "integration/menu/NativeMenu.h"
+#import "features/dynamic-resolution/DynamicResolution.h"
+#include <algorithm>
 #include <mach/mach.h>
 #include <mach-o/loader.h>
 #include <libkern/OSCacheControl.h>
@@ -45,7 +47,7 @@ bool upscaledView(void *view) {
     }
     return false;
 }
-struct Choice { void *frame=nullptr; void *camera=nullptr; uint64_t size=0; uint32_t index=0; unsigned phases=8; bool valid=false; };
+struct Choice { void *frame=nullptr; void *camera=nullptr; uint64_t size=0; uint32_t index=0; unsigned phases=8; bool own=false; bool valid=false; };
 // A view may ask for its projection several times in one frame. Freeze the
 // choice for that native frame, including a menu switch during CPU recording.
 std::mutex &lock() { static auto *m=new std::mutex; return *m; }
@@ -60,7 +62,7 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
     std::lock_guard<std::mutex> hold(lock());
     Choice &c=choices()[view];
     if (!c.valid || c.frame!=frame || c.camera!=camera || c.index!=index || c.size!=size) {
-        c={frame,camera,size,index,8,true};
+        c={frame,camera,size,index,8,false,true};
         if (BG3MFXSelectedScalingMode()==3 && !read<uint8_t>(camera,Layout::CameraUnjittered) && upscaledView(view)) {
             #ifdef BG3MFX_JITTER_TEST
             void *settings=testSettings;
@@ -69,7 +71,14 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
 #endif
             unsigned quality=settings ? read<uint8_t>(settings,Layout::SettingsQuality) : 2;
             static const unsigned phases[]={14,18,24,32};
-            if (quality<4) c.phases=phases[quality];
+            if (quality<4) { c.phases=phases[quality]; c.own=true; }
+            // Dynamic: about eight samples per output pixel at the area this
+            // frame renders (the area is set before the frame records).
+            else if (BG3MFXDynamicQualityValue(quality)) {
+                float area=BG3MFXDynamicResolutionArea();
+                c.phases=area>0 ? std::clamp(unsigned(std::ceil(8/area)),8u,128u) : 8;
+                c.own=true;
+            }
         }
 #ifndef BG3MFX_NO_TRACE
         if (reportEvent) reportEvent(@{@"event":@"nativeTemporalJitter",@"view":@((uintptr_t)view),
@@ -78,8 +87,9 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
         // Native views are recreated on transitions; bound CPU bookkeeping.
         if (choices().size()>64) { Choice saved=c; choices().clear(); choices()[view]=saved; }
     }
-    unsigned phases=choices()[view].phases;
-    if (phases==8) return original;
+    const Choice &chosen=choices()[view];
+    if (!chosen.own) return original;
+    unsigned phases=chosen.phases;
     float sample[2]={halton(index%phases+1,2),halton(index%phases+1,3)};
     uint64_t bits; memcpy(&bits,sample,8); return bits;
 }

@@ -14,8 +14,7 @@
 #import "features/metalfx-spatial-upscaling/SpatialUpscaler.h"
 #import "features/metalfx-temporal-upscaling/TemporalUpscaler.h"
 #import "integration/menu/NativeMenu.h"
-#ifndef BG3MFX_NO_TRACE
-#endif
+#import "features/dynamic-resolution/DynamicResolution.h"
 #import "features/metalfx-frame-generation/FrameInterpolation.h"
 #import "features/metalfx-frame-generation/FrameLog.h"
 #import "common/gpu/GPUResources.h"
@@ -145,6 +144,15 @@ struct CompositionDraw {
     // Cluster buffer guard: what compute indices 1 and 6 hold.
     __unsafe_unretained id clusterSlot[2];
 #endif
+    // Dynamic resolution: a surface grid pipeline is bound while the viewport
+    // is reduced, and the vertex EngineParams binding its draws read (see
+    // SurfaceGridDraw).
+    bool surfaceGrid;
+    // Dynamic resolution: a subsurface scattering blur is bound while the
+    // viewport is reduced (see SubsurfaceDraw).
+    bool subsurface;
+    __unsafe_unretained id<MTLBuffer> engineBuffer;
+    NSUInteger engineOffset;
     // Bind dedup: fragment textures this encoder has actually forwarded.
     BG3MFXBindFilter bindFilter;
     // Per-encoder associated objects our code has set (EncoderAssociation
@@ -162,6 +170,8 @@ struct CompositionDraw {
     __strong NSDictionary *description;
     PipelineKind kind;
     TrimPipeline trim;
+    // Dynamic resolution corrections (see SurfaceGridDraw and SubsurfaceDraw).
+    bool surfaceGrid, subsurface;
 }
 @end
 // BG3 binds about 960 pipelines per frame from a few hundred long-lived ones.
@@ -433,15 +443,27 @@ static void flushRedundantCounts() {
         @"pipelineBindsPerFrame":@(c[PipelineBinds]/n),@"pipelineBindsRedundant":@(c[PipelineBindsRedundant]/n),
         @"depthBindsPerFrame":@(c[DepthBinds]/n),@"depthBindsRedundant":@(c[DepthBindsRedundant]/n)});
 }
+// Dynamic resolution: the vertex EngineParams (index 21) surface grid draws read.
+static constexpr NSUInteger SurfaceEngineIndex = 21;
+static void noteEngineParams(__unsafe_unretained id encoder, SEL cmd, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, bool offsetOnly) {
+    if (bindingStage(cmd) != StageVertex || !BG3MFXDynamicResolutionInstalled()) return;
+    if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(encoder)) {
+        if (!offsetOnly) s->engineBuffer = buffer;
+        s->engineOffset = offset;
+    }
+}
 static void bindBuffer(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger index) {
     if (diagnostics && redundantProbe) { id<MTLBuffer> const one[1]={buffer}; countBuffers(self,cmd,one,&offset,NSMakeRange(index,1),false); }
     ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,buffer,offset,index);
+    if (index == SurfaceEngineIndex) noteEngineParams(self,cmd,buffer,offset,false);
     if (!constantInputNeeded(self,index)) return;
     if (ConstantBinding *b=constantSlot(self,bindingStage(cmd),index)) { b->buffer=buffer; b->offset=offset; b->hasBytes=false; b->length=0; }
 }
 static void bindBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> const *buffers, const NSUInteger *offsets, NSRange range) {
     countBuffers(self,cmd,buffers,offsets,range,false);
     ((void(*)(id,SEL,id<MTLBuffer> const *,const NSUInteger *,NSRange))original(self,cmd))(self,cmd,buffers,offsets,range);
+    if (NSLocationInRange(SurfaceEngineIndex,range))
+        noteEngineParams(self,cmd,buffers[SurfaceEngineIndex-range.location],offsets[SurfaceEngineIndex-range.location],false);
     if (!temporalInputsNeeded(self)) return;
     EncoderStage stage=bindingStage(cmd);
     for (NSUInteger i=0; i<range.length; ++i) {
@@ -496,11 +518,13 @@ static void noteClusterDispatch(__unsafe_unretained id encoder, NSString *name) 
 static void bufferOffset(__unsafe_unretained id self, SEL cmd, NSUInteger offset, NSUInteger index) {
     if (diagnostics && redundantProbe) countBuffers(self,cmd,nullptr,&offset,NSMakeRange(index,1),true);
     ((void(*)(id,SEL,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,offset,index);
+    if (index == SurfaceEngineIndex) noteEngineParams(self,cmd,nil,offset,true);
     if (!constantInputNeeded(self,index)) return;
     if (ConstantBinding *b=constantSlot(self,bindingStage(cmd),index)) if (b->buffer) b->offset=offset;
 }
 static void bindBytes(__unsafe_unretained id self, SEL cmd, const void *bytes, NSUInteger length, NSUInteger index) {
     ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,bytes,length,index);
+    if (index == SurfaceEngineIndex) noteEngineParams(self,cmd,nil,0,false);
     if (!constantInputNeeded(self,index)) return;
     EncoderStage stage=bindingStage(cmd);
     if (ConstantBinding *b=constantSlot(self,stage,index)) {
@@ -523,7 +547,10 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
 [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
         [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"uniformSlices"] || [kind hasPrefix:@"luaJumpFix"] ||
-        [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"clusterBufferGuard"];
+        [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"clusterBufferGuard"] ||
+        [kind isEqualToString:@"viewportReductionPass"] || [kind hasPrefix:@"dynamicResolution"] || [kind isEqualToString:@"surfaceDebugFragment"] ||
+        [kind isEqualToString:@"surfaceGrid"] || [kind isEqualToString:@"subsurfaceScale"] ||
+        [kind isEqualToString:@"stencilDump"];
     if (!output || (!important && seen.count >= 20000 &&
         ![event[@"event"] isEqualToString:@"spatialUpscaleError"] &&
         ![event[@"event"] isEqualToString:@"temporalUpscaleError"])) return;
@@ -826,6 +853,12 @@ static void failFeature(BOOL temporal, NSString *reason) {
         @"\n\nThe game continues with AMD FSR 1.0 upscaling. To retry, choose another Upscaling Type "
         "and then this one again in Video options."]);
 }
+// The viewport reduction probe reduces only while Temporal can upscale the region;
+// BG3's FSR fallback would show the reduced region as is.
+extern "C" BOOL BG3MFXTemporalFailed(void) {
+    std::lock_guard<std::recursive_mutex> lock(guard());
+    return temporalFailed;
+}
 static void failSpatial(NSString *reason) { failFeature(NO,reason); }
 static void failTemporal(NSString *reason) { failFeature(YES,reason); }
 // Menu integration problems leave BG3's own options working; say so once.
@@ -957,6 +990,11 @@ static BOOL temporalParameters(NSDictionary *inputs, BG3MFXFrameParameters *para
     // image/projection displacement. Depth registration and the analytic
     // reconstruction regression establish the opposite sign in both axes.
     BG3MFXApplyTemporalJitter(&p, temporal[52], temporal[53]);
+    if (NSNumber *width = inputs[@"contentWidth"], *height = inputs[@"contentHeight"]; width && height) {
+        // The reduction probe makes BG3 divide its projection jitter by the
+        // reduced region, so BG3's value is already in rendered pixels.
+        p.contentWidth = width.unsignedIntegerValue; p.contentHeight = height.unsignedIntegerValue;
+    }
     // Inspected BG3 camera/object shaders emit current minus previous in
     // framebuffer pixels. MetalFX needs previous minus current displacement.
     p.motionScaleX = p.motionScaleY = -1;
@@ -997,6 +1035,10 @@ static void validateMotionSample(id<MTLCommandBuffer> buffer, id<MTLTexture> mot
     }];
 }
 #endif
+// Dynamic resolution counts our Metal 4 MetalFX submissions as GPU work too.
+static void metal4GPUWork(double start, double end) {
+    if (BG3MFXDynamicResolutionMeasuring()) BG3MFXDynamicResolutionGPUWork(start,end);
+}
 static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, id<MTLTexture> destination) {
     id<MTLTexture> color = inputs[@"color"], depth = inputs[@"depth"], motion = inputs[@"motion"];
     if (!color || !depth || !motion || !destination) {
@@ -1009,12 +1051,19 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
     BOOL nativeAAWarmup = [inputs[@"nativeTAAPreserved"] boolValue];
     parameters.reset |= nativeAAWarmup || temporalResetPending.exchange(false);
     NSString *key = scalerKey(buffer.device,color.width,color.height,destination.width,destination.height);
+    if (BG3MFXDynamicResolutionSelected()) key = [key stringByAppendingString:@" dynamic"];
     BG3MFXTemporalUpscaler *upscaler;
     { std::lock_guard<std::recursive_mutex> lock(guard()); upscaler = temporalUpscalerCache()[key]; }
     NSError *error = nil;
     if (!upscaler) {
+        BOOL dynamicResolution = BG3MFXDynamicResolutionSelected();
+        if (dynamicResolution) BG3MFXGPUWorkHook = metal4GPUWork;
+        if (dynamicResolution)
+            BG3MFXDynamicResolutionSetScaleLimits([MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:buffer.device],
+                [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:buffer.device]);
         upscaler = [[BG3MFXTemporalUpscaler alloc] initWithDevice:buffer.device inputWidth:color.width
-            inputHeight:color.height outputWidth:destination.width outputHeight:destination.height error:&error];
+            inputHeight:color.height outputWidth:destination.width outputHeight:destination.height
+            dynamicResolution:dynamicResolution error:&error];
         if (upscaler) {
             upscaler.gpuFailureHandler=^(NSError *gpuError) {
                 failTemporal(gpuError.localizedDescription ?: @"Metal 4 could not complete temporal scaling commands.");
@@ -1065,6 +1114,8 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
         if (nativeAAWarmup) [upscaler resetHistory];
     }
     record(@{@"event":@"temporalUpscaleEncoded",@"success":@(encoded),@"input":texture(color),
+        @"content":@[@(parameters.contentWidth ?: color.width),@(parameters.contentHeight ?: color.height)],
+        @"jitter":@[@(parameters.jitterX),@(parameters.jitterY)],
         @"depth":texture(depth),@"motion":texture(motion),@"destination":texture(destination),@"error":error.description ?: @""});
     if (encoded) [buffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
 #ifndef BG3MFX_NO_TRACE
@@ -1099,8 +1150,44 @@ static BOOL copyTemporalAAColor(id<MTLCommandBuffer> buffer, NSDictionary *input
     record(@{@"event":@"temporalTAACopy",@"source":texture(color),@"target":texture(target)});
     return YES;
 }
+#ifndef BG3MFX_NO_TRACE
+// BG3MFX_STENCIL_DUMP_DIR: the stencil plane after the decal normal pass (which
+// marks decal and surface receivers with 64) and after the fluid surface pass,
+// written once with the viewport reduced and once at full size.
+static char stencilDepthKey, stencilRoleKey;
+static void dumpStencil(id<MTLCommandBuffer> buffer, id<MTLTexture> depth, NSString *role) {
+    const char *directory = getenv("BG3MFX_STENCIL_DUMP_DIR");
+    // Each switch between reduced and full size starts a new numbered pair.
+    static NSMutableSet *written = [NSMutableSet set];
+    static bool lastReduced; static unsigned switches;
+    bool reduced = BG3MFXDynamicResolutionArea() < 1;
+    NSString *name;
+    { std::lock_guard<std::recursive_mutex> lock(guard());
+      if (reduced != lastReduced) { lastReduced = reduced; ++switches; }
+      name = [NSString stringWithFormat:@"stencil-%02u-%@-%@-%lux%lu.bin", switches, reduced ? @"reduced" : @"full", role,
+          (unsigned long)depth.width, (unsigned long)depth.height];
+      if ([written containsObject:name]) return;
+      [written addObject:name]; }
+    NSUInteger size = depth.width * depth.height;
+    id<MTLBuffer> data = [buffer.device newBufferWithLength:size options:MTLResourceStorageModeShared];
+    id<MTLBlitCommandEncoder> blit = [buffer blitCommandEncoder];
+    [blit copyFromTexture:depth sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(depth.width,depth.height,1)
+        toBuffer:data destinationOffset:0 destinationBytesPerRow:depth.width destinationBytesPerImage:size options:MTLBlitOptionStencilFromDepthStencil];
+    [blit endEncoding];
+    NSString *path = [[NSString stringWithUTF8String:directory] stringByAppendingPathComponent:name];
+    [buffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+        BOOL saved = completed.status == MTLCommandBufferStatusCompleted &&
+            [[NSData dataWithBytes:data.contents length:size] writeToFile:path atomically:YES];
+        record(@{@"event": @"stencilDump", @"path": path, @"saved": @(saved)});
+    }];
+}
+#endif
 static void endEncoder(id self, SEL cmd) {
     id<MTLCommandBuffer> commandBuffer = encoderBuffer(self);
+#ifndef BG3MFX_NO_TRACE
+    NSString *stencilRole = getenv("BG3MFX_STENCIL_DUMP_DIR") ? objc_getAssociatedObject(self, &stencilRoleKey) : nil;
+    id<MTLTexture> stencilDepth = stencilRole ? objc_getAssociatedObject(self, &stencilDepthKey) : nil;
+#endif
     __unsafe_unretained BG3MFXEncoderState *encoderRecord = encoderState(self);
     // Only keys this encoder may hold are read and cleared (most hold none).
     uint16_t associations = encoderAssociations(encoderRecord);
@@ -1186,6 +1273,7 @@ static void endEncoder(id self, SEL cmd) {
     ((void(*)(id,SEL))original(self,cmd))(self,cmd);
 #ifndef BG3MFX_NO_TRACE
     finishWaterfallCopies(commandBuffer,waterfallCopies);
+    if (stencilDepth && commandBuffer) dumpStencil(commandBuffer, stencilDepth, stencilRole);
 #endif
     if (postprocess && commandBuffer) {
         NSMutableDictionary *sceneFrames = objc_getAssociatedObject(commandBuffer,&temporalFrameKey);
@@ -1287,6 +1375,42 @@ static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained i
     __unsafe_unretained BG3MFXPipelineInfo *info = state ? (__bridge BG3MFXPipelineInfo *)pipelineInfoPointer(state) : nil;
     NSDictionary *description = info ? info->description : nil;
     if (diagnostics && !description) description = @{@"label": [state label] ?: @""};
+#ifndef BG3MFX_NO_TRACE
+    // Viewport reduction: where the first pipeline of each pass and the
+    // depth-reconstructing surface passes rasterize.
+    if (s && getenv("BG3MFX_STENCIL_DUMP_DIR")) {
+        NSString *fragment = description[@"fragment"] ?: @"";
+        NSString *role = [fragment isEqualToString:@"DeferredDecal_ExtractNormal_PS"] ? @"normals" :
+            [fragment isEqualToString:@"BG3MFXSurfaceDebug"] || [fragment isEqualToString:@"Shared_Surface_VFX_Surface_AlphaBlend_Fluid_ST_DEF_fragmentMain"] ? @"surfaces" : nil;
+        if (role) objc_setAssociatedObject(self, &stencilRoleKey, role, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (s && BG3MFXDynamicResolutionInstalled() && BG3MFXDynamicResolutionArea() < 1) {
+        NSString *fragment = description[@"fragment"] ?: @"";
+        bool watched = [fragment containsString:@"_Surface_"] || [fragment isEqualToString:@"LinearizeDepth"] ||
+            [fragment hasPrefix:@"DeferredDecal_"];
+        if (!s->pipeline || watched) {
+            const MTLViewport &v=s->viewport; const MTLScissorRect &r=s->scissor;
+            NSDictionary *pass = @{@"fragment":fragment, @"firstPipeline":@(!s->pipeline),
+                @"viewport":s->hasViewport ? @[@(v.originX),@(v.originY),@(v.width),@(v.height),@(v.znear),@(v.zfar)] : @[],
+                @"scissor":s->hasScissor ? @[@(r.x),@(r.y),@(r.width),@(r.height)] : @[],
+                @"target":s->colorTarget ? @[@(s->colorTarget.width),@(s->colorTarget.height)] : @[]};
+            // Each distinct pass, viewport and target once.
+            static NSMutableSet *seenPasses = [NSMutableSet set];
+            bool fresh;
+            { std::lock_guard<std::recursive_mutex> lock(guard()); fresh = seenPasses.count < 2000 && ![seenPasses containsObject:pass]; if (fresh) [seenPasses addObject:pass]; }
+            if (fresh) {
+                NSMutableDictionary *event = [pass mutableCopy];
+                event[@"event"] = @"viewportReductionPass";
+                record(event);
+            }
+        }
+    }
+#endif
+    if (s) {
+        bool reduced = info && (info->surfaceGrid || info->subsurface) && s->colorTarget && BG3MFXDynamicResolutionArea() < 1;
+        s->surfaceGrid = reduced && info->surfaceGrid;
+        s->subsurface = reduced && info->subsurface;
+    }
     if (s) {
         s->pipeline=state; s->description=description;
         s->kind=info ? info->kind : PipelineOther;
@@ -1331,7 +1455,105 @@ static void recordReflection(MTLRenderPipelineDescriptor *desc, MTLRenderPipelin
       shaderBufferSizes[desc.fragmentFunction.name ?: @""] = sizes; }
     record(@{@"event": @"shaderReflection", @"fragment": desc.fragmentFunction.name ?: @"", @"buffers": buffers, @"textures": textures});
 }
+// BG3 pairs DeferredFog_* with DefaultVS, whose texCoord spans the render
+// viewport, but indexes the volumetric fog in texture UV. Other post passes use
+// PPDefaultVS, which maps texCoord through _Viewport (buffer 9, already bound
+// for the fog draw). Dynamic resolution shrinks the viewport, so give the fog
+// composite that mapping (identical at full size); the output member keeps
+// DefaultVS's linkage name. Dynamic resolution installs at library load,
+// before BG3 creates its device.
+static MTLRenderPipelineDescriptor *viewportFogDescriptor(id<MTLDevice> device, MTLRenderPipelineDescriptor *desc) {
+    if (!BG3MFXDynamicResolutionInstalled() || ![desc.vertexFunction.name isEqualToString:@"DefaultVS"] ||
+        ![desc.fragmentFunction.name hasPrefix:@"DeferredFog_"]) return desc;
+    static id<MTLFunction> vertex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *source = @"#include <metal_stdlib>\nusing namespace metal;\n"
+            "struct In { float2 position [[attribute(0)]]; float2 texCoord [[attribute(1)]]; };\n"
+            "struct Out { float4 position [[position]]; float2 texCoord; };\n"
+            "struct Viewport { float2 scale; float2 offset; };\n"
+            "vertex Out BG3MFXViewportFogVS(In in [[stage_in]], constant Viewport &viewport [[buffer(9)]]) {\n"
+            "    return { float4(in.position, 1, 1), in.texCoord * viewport.scale + viewport.offset };\n}\n";
+        NSError *error = nil;
+        id<MTLLibrary> library = [device newLibraryWithSource:source options:nil error:&error];
+        vertex = [library newFunctionWithName:@"BG3MFXViewportFogVS"];
+        record(@{@"event": @"viewportFogVertex", @"success": @(vertex != nil), @"error": error.description ?: @""});
+    });
+    if (!vertex) return desc;
+    MTLRenderPipelineDescriptor *copy = [desc copy];
+    copy.vertexFunction = vertex;
+    return copy;
+}
+#ifndef BG3MFX_NO_TRACE
+// BG3MFX_SURFACE_DEBUG=1 replaces the fluid surface shader (blood pools) with
+// its world reconstruction: depth times the view ray, then the surface grid's
+// noise warp and height test. Albedo shows world X and Z as red and blue
+// stripes and the height-test error as green (BG3 discards from 0.125).
+static MTLRenderPipelineDescriptor *surfaceDebugDescriptor(id<MTLDevice> device, MTLRenderPipelineDescriptor *desc) {
+    if (!getenv("BG3MFX_SURFACE_DEBUG") ||
+        ![desc.fragmentFunction.name isEqualToString:@"Shared_Surface_VFX_Surface_AlphaBlend_Fluid_ST_DEF_fragmentMain"]) return desc;
+    static id<MTLFunction> fragment;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *source = @"#include <metal_stdlib>\nusing namespace metal;\n"
+            "struct In { float4 position [[position]]; float3 ViewSpacePosition; };\n"
+            "struct Out { float4 c0 [[color(0)]]; float4 c1 [[color(1)]]; float4 c2 [[color(2)]]; float4 c3 [[color(3)]]; };\n"
+            "template<class T> T at(constant uchar *p, uint offset) { return *(constant T *)(p + offset); }\n"
+            "fragment Out BG3MFXSurfaceDebug(In in [[stage_in]], constant uchar *material [[buffer(20)]],\n"
+            "    constant uchar *view [[buffer(12)]], constant uchar *camera [[buffer(11)]], constant float4 &rt [[buffer(10)]],\n"
+            "    texture2d<float> linearDepth [[texture(30)]], texture2d<float> received [[texture(37)]], texture2d<float> noise [[texture(0)]],\n"
+            "    texture2d<float> baseColor [[texture(1)]], texture2d<float> mask [[texture(2)]], texture2d<float> height [[texture(3)]],\n"
+            "    sampler pointClamp [[sampler(0)]], sampler linearClamp [[sampler(1)]], sampler pointMirror [[sampler(13)]], sampler wrap [[sampler(15)]]) {\n"
+            "    float2 screen = in.position.xy * rt.zw;\n"
+            "    float2 normal = received.sample(pointMirror, screen).xy;\n"
+            "    float lin = linearDepth.sample(pointClamp, screen).x;\n"
+            "    float3 ray = in.ViewSpacePosition * (at<float>(camera, 196) / in.ViewSpacePosition.z) * lin;\n"
+            "    float3 world = at<float4>(view, 48).xyz * ray.x + at<float4>(view, 64).xyz * ray.y + at<float4>(view, 80).xyz * ray.z +\n"
+            "        float3(at<float>(camera, 208), at<float>(camera, 212), at<float>(camera, 216));\n"
+            "    float4 c0 = at<float4>(material, 0), c1 = at<float4>(material, 16);\n"
+            "    float2 local = world.xz - c0.xz * c0.w;\n"
+            "    float amount = at<float>(material, 48);\n"
+            "    float2 warp = noise.sample(wrap, local / at<float>(material, 44)).xy * amount - amount * 0.5;\n"
+            "    float alpha = baseColor.sample(wrap, local / at<float>(material, 52)).w;\n"
+            "    warp = mix(warp, float2(0.5), saturate(1 - alpha) * 0.25);\n"
+            "    float3 warped = world + float3(warp.x, 0, warp.y);\n"
+            "    float2 uv = (warped.xz - c0.xz) / (c1.xy * c1.w);\n"
+            "    float ground = height.sample(linearClamp, uv).x * 1310.7 + c0.y;\n"
+            "    float error = saturate((abs(ground - warped.y) - 0.1) * 40);\n"
+            "    float2 cell = float2(uv.x, 1 - uv.y);\n"
+            "    float4 layer = floor(float4(c1.z));\n"
+            "    float4 first = mask.gather(linearClamp, cell, int2(0), component::x), second = mask.gather(linearClamp, cell, int2(0), component::y);\n"
+            "    float4 inFirst = float4(floor(first * 255 + 0.5) == layer), inSecond = float4(floor(second * 255 + 0.5) == layer);\n"
+            "    float4 amounts = saturate(mask.gather(linearClamp, cell, int2(0), component::z) * inFirst +\n"
+            "        mask.gather(linearClamp, cell, int2(0), component::w) * inSecond);\n"
+            "    float2 f = fract(cell * c1.xy - 0.499);\n"
+            "    float coverage = mix(mix(amounts.w, amounts.z, f.x), mix(amounts.x, amounts.y, f.x), f.y);\n"
+            "    bool noNormal = all(normal == 0), noLayer = !any(inFirst + inSecond > 0), outside = any(uv != saturate(uv));\n"
+            "    Out out = {};\n"
+            "    out.c1 = noNormal || noLayer || outside || error > 0 ?\n"
+            "        float4(noNormal || outside ? 1 : 0, error, noLayer ? 1 : 0, 1) : float4(float3(coverage), 1);\n"
+            "    return out;\n}\n";
+        NSError *error = nil;
+        id<MTLLibrary> library = [device newLibraryWithSource:source options:nil error:&error];
+        fragment = [library newFunctionWithName:@"BG3MFXSurfaceDebug"];
+        record(@{@"event": @"surfaceDebugFragment", @"success": @(fragment != nil), @"error": error.description ?: @""});
+    });
+    if (!fragment) return desc;
+    MTLRenderPipelineDescriptor *copy = [desc copy];
+    copy.fragmentFunction = fragment;
+    return copy;
+}
+#endif
+static void classifyDynamicResolution(BG3MFXPipelineInfo *info, MTLRenderPipelineDescriptor *desc) {
+    if (!BG3MFXDynamicResolutionInstalled()) return;
+    info->surfaceGrid = [desc.vertexFunction.name hasPrefix:@"Shared_Surface_VFX_Surface_"];
+    info->subsurface = [desc.fragmentFunction.name hasPrefix:@"PPSSSS_"];
+}
 static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NSError **error) {
+    desc = viewportFogDescriptor(self, desc);
+#ifndef BG3MFX_NO_TRACE
+    desc = surfaceDebugDescriptor(self, desc);
+#endif
     id state;
     if (cameraShader(desc)) {
         SEL optionsSelector = sel_registerName("newRenderPipelineStateWithDescriptor:options:reflection:error:");
@@ -1360,6 +1582,7 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
     if (state) {
         BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
         info->description = description; info->kind = classifyPipeline(fragment);
+        classifyDynamicResolution(info, desc);
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         pipelineGeneration.fetch_add(1, std::memory_order_release);
         if (prepassTrim) BG3MFXClassifyPrepass(desc,state,markPrepassPipeline);
@@ -1368,6 +1591,10 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
     return state;
 }
 static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, MTLPipelineOption options, MTLRenderPipelineReflection **reflection, NSError **error) {
+    desc = viewportFogDescriptor(self, desc);
+#ifndef BG3MFX_NO_TRACE
+    desc = surfaceDebugDescriptor(self, desc);
+#endif
     MTLRenderPipelineReflection *extraReflection = nil;
     id state;
     if (cameraShader(desc)) {
@@ -1394,6 +1621,7 @@ static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *d
     if (state) {
         BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
         info->description = description; info->kind = classifyPipeline(fragment);
+        classifyDynamicResolution(info, desc);
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         pipelineGeneration.fetch_add(1, std::memory_order_release);
         if (prepassTrim) BG3MFXClassifyPrepass(desc,state,markPrepassPipeline);
@@ -1505,12 +1733,14 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
     id<MTLTexture> depth=inputs[@"depth"], motion=inputs[@"motion"];
     BG3MFXFrameParameters parameters={}; NSString *reason=nil;
     if(!temporalParameters(inputs,&parameters,&reason)) { declineFrameGeneration(reason); return; }
-    NSString *configuration=[NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu:%d:%lu:%lu/%lu:%lu/%lu:%lu/%lu",(__bridge void *)buffer.device,
+    BOOL dynamicContent=BG3MFXDynamicResolutionSelected();
+    NSString *configuration=[NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu:%d:%lu:%lu/%lu:%lu/%lu:%lu/%lu:%d",(__bridge void *)buffer.device,
         depth.width,depth.height,scene.width,scene.height,[objc_getAssociatedObject(buffer,&bufferScalingModeKey) intValue],target.pixelFormat,
-        scene.pixelFormat,scene.usage,depth.pixelFormat,depth.usage,motion.pixelFormat,motion.usage];
+        scene.pixelFormat,scene.usage,depth.pixelFormat,depth.usage,motion.pixelFormat,motion.usage,dynamicContent];
     NSError *error=nil;
     if(![configuration isEqualToString:frameConfiguration]) {
-        frameInterpolator=[[BG3MFXFrameInterpolation alloc] initWithDevice:buffer.device scene:scene depth:depth motion:motion error:&error];
+        frameInterpolator=[[BG3MFXFrameInterpolation alloc] initWithDevice:buffer.device scene:scene depth:depth motion:motion
+            dynamicContent:dynamicContent error:&error];
         if(!frameInterpolator) {declineFrameGeneration(error.localizedDescription ?: @"Could not initialize frame generation.");return;}
         frameInterpolator.failureHandler=^(NSError *e){declineFrameGeneration(e.localizedDescription ?: @"Metal could not complete frame generation.");};
         frameConfiguration=configuration;previousFrameTime=0;
@@ -1656,7 +1886,15 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
     const float *vp = (const float *)viewport.bytes;
     const uint32_t *size = (const uint32_t *)((const uint8_t *)viewport.bytes+16);
     // Split-screen, cropped, and scaled viewport support requires separate work.
-    if (vp[0] != 1 || vp[1] != 1 || vp[2] != 0 || vp[3] != 0 || size[0] != source.width || size[1] != source.height) return;
+    NSDictionary *content = @{};
+    if (vp[0] != 1 || vp[1] != 1 || vp[2] != 0 || vp[3] != 0 || size[0] != source.width || size[1] != source.height) {
+        // Dynamic resolution renders a smaller region at the origin of the
+        // same targets; Temporal scales just that region.
+        const uint32_t *minimum = size + 2;
+        if (!BG3MFXDynamicResolutionInstalled() || spatialSeed || vp[2] != 0 || vp[3] != 0 || minimum[0] || minimum[1] ||
+            !size[0] || !size[1] || size[0] > source.width || size[1] > source.height) return;
+        content = @{@"contentWidth": @(size[0]), @"contentHeight": @(size[1])};
+    }
     if (spatialSeed) {
         NSMutableDictionary *inputs = [spatialSeed mutableCopy];
         [inputs addEntriesFromDictionary:@{@"depth": depth, @"motion": motion, @"camera": camera, @"temporal": temporal, @"reset":@(resetMotion)}];
@@ -1664,11 +1902,11 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
         noteAssociation(encoder,AssocTAAInputs);
         return;
     }
-    objc_setAssociatedObject(encoder, &taaInputsKey,
-        @{@"color": source, @"taaColor": taaTarget, @"nativeTAA":taaTarget,
+    NSMutableDictionary *inputs = [@{@"color": source, @"taaColor": taaTarget, @"nativeTAA":taaTarget,
           @"nativeTAAPreserved":@(!knownUpscaledTAA(taaTarget)),
-          @"depth": depth, @"motion": motion, @"camera": camera, @"temporal": temporal, @"reset":@(resetMotion)},
-        OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+          @"depth": depth, @"motion": motion, @"camera": camera, @"temporal": temporal, @"reset":@(resetMotion)} mutableCopy];
+    [inputs addEntriesFromDictionary:content];
+    objc_setAssociatedObject(encoder, &taaInputsKey, inputs, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     noteAssociation(encoder,AssocTAAInputs);
 }
 static id<MTLBuffer> probeReadback(id<MTLCommandBuffer> buffer, id<MTLTexture> outputTexture) {
@@ -1935,7 +2173,53 @@ static BOOL suppressTemporalTAA(id encoder) {
     record(@{@"event":@"temporalNativeTAADrawSkipped",@"pipeline":state});
     return YES;
 }
+// BG3's subsurface scattering blurs (PPSSSS_H/V) step through the kernel by
+// P00 (horizontal) or P11 (vertical) x width / (2 x view depth) in target UV,
+// which assumes NDC spans the whole target; in the reduced viewport it spans
+// the region's share, so the blur reached 1/scale too far. For each draw,
+// rebind the fragment PerCamera with those projection terms scaled by the
+// viewport's share (the shaders read the projection only there), then restore
+// BG3's binding.
+struct SubsurfaceDraw {
+    static constexpr NSUInteger PerCameraIndex = 11, PerCameraBytes = 224;
+    __unsafe_unretained id encoder = nil;
+    __unsafe_unretained id<MTLBuffer> buffer = nil;
+    NSUInteger offset = 0;
+    NSData *bytes = nil;
+    explicit SubsurfaceDraw(__unsafe_unretained id e) {
+        __unsafe_unretained BG3MFXEncoderState *s = encoderState(e);
+        if (!s || !s->subsurface || !s->hasViewport) return;
+        ConstantBinding *binding = constantSlot(e, StageFragment, PerCameraIndex);
+        NSData *camera = binding ? constantBytes(e, StageFragment, PerCameraIndex, PerCameraBytes) : nil;
+        if (!camera) return;
+        float sx = float(s->viewport.width / s->colorTarget.width), sy = float(s->viewport.height / s->colorTarget.height);
+        if (!(sx > 0 && sx < 1) && !(sy > 0 && sy < 1)) return;
+        float params[PerCameraBytes / 4];
+        memcpy(params, camera.bytes, sizeof params);
+        params[16] *= sx;  // g_ProjectionMat column 0 .x
+        params[21] *= sy;  // g_ProjectionMat column 1 .y
+        static SEL setBytes = @selector(setFragmentBytes:length:atIndex:);
+        ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(e,setBytes))(e,setBytes,params,sizeof params,PerCameraIndex);
+        encoder = e;
+        if (binding->hasBytes) bytes = s->bytes[@(StageFragment*EncoderSlots+PerCameraIndex)];
+        else { buffer = binding->buffer; offset = binding->offset; }
+        static std::atomic<int> reported{0};
+        if (reported.fetch_add(1) < 8) record(@{@"event":@"subsurfaceScale", @"scale":@[@(sx),@(sy)]});
+    }
+    ~SubsurfaceDraw() {
+        if (!encoder) return;
+        if (bytes) {
+            static SEL setBytes = @selector(setFragmentBytes:length:atIndex:);
+            ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(encoder,setBytes))(encoder,setBytes,bytes.bytes,bytes.length,PerCameraIndex);
+        } else {
+            static SEL bind = @selector(setFragmentBuffer:offset:atIndex:);
+            ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(encoder,bind))(encoder,bind,buffer,offset,PerCameraIndex);
+        }
+    }
+};
+#define SUBSURFACE_DRAW(encoder) SubsurfaceDraw subsurfaceDraw(encoder)
 static void draw(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count) {
+    SUBSURFACE_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); return; }
@@ -1944,6 +2228,7 @@ static void draw(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NS
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count);
 }
 static void drawInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances) {
+    SUBSURFACE_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); return; }
@@ -1952,6 +2237,7 @@ static void drawInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances);
 }
 static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances, NSUInteger base) {
+    SUBSURFACE_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); return; }
@@ -1959,7 +2245,47 @@ static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveT
     if (suppressTemporalTAA(self)) return;
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base);
 }
+// BG3 draws its surfaces (blood, water) on a screen-space grid whose vertices
+// are NDC positions, placed by EngineParams' first matrix; the vertex shader
+// projects them and passes the matching view-space ray on for depth
+// reconstruction. BG3 chooses the grid cells in full-target coordinates that
+// already account for the reduced render region, so the reduced viewport
+// shrinks the grid toward the top-left a second time. For each draw, rebind
+// the vertex EngineParams with that matrix stretched by the reduction about
+// NDC (-1, 1), so the grid and its rays cover the region they were chosen for,
+// then restore BG3's binding.
+struct SurfaceGridDraw {
+    __unsafe_unretained id encoder = nil;
+    __unsafe_unretained id<MTLBuffer> buffer = nil;
+    NSUInteger offset = 0;
+    explicit SurfaceGridDraw(__unsafe_unretained id e) {
+        __unsafe_unretained BG3MFXEncoderState *s = encoderState(e);
+        if (!s || !s->surfaceGrid || !s->engineBuffer || !s->hasViewport || s->engineBuffer.storageMode == MTLStorageModePrivate ||
+            s->engineOffset + 160 > s->engineBuffer.length) return;
+        float sx = float(s->viewport.width / s->colorTarget.width), sy = float(s->viewport.height / s->colorTarget.height);
+        if (!(sx > 0 && sx < 1) && !(sy > 0 && sy < 1)) return;
+        float params[40];
+        memcpy(params, static_cast<const char *>(s->engineBuffer.contents) + s->engineOffset, sizeof params);
+        // M' = M * S, with x' = (x + 1) / sx - 1 and y' = 1 - (1 - y) / sy.
+        for (int i = 0; i < 4; ++i) {
+            params[12 + i] += params[i] * (1 / sx - 1) + params[4 + i] * (1 - 1 / sy);
+            params[i] /= sx; params[4 + i] /= sy;
+        }
+        static SEL bytes = @selector(setVertexBytes:length:atIndex:);
+        ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(e,bytes))(e,bytes,params,sizeof params,SurfaceEngineIndex);
+        encoder = e; buffer = s->engineBuffer; offset = s->engineOffset;
+        static std::atomic<int> reported{0};
+        if (reported.fetch_add(1) < 8) record(@{@"event":@"surfaceGrid", @"scale":@[@(sx),@(sy)]});
+    }
+    ~SurfaceGridDraw() {
+        if (!encoder) return;
+        static SEL bind = @selector(setVertexBuffer:offset:atIndex:);
+        ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(encoder,bind))(encoder,bind,buffer,offset,SurfaceEngineIndex);
+    }
+};
+#define SURFACE_GRID_DRAW(encoder) SurfaceGridDraw surfaceGridDraw(encoder)
 static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset) {
+    SURFACE_GRID_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); return; }
@@ -1971,6 +2297,7 @@ static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType t
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset);
 }
 static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances) {
+    SURFACE_GRID_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); return; }
@@ -1982,6 +2309,7 @@ static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimit
     ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances);
 }
 static void drawIndexedBase(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances, NSInteger baseVertex, NSUInteger baseInstance) {
+    SURFACE_GRID_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger,NSInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances,baseVertex,baseInstance); return; }
@@ -2250,6 +2578,10 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     }
     id encoder = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
     instrumentEncoder(encoder);
+#ifndef BG3MFX_NO_TRACE
+    if (encoder && getenv("BG3MFX_STENCIL_DUMP_DIR") && desc.depthAttachment.texture.pixelFormat == MTLPixelFormatDepth32Float_Stencil8)
+        objc_setAssociatedObject(encoder, &stencilDepthKey, desc.depthAttachment.texture, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+#endif
     if (clusterGuard) BG3MFXBindClusterStandIns(encoder,NO);
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
     flushRedundantCounts();
@@ -2348,6 +2680,11 @@ static void presentTimed(id self, SEL cmd, id drawable, double time) {
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time);
 }
 static void commit(id self, SEL cmd) {
+    // Dynamic resolution follows how busy BG3's command buffers keep the GPU.
+    if (BG3MFXDynamicResolutionMeasuring() && ![BG3MFXFramePresenter isPresentationThread])
+        [(id<MTLCommandBuffer>)self addCompletedHandler:^(id<MTLCommandBuffer> done){
+            BG3MFXDynamicResolutionGPUWork(done.GPUStartTime,done.GPUEndTime);
+        }];
     if (id<MTLDrawable> shown=objc_getAssociatedObject(self,&nativePresentKey)) {
         objc_setAssociatedObject(self,&nativePresentKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         CFTimeInterval committed=CACurrentMediaTime();

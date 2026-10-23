@@ -37,6 +37,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)releaseResidency;
 @end
 
+// Every build: GPU start and end of each Metal 4 bridge submission (MetalFX
+// work on its own queue), for dynamic resolution's GPU-busy measurement.
+extern "C" void (*_Nullable BG3MFXGPUWorkHook)(double start, double end);
 // Diagnostics: when set, receives each Metal 4 bridge submission's GPU time.
 #ifndef BG3MFX_NO_TRACE
 extern "C" void (*_Nullable BG3MFXGPUTimingHook)(NSString *label, double gpuSeconds);

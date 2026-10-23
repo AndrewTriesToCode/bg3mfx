@@ -65,8 +65,19 @@ static void captureInputs(id<MTLCommandBuffer> buffer, id<MTLTexture> color,
 - (instancetype)initWithDevice:(id<MTLDevice>)device inputWidth:(NSUInteger)width
                     inputHeight:(NSUInteger)height outputWidth:(NSUInteger)outputWidth
                    outputHeight:(NSUInteger)outputHeight error:(NSError **)error {
+    return [self initWithDevice:device inputWidth:width inputHeight:height outputWidth:outputWidth
+        outputHeight:outputHeight dynamicResolution:NO error:error];
+}
+
+- (instancetype)initWithDevice:(id<MTLDevice>)device inputWidth:(NSUInteger)width
+                    inputHeight:(NSUInteger)height outputWidth:(NSUInteger)outputWidth
+                   outputHeight:(NSUInteger)outputHeight dynamicResolution:(BOOL)dynamicResolution
+                          error:(NSError **)error {
     if (!(self = [super init])) return nil;
-    if (!device || !width || !height || outputWidth <= width || outputHeight <= height ||
+    // A dynamic-resolution scaler may take full-size inputs (the Dynamic
+    // qualities render at native size and shrink a region of it per frame).
+    bool smaller = dynamicResolution ? outputWidth >= width && outputHeight >= height : outputWidth > width && outputHeight > height;
+    if (!device || !width || !height || !smaller ||
         (double)outputWidth / width > 3.0 || (double)outputHeight / height > 3.0) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXTemporalUpscaler" code:1
             userInfo:@{NSLocalizedDescriptionKey:@"Unsupported temporal input or output dimensions."}];
@@ -108,7 +119,7 @@ static void captureInputs(id<MTLCommandBuffer> buffer, id<MTLTexture> color,
         colorProcessingMode:MTLFXSpatialScalerColorProcessingModeHDR inputWidth:width inputHeight:height
         outputWidth:outputWidth outputHeight:outputHeight colorFormat:MTLPixelFormatRG11B10Float
         depthFormat:MTLPixelFormatDepth32Float_Stencil8 motionFormat:MTLPixelFormatRG16Float
-        outputFormat:MTLPixelFormatRG11B10Float error:error];
+        outputFormat:MTLPixelFormatRG11B10Float dynamicResolution:dynamicResolution error:error];
     return _scaler ? self : nil;
 }
 

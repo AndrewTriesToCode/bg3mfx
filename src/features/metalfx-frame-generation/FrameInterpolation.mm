@@ -58,8 +58,12 @@ static BG3MFXTexturePool *fgPool(id<MTLDevice> device, NSUInteger w, NSUInteger 
 }
 - (instancetype)initWithDevice:(id<MTLDevice>)device scene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth
                         motion:(id<MTLTexture>)motion error:(NSError **)error {
+    return [self initWithDevice:device scene:scene depth:depth motion:motion dynamicContent:NO error:error];
+}
+- (instancetype)initWithDevice:(id<MTLDevice>)device scene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth
+                        motion:(id<MTLTexture>)motion dynamicContent:(BOOL)dynamicContent error:(NSError **)error {
     return [self initWithDevice:device width:depth.width height:depth.height outputWidth:scene.width outputHeight:scene.height
-                          scene:scene depth:depth motion:motion error:error];
+                          scene:scene depth:dynamicContent ? nil : depth motion:dynamicContent ? nil : motion error:error];
 }
 static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (t.usage&required)==required; }
 // Creates the effect for the given input formats. Without our own color copy
@@ -107,9 +111,11 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
     }
     _directMotion=_effect && fgUsable(motion,_effect.motionTextureUsage) && motion.width==w && motion.height==h;
     if (_effect4) _bridge=[[BG3MFXMetal4Bridge alloc] initWithDevice:device label:@"BG3 Metal 4 Frame Generation" error:error];
+    // Each copy reads the source's region (buffer 0) stretched over the whole
+    // destination, nearest sample; the full size copies pixel for pixel.
     NSString *source=@"#include <metal_stdlib>\nusing namespace metal;\n"
-        "kernel void Copy(texture2d<float,access::read> s [[texture(0)]],texture2d<float,access::write> d [[texture(1)]],uint2 p [[thread_position_in_grid]]){if(all(p<uint2(d.get_width(),d.get_height())))d.write(s.read(p),p);}\n"
-        "kernel void Depth(depth2d<float> s [[texture(0)]],texture2d<float,access::write> d [[texture(1)]],uint2 p [[thread_position_in_grid]]){if(all(p<uint2(d.get_width(),d.get_height()))){constexpr sampler q(coord::pixel,filter::nearest);d.write(s.sample(q,float2(p)+.5),p);}}";
+        "kernel void Copy(texture2d<float,access::read> s [[texture(0)]],texture2d<float,access::write> d [[texture(1)]],constant uint2 &r [[buffer(0)]],uint2 p [[thread_position_in_grid]]){uint2 n=uint2(d.get_width(),d.get_height());if(all(p<n))d.write(s.read(min(uint2((float2(p)+.5)*float2(r)/float2(n)),r-1)),p);}\n"
+        "kernel void Depth(depth2d<float> s [[texture(0)]],texture2d<float,access::write> d [[texture(1)]],constant uint2 &r [[buffer(0)]],uint2 p [[thread_position_in_grid]]){uint2 n=uint2(d.get_width(),d.get_height());if(all(p<n)){constexpr sampler q(coord::pixel,filter::nearest);d.write(s.sample(q,(float2(p)+.5)*float2(r)/float2(n)),p);}}";
     auto library=[device newLibraryWithSource:source options:nil error:error];
     _copy=library ? [device newComputePipelineStateWithFunction:[library newFunctionWithName:@"Copy"] error:error] : nil;
     _copyDepth=library ? [device newComputePipelineStateWithFunction:[library newFunctionWithName:@"Depth"] error:error] : nil;
@@ -144,6 +150,13 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
         (_directMotion && !fgUsable(motion,_effect.motionTextureUsage))) {
         if (error) *error=fgError(@"Frame generation inputs changed format or usage."); return nil;
     }
+    // Dynamic resolution: depth and motion hold a smaller region at the origin.
+    NSUInteger regionW=p.contentWidth && p.contentWidth<=_w ? p.contentWidth : _w;
+    NSUInteger regionH=p.contentHeight && p.contentHeight<=_h ? p.contentHeight : _h;
+    bool reduced=regionW<_w || regionH<_h;
+    if (reduced && (_directDepth || _directMotion)) {
+        if (error) *error=fgError(@"Frame generation reads depth and motion in place and cannot take a reduced region."); return nil;
+    }
     [_lock lock];
     // Direct inputs are BG3's textures; the rest are pooled converted copies.
     // A copied color also serves as the next frame's previous color, so the
@@ -162,8 +175,10 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
         for (NSUInteger i=0;i<3;++i) {
             id<MTLTexture> t=targets[i];
             if (t==sources[i]) continue;
+            uint32_t region[2]={uint32_t(i ? regionW : t.width),uint32_t(i ? regionH : t.height)};
             [encoder setComputePipelineState:i==1 ? _copyDepth : _copy];
             [encoder setTexture:sources[i] atIndex:0]; [encoder setTexture:t atIndex:1];
+            [encoder setBytes:region length:sizeof region atIndex:0];
             [encoder dispatchThreads:MTLSizeMake(t.width,t.height,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];
         }
         [encoder endEncoding];
@@ -171,8 +186,10 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
     id<MTLTexture> previous=_directColor ? nil : (_previous ?: color);
     _effect.colorTexture=color; _effect.prevColorTexture=previous; _effect.outputTexture=out;
     _effect.depthTexture=z; _effect.motionTexture=mv; _effect.depthReversed=p.depthReversed;
-    _effect.motionVectorScaleX=p.motionScaleX; _effect.motionVectorScaleY=p.motionScaleY;
-    _effect.jitterOffsetX=p.jitterX; _effect.jitterOffsetY=p.jitterY;
+    // Motion and jitter are in rendered pixels; stretching scales them.
+    float stretchX=float(_w)/regionW, stretchY=float(_h)/regionH;
+    _effect.motionVectorScaleX=p.motionScaleX*stretchX; _effect.motionVectorScaleY=p.motionScaleY*stretchY;
+    _effect.jitterOffsetX=p.jitterX*stretchX; _effect.jitterOffsetY=p.jitterY*stretchY;
     _effect.nearPlane=c[48]; _effect.farPlane=c[49]; _effect.fieldOfView=fov;
     _effect.aspectRatio=(float)_outW/_outH; _effect.deltaTime=delta;
     _effect.shouldResetHistory=_reset || p.reset; _effect.uiTexture=nil;

@@ -6,6 +6,8 @@
 #include <vector>
 static int mode=3;
 int BG3MFXSelectedScalingMode(void) { return mode; }
+static float area=1;
+float BG3MFXDynamicResolutionArea(void) { return area; }
 extern "C" void BG3MFXTestJitterProjection(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterCamera(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterVelocity(void *,void *,void *,void *);
@@ -37,6 +39,12 @@ int main() {
     };
     unsigned counts[]={14,18,24,32};
     for(unsigned q=0;q<4;++q) { put(settings,0x98,uint8_t(q)); if(!check(counts[q],true)) return 1; }
+    // Dynamic: phases follow the rendered area, from 8 at native size.
+    {
+        put(settings,0x98,uint8_t(BG3MFXDynamicQuality));
+        for(float a:{1.0f,0.5f,0.25f,0.1114f}) { area=a; if(!check(std::max(8u,unsigned(std::ceil(8/a))),true)) return 15; }
+    }
+    area=1;
     for(mode=0;mode<3;++mode) if(!check(8,false)) return 2;
     mode=3;put(step,0x18,uint8_t(0)); if(!check(8,false)) return 3;
     put(step,0x18,uint8_t(1));put(stage,0x18,uint8_t(0)); if(!check(8,false)) return 4;
@@ -105,5 +113,5 @@ int main() {
     if(!run(BG3MFXTestJitterProjection,BG3MFXTestJitterProjectionResume,BG3MFXJitterProjection,view.data(),3)) return 6;
     if(!run(BG3MFXTestJitterCamera,BG3MFXTestJitterCameraResume,BG3MFXJitterCamera,view.data(),1)) return 7;
     if(!run(BG3MFXTestJitterVelocity,BG3MFXTestJitterVelocityResume,BG3MFXJitterVelocity,velocity.data(),0)) return 8;
-    printf("Native jitter: 14/18/24/32-phase wrap, same-frame consistency, native/auxiliary isolation, and all three ARM64 register-preserving wrappers passed.\n");
+    printf("Native jitter: 14/18/24/32-phase and Dynamic area-based wrap, same-frame consistency, native/auxiliary isolation, and all three ARM64 register-preserving wrappers passed.\n");
 }

@@ -25,6 +25,13 @@ int main(int argc, char **argv) {
         BG3MFXTemporalUpscaler *upscaler = [[BG3MFXTemporalUpscaler alloc] initWithDevice:device
             inputWidth:inW inputHeight:inH outputWidth:outW outputHeight:outH error:&error];
         if (!upscaler) { fprintf(stderr,"%s\n",error.description.UTF8String); return 2; }
+        // The Dynamic qualities render at output size: only a dynamic scaler accepts 1:1.
+        if (![[BG3MFXTemporalUpscaler alloc] initWithDevice:device inputWidth:outW inputHeight:outH
+                outputWidth:outW outputHeight:outH dynamicResolution:YES error:&error]) {
+            fprintf(stderr,"1:1 dynamic: %s\n",error.description.UTF8String); return 10;
+        }
+        if ([[BG3MFXTemporalUpscaler alloc] initWithDevice:device inputWidth:outW inputHeight:outH
+                outputWidth:outW outputHeight:outH error:&error]) return 11;
 
         NSString *source = @"#include <metal_stdlib>\nusing namespace metal;\n"
             "kernel void Fill(texture2d<float,access::write> color [[texture(0)]], "

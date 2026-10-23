@@ -7,7 +7,9 @@ defaults to BG3's native Off setting. Temporal replaces the TAA result used by
 the upscaled scene, disables the separate anti-aliasing control while selected,
 and uses BG3's depth, motion, camera, and post-processing inputs. Native and
 auxiliary views retain BG3's TAA. Upscaled scenes use quality-dependent
-14/18/24/32-phase Halton jitter; other views keep the native eight-phase table.
+14/18/24/32-phase Halton jitter, and the Dynamic quality
+([dynamic resolution](../dynamic-resolution/README.md)) ceil(8 / area) phases;
+other views keep the native eight-phase table.
 
 The feature implementation is in
 [`TemporalUpscaler.mm`](../../../src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm),

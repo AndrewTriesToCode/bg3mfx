@@ -47,9 +47,25 @@ int main() { @autoreleasepool {
         if(frame) {const __fp16 *v=(const __fp16 *)read.contents;for(int i=0;i<256*256*4;++i) if(!std::isfinite(float(v[i])))return 5;
             const float expected[]={.3,.5,.7};for(int j=0;j<3;++j)if(fabs(float(v[(128*256+128)*4+j])-expected[j])>.04)return 6;}
     }
+    // Dynamic resolution: a reduced region at the origin of the same inputs.
+    // Read in place, it is refused; converted, it is stretched to full size.
+    {
+        auto cb=[queue commandBuffer]; BG3MFXFrameParameters p={};p.depthReversed=YES;p.motionScaleX=p.motionScaleY=-1;
+        p.contentWidth=p.contentHeight=64;
+        auto out=[effect encodeScene:scene depth:depth motion:motion camera:c parameters:p deltaTime:1.0f/60 commandBuffer:cb error:&error];
+        if (direct) { if (out || !error) return 10; error=nil; }
+        else {
+            if (!out) { fprintf(stderr,"%s\n",error.description.UTF8String); return 11; }
+            [cb commit];[cb waitUntilCompleted];if(cb.error){fprintf(stderr,"%s\n",cb.error.description.UTF8String);return 12;}
+        }
+    }
+    if (direct) {
+        auto dynamic=[[BG3MFXFrameInterpolation alloc] initWithDevice:device scene:scene depth:depth motion:motion dynamicContent:YES error:&error];
+        if (!dynamic || dynamic.directDepth || dynamic.directMotion) return 13;
+    }
     [effect resetHistory];
     auto cb=[queue commandBuffer]; BG3MFXFrameParameters p={};
     if([effect encodeScene:scene depth:depth motion:scene camera:c parameters:p deltaTime:.016 commandBuffer:cb error:&error] || !error)return 7;
-    printf("Frame interpolation %s%s: real GPU producer/consumer, preserved history, finite pixels and invalid-input checks passed.\n",effect.usesMetal4 ? "Metal 4" : "Metal 3",direct ? " (BG3 formats, direct inputs)" : "");
+    printf("Frame interpolation %s%s: real GPU producer/consumer, preserved history, finite pixels, reduced-region and invalid-input checks passed.\n",effect.usesMetal4 ? "Metal 4" : "Metal 3",direct ? " (BG3 formats, direct inputs)" : "");
     return 0;
 }}

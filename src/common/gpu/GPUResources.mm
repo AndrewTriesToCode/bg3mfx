@@ -7,6 +7,7 @@
 static std::atomic<NSUInteger> poolAllocations{0};
 extern "C" NSUInteger BG3MFXTexturePoolAllocations(void) { return poolAllocations.load(); }
 #endif
+extern "C" void (*BG3MFXGPUWorkHook)(double, double) = nullptr;
 #ifndef BG3MFX_NO_TRACE
 extern "C" void (*BG3MFXGPUTimingHook)(NSString *, double) = nullptr;
 extern "C" void (*BG3MFXResidencyHook)(NSString *, NSUInteger, uint64_t, NSUInteger, BOOL) = nullptr;
@@ -261,6 +262,7 @@ static constexpr double StallSeconds = 0.5, StallReportDelay = 5;
     auto options=[MTL4CommitOptions new];
     [options addFeedbackHandler:^(id<MTL4CommitFeedback> feedback) {
         if (feedback.error && report) report(feedback.error);
+        if (auto hook=BG3MFXGPUWorkHook) hook(feedback.GPUStartTime,feedback.GPUEndTime);
 #ifndef BG3MFX_NO_TRACE
         if (auto hook=BG3MFXGPUTimingHook) hook(label,feedback.GPUEndTime-feedback.GPUStartTime);
         timeline->feedback=CACurrentMediaTime(); timeline->gpuStart=feedback.GPUStartTime; timeline->gpuEnd=feedback.GPUEndTime;

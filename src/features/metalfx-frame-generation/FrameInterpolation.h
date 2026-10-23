@@ -15,6 +15,12 @@
 // place when MetalFX accepts it, otherwise converted per frame.
 - (instancetype)initWithDevice:(id<MTLDevice>)device scene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth
                         motion:(id<MTLTexture>)motion error:(NSError **)error;
+// With dynamic content, depth and motion are always converted: a frame whose
+// parameters carry a smaller content region (dynamic resolution renders at the
+// origin of the same targets) is stretched to the full input size, with its
+// motion vectors and jitter scaled to match.
+- (instancetype)initWithDevice:(id<MTLDevice>)device scene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth
+                        motion:(id<MTLTexture>)motion dynamicContent:(BOOL)dynamicContent error:(NSError **)error;
 - (id<MTLTexture>)encodeScene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth motion:(id<MTLTexture>)motion
                       camera:(NSData *)camera parameters:(BG3MFXFrameParameters)p deltaTime:(float)delta
                commandBuffer:(id<MTLCommandBuffer>)buffer error:(NSError **)error;

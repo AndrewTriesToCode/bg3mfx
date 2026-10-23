@@ -1,6 +1,6 @@
 # Current validation status
 
-Updated October 19, 2026. This page is the active record. Detailed dated notes
+Updated October 21, 2026. This page is the active record. Detailed dated notes
 are archived under [`history/`](history/).
 
 ## Shadow Rendering Optimizations
@@ -221,6 +221,225 @@ returned to their steady size within 1–3 s (`replaced`): Temporal 11 → 9 →
 allocations (18.9 → 7.8 MB), Frame Generation 7 → 4 (21.2 → 14.5 MB). The run
 before it, accidentally on the unfixed library, grew Temporal to 14.
 
+## Dynamic resolution probe (October 21, 2026)
+
+Goal: vary only the upscaler's input resolution per frame; output stays at the
+player's resolution. Static analysis of this build found an unused engine
+mechanism: `rf::RenderFrame::CalculateViewports` (`0x10641c930`) shrinks only
+the render-resolution viewport by the square root of a reduction factor at
+`RenderFrame` +0x4368 (constructor value 1), and about 50 render stages bind the
+Viewport constant buffer from those rectangles through
+`rf::IAppStage::BindViewport*`. The shaders already apply `g_ViewportScale`,
+`g_ViewportOffset` and UV clamps (split-screen support), and TAA and SSSR carry
+previous-frame viewport values. The diagnostic `ViewportReductionProbe` set
+the factor before each frame recorded; see the
+[architecture code map](../architecture.md#code-map).
+
+The probe has since become the quiet-runtime Dynamic Upscaling Quality
+([feature README](../../../src/features/dynamic-resolution/README.md)). Its
+patches and corrections below are unchanged; the fixed or oscillating area is
+now the diagnostic `BG3MFX_DYNAMIC_RESOLUTION_AREA`, and a GPU-busy controller
+chooses the area otherwise. The area range comes from the device's MetalFX
+Temporal input content scale limits. Synthetic: `make test` passes with the
+feature in both runtimes, and `temporal-jitter-smoke` checks Dynamic's
+ceil(8 / area) Halton phases. The controller and the Dynamic menu entry have
+not yet been run live. "The probe" below refers to the same code.
+
+Synthetic: `metalfx-smoke` creates a dynamic-resolution Temporal scaler (M5 Pro
+maximum scale 3.0) and upscales alternating 256² and 384² regions of 384²
+inputs on Metal 4 and Metal 3; pixels outside the region never reach the
+output, and a fixed scaler or a region beyond the maximum scale is refused.
+`make test` passes with the probe in the diagnostic runtime.
+
+Displayed, fixed area 0.5 (2304×1440 targets, 1629×1018 rendered, 3456×2160
+output, Bloomridge Park, M5 Pro). The probe holds full size for 60 frames after
+each resize and stops if MetalFX Temporal has failed. Two passes did not
+respect the reduced viewport and are fixed in the probe; everything else
+inspected rendered correctly, water included, and grass showed no problem.
+Auto-exposure, found by the later audit, is fixed the same way:
+
+- Volumetric fog history (`dcb491a`). `ls::LightingRenderStage::ExecuteWTKernel`
+  saves the previous viewport for the fog reprojection (`_ReprojectData`
+  `g_ViewportScale_Prev`/`g_ViewportOffset_Prev`) from view +0x2170/+0x2178,
+  which stay at scale 1, offset 0, so the history was read as if it filled the
+  target. The probe patches the two loads (`0x105ff8f50`, `0x105ff8f58`, in
+  memory only) to read the composed render viewport at +0x21f8/+0x2200 and
+  refuses to install if the original instructions differ.
+- Volumetric fog composite (`a12d631`). BG3 pairs `DeferredFog_*` with
+  `DefaultVS`, whose texture coordinates span the whole target, instead of
+  `PPDefaultVS`, which maps them through the `_Viewport` buffer. While the probe
+  is enabled those pipelines get `BG3MFXViewportFogVS`, which applies the
+  `_Viewport` scale and offset (buffer 9, already bound), with `DefaultVS`'s
+  interface.
+- Surfaces: blood, water and other ground fluids (`96f34a9`). Blood under
+  Temporal was blocky with a hard edge up close and vanished when zoomed out;
+  it was correct whenever the probe was idle (Spatial, FSR, Frame Generation).
+  Stencil dumps, constant buffers, the grid textures and the depth and normal
+  inputs matched between reduced and full frames. The surface shaders
+  (`Shared_Surface_VFX_Surface_*` vertex functions) draw a fixed screen-space
+  grid whose vertices are NDC positions in −1…1, placed by the first matrix of
+  the vertex EngineParams (buffer 21); BG3 chooses the grid cells in
+  full-target coordinates that already account for the reduced region, so the
+  reduced viewport shrank the grid toward the top-left a second time (projecting
+  the captured vertices: cells to x 815 of 1629 reduced vs 1632 of 2304 full).
+  The fragment shader rebuilds world position from the vertex shader's
+  view-space ray and linear depth, so the misplaced rays failed its surface
+  layer and height tests and every pixel was discarded. Rasterizing through
+  the full-target viewport moved the grid under the body but left the rays
+  wrong (still all discarded). The fix rebinds the vertex EngineParams for each
+  surface draw with that matrix stretched by the reduction about NDC (−1, 1)
+  (`x' = (x+1)/sx − 1`, `y' = 1 − (1−y)/sy`, sx = sy ≈ 0.707), then restores
+  BG3's binding; blood renders correctly displayed.
+- Auto-exposure. `ls::PostProcessStep_ExposureOld::ExecuteWTKernel` builds the
+  `OldPPCalculateEV64x64ComputeCS` `_SceneUVSettings` (UOffset, UScale,
+  VOffset, VScale; `setBytes` index 1) from the same full-size +0x2170/+0x2178
+  pair, so exposure averaged the whole target, including pixels outside the
+  region. The 16-byte load cannot reach +0x21f8, so the probe replaces it and
+  the following `ext` (`0x1060b357c`) with two 8-byte loads from +0x21f8 and
+  +0x2200 that leave the same halves for the `st2`. Captured live at area 0.5
+  (1728×1080 targets): (0, 1, 0, 1) before, (0, 0.7072, 0, 0.7074) after,
+  matching `_Viewport` scale and `g_ViewportReduction`.
+
+An audit after these fixes looked for the same patterns elsewhere: renderer
+stages that read +0x2170/+0x2178 of a render view, live shaders that sample
+without `_Viewport`, read per-target sizes, or carry previous-frame viewports.
+`ls::SSRStage::ExecuteWTKernel` saves its history viewport the same way the fog
+did (`0x106116d20`/`0x106116d28`), and also derives its UV clamps from the
+view's full-size integer rectangle (+0x2180/+0x2188) over a texture size. The
+probe branches from `0x106116cec` to a header-padding island that stores scale
+and offset from +0x21f8/+0x2200 and clamps of offset + half a texel and
+offset + scale − half a texel, then returns to `0x106116d30`; it refuses to
+install unless all 17 original instructions match. The four values are the
+SSSR `_Constants` `g_ViewportUVClampMinPrev`, `UVClampMaxPrev`, `ScalePrev`
+and `OffsetPrev` (bytes 432–463); `SSSRResolveTemporal` reprojects with
+`clamp((uv − Offset) / Scale × ScalePrev + OffsetPrev, min, max)` in target UV
+and reads the history at `round(uv × target size)`. The divisor is the size of
+the scene texture almost every render-resolution stage fetches first (hash
+`0xff193183`, the target size). Synthetic: `ssr-history-island-smoke` runs
+BG3's original instructions and the island on the CPU; at full size, area 0.5
+and an offset region the island, given BG3's full-size fields, stores what
+BG3's own code stores for the composed region, and unpatched code stores the
+full target. A live run at 0.5 installed it and ran about five minutes without
+a fault, but its trace shows no SSR pipelines, so SSR itself was not exercised
+live. The other +0x2170 loads in
+the renderer (clustered lighting, SSAO, velocity, volumetric clouds, shadows)
+read different structures.
+
+A second sweep covered every load of view +0x2170–+0x218c in the binary,
+including the `ecl::` stages. `RecalculateViewports` writes the composed
+integer size and offset to +0x2208/+0x2210 and the same divided by the target
+to +0x21f8/+0x2200; +0x2180/+0x2188 stay at the full target (the probe log
+shows view size 2304×1440 with render rect 1629×1018). Users of the full
+rectangle:
+
+- Projection jitter (fixed). `GameRenderView::UpdateConstantBuffersData` and
+  `GetJitteredProjectionMatrix` divide the jitter by +0x2180, so at area 0.5 the
+  projection moved 0.707 of a rendered pixel per step. `VelocityBufferCamera_PS`
+  removes jitter with `_TemporalConstants` `g_Jitter`/`g_PreviousJitter` in
+  whole rendered pixels (captured (0.3125, 0.2037) and (−0.1875, −0.1296)), so
+  static pixels kept 0.29 × (J − J_prev) of velocity, about 0.15 px in that
+  frame, which MetalFX would treat as motion. The probe moves both divisors to
+  +0x2208 (`BeginFrame` recalculates it for every view before recording, and
+  every pass binds the viewport built from it), so BG3 jitters a whole rendered
+  pixel, velocity cancels exactly, and MetalFX gets BG3's jitter unscaled; the
+  earlier region-share scaling and `BG3MFX_VIEWPORT_REDUCTION_JITTER` are
+  removed. Velocity maps the previous position through the current viewport,
+  in current rendered pixels, which stays consistent when the area changes
+  between frames.
+- Bloom and DOF radius (fixed). `PostProcessStep_Bloom` and
+  `PostProcessStep_DOF` set `_CB` = view size / output size × output height /
+  1080, which `PPBloomDownsampleAndBlur_PS` and the DOF circular blurs multiply
+  into their tap offsets in render pixels. Captured at area 0.5 it was (1, 1)
+  instead of 0.707, so bloom and DOF reached 1.41× too far across the picture.
+  The probe moves both loads to +0x2208.
+- Forward lighting and fog history clamps (fixed). `SetupForwardLightingConstants`
+  builds UV clamps (+0x17c) from the full rectangle; `LightingRenderStage` copies
+  them into the volumetric fog `_ReprojectData`, so the fog history could
+  sample past the region's right and bottom edges. The probe moves the six
+  loads to +0x2208–+0x2214.
+- SSR tile dispatches size their grids from the full rectangle: wasted tiles
+  outside the region, no wrong pixels.
+
+Shaders: the outline TAA (`EocOutlineTAA_PS`) receives the reduced previous
+viewport in `_TAAProperties` (captured scale 0.7072/0.7074, clamps inside the
+region). Subsurface scattering (`PPSSSS_H/V`) reads no viewport: its kernel step
+is `width × P[0][0] / (2 × depth …)`, NDC × 0.5 in target UV, so under reduction
+skin scattering is 1/√area too wide and unclamped at the region edge. The
+kernel step is `P00` (H) or `P11` (V) × width / (2 × depth × `g_FarPlane`), and
+neither shader reads the projection anywhere else (`g_FarPlane` also weights
+depth differences, so it cannot carry the correction). `SubsurfaceDraw` in
+`Trace.mm` rebinds the fragment `PerCamera` for each `PPSSSS_*` draw with `P00`
+× the viewport's x share and `P11` × its y share, then restores BG3's binding
+(event `subsurfaceScale`). Not yet verified live; the region-edge taps are
+still unclamped.
+
+Other sweeps found nothing further. Among live shaders that sample, only SSSS
+derives screen offsets from the projection matrix, and `PerView` holds no screen
+size. Only bloom and DOF normalize by 1080. Live pipelines whose vertex and
+fragment stages both ignore the viewport are the Noesis UI (`*31`), Bink video,
+offscreen brushes, terrain and sky geometry, the LUT passes and the outline
+object draws, which form coordinates from pixel position × 1 / target size. The
+cloud upsample reads integer positions inside the half-resolution viewport;
+`VolumetricClouds_ComposePS`, which ignores the viewport, never ran. God rays
+and lens flares project the sun in their vertex shaders and map it through
+`g_ViewportScale`/`g_ViewportOffset`, with taps clamped to the viewport.
+
+Native FSR fallback frames would be wrong under reduction: BG3's
+`PostProcessStep_FSR` builds the EASU constants with the input viewport equal
+to the input texture size (`Const0` = in / out, `Const1` = 1 / in), so a
+fallback frame would stretch the whole target with the picture in its top-left.
+All 21 fallbacks in the reduced-run traces came from output-size changes, when
+the probe holds full size until sizes settle, so none was reduced. A shipping
+feature must keep that order (or rewrite `Const0` from the region). `DefaultVS` is otherwise paired only with
+output-resolution UI composition, and the sky rebuilds rays from frustum
+corners on a full-screen quad, which the viewport places correctly.
+
+History resets (shader IR and native code, not yet tested live). BG3 drops
+fog and SSR history on stage load, state change, render-target resize
+(`OnSizeChanged`), disable, and a per-view reset flag at view +0x2b5d that
+exposure also obeys. Fog: `LightingRenderStage` sets `_ReprojectData`
+`ResetFog` from those events. Each froxel uses history only when `ResetFog` is
+0, the reprojected point lies inside the previous frame's
+`g_VolumetricSampleMin/Max_Prev`, and a previous-depth test passes; otherwise
+it takes 8 fresh samples instead of 1. SSR: `g_discard_history` is the inverse
+of a valid byte at stage +0x2148. On discard the temporal resolve uses no
+history and `ClassifyTiles` ignores the previous tile counts. Otherwise the
+main history read takes the current UV minus velocity (or the hit
+reprojection on mirror surfaces) and bounds-checks it against the current
+`_Viewport` rectangle, not the Prev one, under a 3×3 mean ± 2.2σ clamp. Only
+the secondary radiance read maps through `ScalePrev`/`OffsetPrev`. Outline TAA
+has no reset input. It maps history through `ScalePrev`/`OffsetPrev` and
+keeps the current pixel when the result falls outside `UVClampMin/MaxPrev`.
+
+None of these events fires when the probe changes the area, because reduction
+never resizes a target. Fog and outline TAA cope through their Prev clamps,
+which describe the previous frame's region (the fog clamps after the
+forward-lighting fix). SSR's main history read assumes the previous region
+equals the current one, so for a few frames after each area change it would
+sample history scaled about the target origin by old/new scale, limited by the
+variance clamp. The probe therefore discards SSR history for the two frames
+recorded after each area change (two in case a changed frame's SSR stage runs
+after the next frame starts recording): an island at the valid-byte load in
+`SSRStage::ExecuteWTKernel` (0x10611268c) loads it as 0 while a flag the probe
+sets at `StartRecording` is up, and BG3 then sets `g_discard_history` itself.
+`ssr-history-island-smoke` runs the island on the CPU with the flag clear and
+set. In an oscillating run the area changes almost every frame, so SSR runs
+without temporal history there. Live October 21 (area 0.5-1 over 4 s, SSR on,
+reflective water): the user saw no smearing or jumps and called SSR great.
+
+The investigation added diagnostic-only tools: per-pass viewport logging while
+reducing (`viewportReductionPass`), a surface debug fragment shader that colors
+each grid pixel by the test that rejects it (`BG3MFX_SURFACE_DEBUG=1`), and
+stencil dumps after the decal normal and surface passes
+(`BG3MFX_STENCIL_DUMP_DIR`). All nine fixes live in the diagnostic runtime
+with the probe; a shipping Dynamic quality needs them in the quiet runtime.
+
+Still open: live confirmation of the second-sweep fixes (bloom `_CB` 0.707 at
+area 0.5, fog clamps, jitter; watch for shimmer on static scenes); subsurface
+scattering width (`subsurfaceScale`) and region edges (above); Frame Generation, which the probe
+leaves at full resolution (confirmed in a capture with it on: scale 1); and an
+oscillating area run.
+
 ## Character creation GPU hang (October 19, 2026)
 
 Unmodified BG3 4.1.1.7631656 hung the GPU on entering character creation in
@@ -335,7 +554,7 @@ changed.
 | Temporal | Native jitter converted to MetalFX displacement, HDR color, depth, and motion feed MetalFX; TAA output is replaced and separate AA is disabled | Corrected jitter improves analytic reconstruction and captured-game replay; user confirms clearly better and stable in the quiet Temporal/Balanced saved-camera and slow-motion test. MetalFX shader-validation fault remains unresolved |
 | Native Off and FSR | Original settings callbacks and rendering paths remain in use | Off, TAA, native FSR callbacks/dispatches were observed in live menu tests |
 | Metal HUD | Persistent menu checkbox controls the Metal layer overlay | Menu ordering and HUD on/off were visually verified |
-| Error path | No failure closes BG3. A failed MetalFX upscaler turns off with a notice, BG3's native TAA and FSR + RCAS render, and Video options select AMD FSR 1.0 (the saved MetalFX type is cleared) until MetalFX is chosen again; Frame Generation failures turn Frame Generation off; menu and startup problems show a notice and BG3 continues. A frame whose FSR input matches no captured scene (transitions) runs BG3's native FSR + RCAS for that frame, logs `metalFXNativeFallback`, and restarts Temporal history | Synthetic invalid-resource regressions pass; the hook fixture checks the unmatched-frame fallback. `spatial-hook-smoke bad-format` checks that a Spatial failure keeps the process running with native FSR/RCAS on later frames (October 19). Live October 21 with the diagnostic `BG3MFX_TEST_FAIL_METALFX=<seconds>`: a forced Temporal failure fell back, Video options reopened on the fallback type, and choosing MetalFX Temporal again resumed it (that run tested an Off fallback, since replaced by FSR) |
+| Error path | No failure closes BG3. A failed MetalFX upscaler turns off with a notice, BG3's native TAA and FSR + RCAS render, and Video options select AMD FSR 1.0 (the saved MetalFX type is cleared) until MetalFX is chosen again; Frame Generation failures turn Frame Generation off; menu and startup problems show a notice and BG3 continues. A frame whose FSR input matches no captured scene (transitions) runs BG3's native FSR + RCAS for that frame, logs `metalFXNativeFallback`, and restarts Temporal history | Synthetic invalid-resource regressions pass; the hook fixture checks the unmatched-frame fallback. `spatial-hook-smoke bad-format` checks that a Spatial failure keeps the process running with native FSR/RCAS on later frames (October 19). Live October 21 with the diagnostic `BG3MFX_TEST_FAIL_METALFX=<seconds>`: a forced Temporal failure fell back, Video options reopened on the fallback type, and choosing MetalFX Temporal again resumed it (that run tested an Off fallback, since replaced by FSR); repeated with the FSR fallback: the notice fired, Video options reopened on AMD FSR 1.0, and MetalFX Temporal resumed when chosen again |
 | Video Options Menu Fix | Restores `LSMTLView` first responder after BG3 detaches and reattaches it during fullscreen graphics-setting changes | User confirmed the fullscreen Video menu remains responsive after changing settings; modal and windowed paths still need broader checks |
 
 ## Known issues
