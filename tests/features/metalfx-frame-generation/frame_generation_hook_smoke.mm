@@ -10,12 +10,14 @@ static id<MTLTexture> texture(id<MTLDevice> d, NSUInteger size, MTLPixelFormat f
     t.storageMode=MTLStorageModePrivate;t.usage=usage;return [d newTextureWithDescriptor:t];
 }
 int main(int argc,char **argv) { @autoreleasepool {
-    if(argc!=2 && !(argc==3 && (!strcmp(argv[2],"hdr") || !strcmp(argv[2],"scaled") || !strcmp(argv[2],"overlays"))))return 1;
+    if(argc!=2 && !(argc==3 && (!strcmp(argv[2],"hdr") || !strcmp(argv[2],"scaled") || !strcmp(argv[2],"overlays") || !strcmp(argv[2],"startup-reset"))))return 1;
+    // "startup-reset": the process's first Temporal + Frame Generation frame is a BG3 reset frame.
     // "hdr": BG3 with HDR output composes with CombineUI_HDR into a BGR10A2Unorm layer.
     // "scaled": BG3 letterboxes the scene into a larger output (windowed or a
     // display whose size or aspect differs from the render resolution).
     // "overlays": BG3's live post-TAA chain for Off + Frame Generation: grading in place on the TAA
     // output (bloom off), the EoCSight ping-pong, and a UI model VFX blended onto the CAS output.
+    bool startupReset=argc==3 && !strcmp(argv[2],"startup-reset");
     bool hdrOutput=argc==3 && !strcmp(argv[2],"hdr"),scaledOutput=argc==3 && !strcmp(argv[2],"scaled"),overlays=argc==3 && !strcmp(argv[2],"overlays");setenv("BG3MFX_ENABLE_METALFX","1",1);
     void *lib=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);if(!lib){fprintf(stderr,"%s\n",dlerror());return 2;}
     auto setMode=(BOOL(*)(int))dlsym(lib,"BG3MFXSetStandaloneScalingMode");
@@ -27,8 +29,13 @@ int main(int argc,char **argv) { @autoreleasepool {
     auto pair=(NSDictionary *(*)(id<MTLCommandBuffer>))dlsym(lib,"BG3MFXStandaloneGeneratedPair");
     auto presented=(NSUInteger(*)(void))dlsym(lib,"BG3MFXStandalonePresentedPairs");
     auto allocations=(NSUInteger(*)(void))dlsym(lib,"BG3MFXTexturePoolAllocations");
-    if(!setMode || !setFrameGeneration || !pair || !presented || !allocations)return 3;
+    auto interpolators=(NSUInteger(*)(void))dlsym(lib,"BG3MFXStandaloneFrameInterpolatorsCreated");
+    if(!setMode || !setFrameGeneration || !pair || !presented || !allocations || !interpolators)return 3;
     Class standIn=NSClassFromString(@"BG3MFXStandInDrawable");NSUInteger warm=0;int fgFrames=0;
+    // When set, the next frame's TAA binds BG3's 16x16 reset velocity texture.
+    bool resetFrame=false;
+    // When set, the frame must be presented without a generated pair.
+    bool expectUnpaired=false;
     auto device=MTLCreateSystemDefaultDevice();NSError *error=nil;
     NSString *source=@"#include <metal_stdlib>\nusing namespace metal;\n"
         "vertex float4 V(uint i [[vertex_id]]){float2 p[3]={float2(-1,-1),float2(3,-1),float2(-1,3)};return float4(p[i],0,1);}\n"
@@ -117,7 +124,7 @@ int main(int argc,char **argv) { @autoreleasepool {
         for(int i=0;i<(noTAA ? 2 : 3);++i){pass=[MTLRenderPassDescriptor new];pass.colorAttachments[0].texture=i==0 ? linear : i==1 ? motion : taa;pass.colorAttachments[0].loadAction=MTLLoadActionDontCare;pass.colorAttachments[0].storeAction=MTLStoreActionStore;
             e=[b renderCommandEncoderWithDescriptor:pass];[e setRenderPipelineState:render[i]];[e setFragmentTexture:i==0 ? z : color atIndex:0];
             if(i==1)[e setFragmentBytes:camera length:sizeof(camera) atIndex:11];
-            if(i==2){[e setFragmentTexture:motion atIndex:2];[e setFragmentBytes:temporal length:sizeof(temporal) atIndex:8];[e setFragmentBytes:viewport length:sizeof(viewport) atIndex:9];}
+            if(i==2){[e setFragmentTexture:resetFrame ? texture(device,16,MTLPixelFormatRGBA8Unorm,MTLTextureUsageShaderRead) : motion atIndex:2];[e setFragmentBytes:temporal length:sizeof(temporal) atIndex:8];[e setFragmentBytes:viewport length:sizeof(viewport) atIndex:9];}
             [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];[e endEncoding];}
         id<MTLTexture> toneSource=taa;
         auto fullscreen=[&](NSString *name,id<MTLTexture> target,id<MTLTexture> input,MTLLoadAction load){
@@ -161,6 +168,8 @@ int main(int argc,char **argv) { @autoreleasepool {
         }
         if(!outputs && overlay==2){[b commit];[b waitUntilCompleted];if(b.error){fprintf(stderr,"Unpaired overlay frame failed: %s\n",b.error.description.UTF8String);return 8;}
             printf("Unrecognized draw on the final scene image presented unpaired for menu choice %d.\n",choice);return 0;}
+        if(!outputs && expectUnpaired){[b commit];[b waitUntilCompleted];if(b.error)return 8;return 0;}
+        if(outputs && expectUnpaired){fprintf(stderr,"Frame for menu choice %d was paired\n",choice);return 7;}
         if(!outputs){fprintf(stderr,"No generated pair for mode %d\n",mode);return 7;}
         NSMutableArray *reads=[NSMutableArray array];auto blit=[b blitCommandEncoder];
         for(id<MTLTexture> t in @[final,outputs[@"generated"]]){auto r=[device newBufferWithLength:width*height*4 options:MTLResourceStorageModeShared];[reads addObject:r];[blit copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(width,height,1) toBuffer:r destinationOffset:0 destinationBytesPerRow:width*4 destinationBytesPerImage:width*height*4];}[blit endEncoding];[b commit];[b waitUntilCompleted];
@@ -184,6 +193,18 @@ int main(int argc,char **argv) { @autoreleasepool {
             worst,(unsigned long)out,(unsigned long)out,(unsigned long)width,(unsigned long)height,choice,layer.displaySyncEnabled ? "on" : "off");
         return 0;
     };
+    if(startupReset){
+        // Before BG3 has bound a real velocity target, a reset frame's zero-motion
+        // stand-in has a guessed usage; pairing it would build an interpolator
+        // that the next frame replaces.
+        resetFrame=expectUnpaired=true;int status=frame(4,false);resetFrame=expectUnpaired=false;
+        if(status)return status;
+        if(interpolators()!=0){fprintf(stderr,"The startup reset frame created an interpolator\n");return 23;}
+        for(int i=0;i<2;++i)if((status=frame(4,false)))return status;
+        if(interpolators()!=1){fprintf(stderr,"Startup created %lu interpolators\n",(unsigned long)interpolators());return 23;}
+        puts("Startup reset frame presented unpaired; the first real frame created the only interpolator.");
+        return 0;
+    }
     // Frame Generation with every Upscaling Type. Spatial (5), Off (6) and FSR
     // (7) keep native TAA, whose depth, motion and camera feed the interpolator;
     // the scene is followed through MetalFX Spatial, no upscale, or BG3's FSR.
@@ -234,6 +255,15 @@ int main(int argc,char **argv) { @autoreleasepool {
     @autoreleasepool { id d=[layer nextDrawable]; if(![d isKindOfClass:standIn]){fprintf(stderr,"Frames without TAA inputs turned Frame Generation off\n");return 21;} }
     if(int status=frame(6,false)){fprintf(stderr,"Frame Generation did not resume once TAA returned\n");return status;}
     puts("Frames without TAA inputs presented unpaired; Frame Generation resumed with the next TAA frame.");
+    // BG3's history reset binds a 16x16 velocity texture; its zero-motion
+    // stand-in must keep the interpolator, on the reset frame and after it.
+    if(int status=frame(4,false))return status;
+    {   NSUInteger created=interpolators();
+        resetFrame=true;int status=frame(4,false);resetFrame=false;
+        if(status || (status=frame(4,false)))return status;
+        if(interpolators()!=created){fprintf(stderr,"A reset frame rebuilt the interpolator %lu times\n",(unsigned long)(interpolators()-created));return 22;}
+        puts("A reset frame paired with zero motion and kept the interpolator.");
+    }
 
     if(overlays){
         // Off + Frame Generation with BG3's live chain pairs; an unrecognized draw on the

@@ -789,6 +789,9 @@ static double previousFrameTime;
 // Menu callbacks run on another thread; the render thread applies their reset
 // at its next generated frame instead of touching its objects concurrently.
 static std::atomic<bool> frameGenerationResetPending{false};
+// Set once BG3 has bound a real velocity target, whose usage the zero-motion
+// stand-in copies. Until then a reset frame's stand-in has a guessed usage.
+static std::atomic<bool> bg3MotionSeen{false};
 // Unchecking Frame Generation frees the interpolator and
 // presentation worker instead of leaving an idle effect alive. The worker joins
 // its thread after draining queued pairs, so release it off the render thread.
@@ -913,6 +916,7 @@ static BOOL upscaleSpatial(id<MTLCommandBuffer> buffer, NSDictionary *inputs) {
 }
 #if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
 static std::atomic<unsigned> temporalScalersCreated{0};
+static std::atomic<unsigned> frameInterpolatorsCreated{0};
 #endif
 static NSMutableDictionary *temporalUpscalerCache() {
     // Initialized once, thread-safely; temporalSizeSettled reads it before
@@ -1491,6 +1495,10 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
     { std::lock_guard<std::recursive_mutex> lock(guard()); presenter=framePresenter; }
     if(![presenter ownsTexture:target]) return;
     NSDictionary *inputs=request[@"inputs"];
+    // BG3's first frames after launch are resets. Their stand-in motion would
+    // configure an interpolator that the first real frame replaces; a reset
+    // frame has no history to interpolate from, so present it unpaired.
+    if([inputs[@"reset"] boolValue] && !bg3MotionSeen) return;
     id<MTLTexture> depth=inputs[@"depth"], motion=inputs[@"motion"];
     BG3MFXFrameParameters parameters={}; NSString *reason=nil;
     if(!temporalParameters(inputs,&parameters,&reason)) { declineFrameGeneration(reason); return; }
@@ -1503,6 +1511,9 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
         if(!frameInterpolator) {declineFrameGeneration(error.localizedDescription ?: @"Could not initialize frame generation.");return;}
         frameInterpolator.failureHandler=^(NSError *e){declineFrameGeneration(e.localizedDescription ?: @"Metal could not complete frame generation.");};
         frameConfiguration=configuration;previousFrameTime=0;
+#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
+        frameInterpolatorsCreated.fetch_add(1);
+#endif
         record(@{@"event":@"frameGenerationCreated",@"api":frameInterpolator.usesMetal4 ? @"metal4" : @"metal3",
             @"input":texture(depth),@"scene":texture(scene),@"direct":@[@(frameInterpolator.directColor),
             @(frameInterpolator.directDepth),@(frameInterpolator.directMotion)]});
@@ -1602,14 +1613,29 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
     id<MTLTexture> motion = textures[@"2"];
     id<MTLTexture> depth = objc_getAssociatedObject(buffer, &deviceDepthKey);
     BOOL resetMotion = motion.width == 16 && motion.height == 16 && motion.pixelFormat == MTLPixelFormatRGBA8Unorm;
+    // Usage of BG3's real velocity target. The zero stand-in matches it so
+    // Frame Generation's configuration (which includes motion usage) does not
+    // change on a reset frame and rebuild its interpolator twice.
+    static MTLTextureUsage motionUsage = MTLTextureUsageShaderRead;
+    static id<MTLTexture> zeroMotion;
+    if (!resetMotion && motion.pixelFormat == MTLPixelFormatRG16Float) {
+        std::lock_guard<std::recursive_mutex> lock(guard()); motionUsage = motion.usage;
+        bg3MotionSeen = true;
+    }
     if (resetMotion && source && buffer) {
         // BG3 invalidates velocity/history for the first frame after a quality
         // change. MetalFX must start a fresh history with zero displacement.
-        MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRG16Float width:source.width height:source.height mipmapped:NO];
-        desc.storageMode = MTLStorageModeShared; desc.usage = MTLTextureUsageShaderRead;
-        motion = [buffer.device newTextureWithDescriptor:desc];
-        NSMutableData *zeros = [NSMutableData dataWithLength:source.width*source.height*4];
-        [motion replaceRegion:MTLRegionMake2D(0,0,source.width,source.height) mipmapLevel:0 withBytes:zeros.bytes bytesPerRow:source.width*4];
+        // The stand-in is only read, so one per size serves every reset.
+        std::lock_guard<std::recursive_mutex> lock(guard());
+        if (zeroMotion.width != source.width || zeroMotion.height != source.height ||
+            zeroMotion.usage != motionUsage || zeroMotion.device != buffer.device) {
+            MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRG16Float width:source.width height:source.height mipmapped:NO];
+            desc.storageMode = MTLStorageModeShared; desc.usage = motionUsage;
+            zeroMotion = [buffer.device newTextureWithDescriptor:desc];
+            NSMutableData *zeros = [NSMutableData dataWithLength:source.width*source.height*4];
+            [zeroMotion replaceRegion:MTLRegionMake2D(0,0,source.width,source.height) mipmapLevel:0 withBytes:zeros.bytes bytesPerRow:source.width*4];
+        }
+        motion = zeroMotion;
     }
     if (!source || !motion || !depth || !taaTarget ||
         taaTarget.width != source.width || taaTarget.height != source.height || motion.pixelFormat != MTLPixelFormatRG16Float ||
@@ -2564,6 +2590,10 @@ extern "C" NSDictionary *BG3MFXStandaloneGeneratedPair(id<MTLCommandBuffer> buff
 extern "C" NSUInteger BG3MFXStandaloneTemporalScalersCreated(void) {
     if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return 0;
     return temporalScalersCreated.load();
+}
+extern "C" NSUInteger BG3MFXStandaloneFrameInterpolatorsCreated(void) {
+    if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return 0;
+    return frameInterpolatorsCreated.load();
 }
 extern "C" NSUInteger BG3MFXStandalonePresentedPairs(void) {
     if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return 0;

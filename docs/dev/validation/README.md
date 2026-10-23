@@ -129,6 +129,18 @@ Metal HUD keeps its interpolation layout after an interpolator has existed in
 the process, so compare modes on fresh launches. See
 [Frame Generation](frame-generation.md).
 
+On BG3's history-reset frames (16×16 velocity texture) the zero-motion stand-in
+had different usage from BG3's velocity target, which changed the interpolator
+configuration. A live October 21 trace showed 20 back-to-back rebuild pairs in
+6¾ minutes, one on each reset frame and one on the frame after it. The stand-in
+is now cached per size with BG3's velocity usage. `frame-generation-hook-smoke`
+checks that a reset frame pairs without a rebuild; with the old usage it reports
+two rebuilds. Live (October 21), a reset with Frame Generation on kept the
+interpolator. One rebuild per launch remained: BG3's first frames are resets,
+before any real velocity target has shown the usage to copy. Frame Generation now
+presents those frames unpaired; the `startup-reset` variant checks that the
+first real frame creates the only interpolator.
+
 ## CPU worker threads (removed)
 
 BG3 sizes its job system as N high- plus N low-priority workers, N = min(cores -
