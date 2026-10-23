@@ -17,6 +17,29 @@ user saw no difference in shadows. No GPU capture was taken
 with the fix on. Analysis and method:
 [`docs/dev/performance.md`](../performance.md).
 
+### Improved shadows (October 23, 2026)
+
+[Feature README](../../../src/features/shadows/README.md#improved-shadows).
+On by default as part of Shadow Rendering Optimizations: bg3mfx replaces
+BG3's PCSS (Medium, High) and PCF (Low) sun shadow mask shaders with its own,
+using the G-buffer normal and no grazing fade.
+`BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` leaves BG3's shaders.
+
+Synthetic, offscreen (`improved-shadows-smoke`, M5 Pro): all 12 variants
+compile; on a plane under a checkerboard of blockers, PCSS and PCF shadow and
+light the expected pixels at 64×64 and 16×16.
+
+Live (M5 Pro, MetalFX Temporal at a low render size, High and Medium):
+- A reproduction of BG3's PCSS pass, used while developing this and since
+  removed, matched BG3 exactly on 99.98-99.99% of pixels and within 1/255 on
+  100.000%.
+- Displayed (user's eye): with BG3's grazing fade removed, slopes were no
+  longer darker at low resolution, with no speckle or striping. With every
+  pixel's G-buffer normal and no fade, diamonds and dotted lines were gone;
+  judged good on terrain, foliage, decals and hair.
+
+Not yet checked: Low (PCF) live; GPU cost.
+
 ## Depth Prepass Optimization
 
 Whenever bg3mfx runs (`BG3MFX_DEPTH_PREPASS_OPTIMIZATION=0` disables it), opaque draws whose prepass pipeline has no
@@ -426,6 +449,25 @@ sets at `StartRecording` is up, and BG3 then sets `g_discard_history` itself.
 set. In an oscillating run the area changes almost every frame, so SSR runs
 without temporal history there. Live October 21 (area 0.5-1 over 4 s, SSR on,
 reflective water): the user saw no smearing or jumps and called SSR great.
+
+Terrain shadow seams (native BG3, seen live October 21 with native FSR, with
+MetalFX, and without the probe). At low render resolutions sand shows a diamond
+grid of dotted lines and whole diamond-shaped patches with wrong shading,
+worse up close and at grazing view angles, unchanged by Shadow Quality. A
+capture (864×540 render for 1728×1080) shows a clean G-buffer, decals and SAO;
+the pattern first appears in the sun shadow mask (`DirLight_Cascaded_PCSS`).
+That shader rebuilds a face normal per 2×2 quad from `dfdx`/`dfdy` of the
+depth-reconstructed position and checks quad planarity with `quad_shuffle_xor`.
+The normal drives a normal-offset bias, a weight that fades it into a constant
+bias on grazing or non-planar quads, and whether the quad pools its blocker
+search. Quads straddling terrain triangle edges get a mixed normal and differ
+from their neighbours, which shows as dotted lines and diamonds. Lower
+resolution and grazing views make each quad span more ground, so the artifacts
+grow as dynamic resolution lowers the area. (An earlier note blamed a sun-facing
+cutoff; the full IR has none.) Experimental fix:
+[improved shadows](#improved-shadows-october-23-2026). Evidence:
+`build/evidence/2026-10-21-dynamic-resolution/fsr-seams.gputrace` and
+`fsr-seams-fetch/`.
 
 The investigation added diagnostic-only tools: per-pass viewport logging while
 reducing (`viewportReductionPass`), a surface debug fragment shader that colors

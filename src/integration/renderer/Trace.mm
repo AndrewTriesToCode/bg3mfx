@@ -15,6 +15,7 @@
 #import "features/metalfx-temporal-upscaling/TemporalUpscaler.h"
 #import "integration/menu/NativeMenu.h"
 #import "features/dynamic-resolution/DynamicResolution.h"
+#import "features/shadows/ImprovedShadows.h"
 #import "features/metalfx-frame-generation/FrameInterpolation.h"
 #import "features/metalfx-frame-generation/FrameLog.h"
 #import "common/gpu/GPUResources.h"
@@ -98,6 +99,7 @@ static bool bindDedup;
 static bool clusterGuard;
 // Diagnostics: binds that repeat the encoder's current binding.
 static bool redundantProbe;
+static bool improvedShadows;
 enum RedundantCount { TextureCalls, TextureCallsRedundant, TextureSlots, TextureSlotsRedundant,
     BufferBinds, BufferBindsRedundant, PipelineBinds, PipelineBindsRedundant, DepthBinds, DepthBindsRedundant, RedundantCounts };
 static std::atomic<uint64_t> redundantCounts[RedundantCounts];
@@ -151,6 +153,8 @@ struct CompositionDraw {
     // Dynamic resolution: a subsurface scattering blur is bound while the
     // viewport is reduced (see SubsurfaceDraw).
     bool subsurface;
+    // Improved shadows: BG3's sun shadow mask pipeline is bound.
+    bool shadowMask;
     __unsafe_unretained id<MTLBuffer> engineBuffer;
     NSUInteger engineOffset;
     // Bind dedup: fragment textures this encoder has actually forwarded.
@@ -172,6 +176,8 @@ struct CompositionDraw {
     TrimPipeline trim;
     // Dynamic resolution corrections (see SurfaceGridDraw and SubsurfaceDraw).
     bool surfaceGrid, subsurface;
+    // Improved shadows: draws go through BG3MFXImprovedShadowsDraw.
+    bool shadowMask;
 }
 @end
 // BG3 binds about 960 pipelines per frame from a few hundred long-lived ones.
@@ -1410,6 +1416,7 @@ static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained i
         bool reduced = info && (info->surfaceGrid || info->subsurface) && s->colorTarget && BG3MFXDynamicResolutionArea() < 1;
         s->surfaceGrid = reduced && info->surfaceGrid;
         s->subsurface = reduced && info->subsurface;
+        s->shadowMask = info && info->shadowMask;
     }
     if (s) {
         s->pipeline=state; s->description=description;
@@ -1583,6 +1590,8 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
         BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
         info->description = description; info->kind = classifyPipeline(fragment);
         classifyDynamicResolution(info, desc);
+        static SEL create = @selector(newRenderPipelineStateWithDescriptor:error:);
+        info->shadowMask = improvedShadows && BG3MFXPrepareImprovedShadows(self, desc, state, (BG3MFXCreateRenderPipeline)original(self,create));
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         pipelineGeneration.fetch_add(1, std::memory_order_release);
         if (prepassTrim) BG3MFXClassifyPrepass(desc,state,markPrepassPipeline);
@@ -1622,6 +1631,8 @@ static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *d
         BG3MFXPipelineInfo *info = [BG3MFXPipelineInfo new];
         info->description = description; info->kind = classifyPipeline(fragment);
         classifyDynamicResolution(info, desc);
+        static SEL create = @selector(newRenderPipelineStateWithDescriptor:error:);
+        info->shadowMask = improvedShadows && BG3MFXPrepareImprovedShadows(self, desc, state, (BG3MFXCreateRenderPipeline)original(self,create));
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         pipelineGeneration.fetch_add(1, std::memory_order_release);
         if (prepassTrim) BG3MFXClassifyPrepass(desc,state,markPrepassPipeline);
@@ -2218,10 +2229,32 @@ struct SubsurfaceDraw {
     }
 };
 #define SUBSURFACE_DRAW(encoder) SubsurfaceDraw subsurfaceDraw(encoder)
+// Improved shadows: the sun shadow mask draw, through bg3mfx's pipeline.
+static bool shadowMaskBound(__unsafe_unretained id encoder) {
+    __unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder);
+    return s && s->shadowMask;
+}
+static bool shadowMaskDraw(__unsafe_unretained id encoder, void (^call)(void)) {
+    static const BG3MFXImprovedShadowsCalls calls = {
+        [](__unsafe_unretained id e, __unsafe_unretained id state) {
+            static SEL set = @selector(setRenderPipelineState:);
+            ((void(*)(id,SEL,id))original(e,set))(e,set,state);
+        },
+        [](__unsafe_unretained id e, __unsafe_unretained id<MTLTexture> t, NSUInteger index) {
+            static SEL set = @selector(setFragmentTexture:atIndex:);
+            ((void(*)(id,SEL,id,NSUInteger))original(e,set))(e,set,t,index);
+            // Keep bind dedup's record true to what Metal now holds.
+            if (bindDedup && index < 64) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(e)) s->bindFilter.fragmentTexture[index]=t;
+        },
+    };
+    __unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder);
+    return BG3MFXImprovedShadowsDraw(encoder,s->pipeline,s->textures[0],s->textures[1],calls,call);
+}
 static void draw(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count) {
     SUBSURFACE_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
+    if (shadowMaskBound(self) && shadowMaskDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); return; }
     drawInputs(self,CompositionDraw{type,start,count,1,0,0,nil,0,MTLIndexTypeUInt16});
     if (suppressTemporalTAA(self)) return;
@@ -2231,6 +2264,7 @@ static void drawInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType
     SUBSURFACE_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
+    if (shadowMaskBound(self) && shadowMaskDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); return; }
     drawInputs(self,CompositionDraw{type,start,count,instances,0,0,nil,0,MTLIndexTypeUInt16});
     if (suppressTemporalTAA(self)) return;
@@ -2240,6 +2274,7 @@ static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveT
     SUBSURFACE_DRAW(self);
     BG3MFXPrepassDraw trim(self,prepassState(self),setPrepassDepth,diagnostics);
     if (trim.skip) return;
+    if (shadowMaskBound(self) && shadowMaskDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); return; }
     drawInputs(self,CompositionDraw{type,start,count,instances,base,0,nil,0,MTLIndexTypeUInt16});
     if (suppressTemporalTAA(self)) return;
@@ -2583,6 +2618,7 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
         objc_setAssociatedObject(encoder, &stencilDepthKey, desc.depthAttachment.texture, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 #endif
     if (clusterGuard) BG3MFXBindClusterStandIns(encoder,NO);
+    if (improvedShadows) BG3MFXNoteImprovedShadowsPass(desc);
     setEncoderMode(encoder, objc_getAssociatedObject(self, &bufferScalingModeKey));
     flushRedundantCounts();
     if (prepassTrim && encoder) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) {
@@ -2861,6 +2897,9 @@ __attribute__((constructor)) static void start() {
         prepassTrim = metalFXEnabled && !(getenv("BG3MFX_DEPTH_PREPASS_OPTIMIZATION") && strcmp(getenv("BG3MFX_DEPTH_PREPASS_OPTIMIZATION"),"0") == 0);
         // Character Creation Crash Fix; BG3MFX_CHARACTER_CREATION_CRASH_FIX=0 leaves BG3's bindings alone for comparison.
         clusterGuard = metalFXEnabled && !(getenv("BG3MFX_CHARACTER_CREATION_CRASH_FIX") && strcmp(getenv("BG3MFX_CHARACTER_CREATION_CRASH_FIX"),"0") == 0);
+        // Improved shadows, part of Shadow Rendering Optimizations (see
+        // features/shadows/ImprovedShadows.h); needs the draw hooks.
+        improvedShadows = metalFXEnabled && BG3MFXImprovedShadowsEnabled();
         if (diagnostics) {
             constantSamples = [NSMutableDictionary dictionary];
             shaderBufferSizes = [NSMutableDictionary dictionary];

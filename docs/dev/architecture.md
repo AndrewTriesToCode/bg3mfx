@@ -351,9 +351,20 @@ fixtures keep independent layouts/expected instructions to catch drift.
   `BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0` disables it): fragment texture slots and pipelines
   already bound in the encoder are not forwarded to the driver. The diagnostic
   runtime counts BG3's redundant binds with `BG3MFX_TRACE_REDUNDANT=1`.
-- `src/features/shadows/ShadowDuplicateFix.*`: removes BG3's duplicate cascaded-shadow stage
-  (on by default; `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` disables it); see
-  [`docs/dev/performance.md`](performance.md).
+- `src/features/shadows/`: Shadow Rendering Optimizations (on by default;
+  `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` disables both parts).
+  - `ShadowDuplicateFix.*` removes BG3's duplicate cascaded-shadow stage; see
+    [`docs/dev/performance.md`](performance.md).
+  - `ImprovedShadows.*` (improved shadows) replaces BG3's sun shadow mask
+    shaders, PCSS (Medium, High) and PCF (Low):
+    - it uses each pixel's G-buffer normal in place of BG3's per-quad derived
+      normal, and keeps the full normal offset (no grazing fade);
+    - `Trace.mm` builds the replacement pipeline when BG3 creates
+      `DirLight_Cascaded_PCSS_*` or `DirLight_Cascaded_PCF_*`, records
+      GBuffer0 at the G-buffer pass, and swaps the pipeline around the shadow
+      draw, falling back to BG3's draw.
+
+    See [validation](validation/README.md#improved-shadows-october-23-2026).
 - `src/features/thread-idling/ThreadIdling.*`: CPU Thread Idling (on by default;
   `BG3MFX_CPU_THREAD_IDLING=0` disables it). BG3's idle workers, job scheduler,
   and frame limiter (`GameClock::CapFrame`, the server tick and client frame

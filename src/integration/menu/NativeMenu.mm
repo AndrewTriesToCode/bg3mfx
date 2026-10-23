@@ -701,8 +701,8 @@ BOOL BG3MFXInstallNativeMenu(void (*report)(NSDictionary *), NSError **error) {
     event(@{@"event":@"nativeMenuFocusRepairHook", @"installed":@(focusRepairInstalled)});
     if (!BG3MFXInstallTemporalJitter(slide,report,error)) return NO;
     // Remove BG3's duplicate cascaded-shadow stage (docs/dev/performance.md). A mismatch
-    // leaves BG3 unchanged. BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0 keeps both stages for
-    // comparison.
+    // leaves BG3 unchanged. BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0 keeps both stages, and
+    // BG3's shadow mask shaders (features/shadows/ImprovedShadows.h), for comparison.
     const char *shadowOptimizationSetting = getenv("BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS");
     if (!(shadowOptimizationSetting && strcmp(shadowOptimizationSetting, "0") == 0)) {
         NSError *shadowError = nil;
