@@ -2509,6 +2509,25 @@ __attribute__((constructor)) static void start() {
             record(@{@"event":@"metal4Residency",@"label":label ?: @"",@"allocations":@(allocations),
                 @"megabytes":@(bytes/1048576.0),@"added":@(added),@"replaced":@(replaced)});
         };
+        // Which texture enters or leaves a set: a BG3 target or a bg3mfx stand-in.
+        BG3MFXResidencyDetailHook = [](NSString *label, NSArray<NSDictionary *> *added, NSArray<id<MTLAllocation>> *dropped) {
+            auto describe=[](id<MTLAllocation> allocation) -> NSDictionary * {
+                NSMutableDictionary *d=[@{@"object":@((uintptr_t)(__bridge const void *)allocation)} mutableCopy];
+                if ([(id)allocation conformsToProtocol:@protocol(MTLTexture)]) [d addEntriesFromDictionary:texture((id<MTLTexture>)allocation)];
+                return d;
+            };
+            NSMutableArray *a=[NSMutableArray array], *r=[NSMutableArray array];
+            for (NSDictionary *entry in added) {
+                NSMutableDictionary *d=[describe(entry[@"allocation"]) mutableCopy]; d[@"index"]=entry[@"index"]; [a addObject:d];
+            }
+            for (id<MTLAllocation> allocation in dropped) [r addObject:describe(allocation)];
+            record(@{@"event":@"metal4ResidencyDetail",@"label":label ?: @"",@"added":a,@"dropped":r});
+        };
+        // A Metal 4 queue abandons an event wait after 4 s; show which side waited.
+        BG3MFXBridgeStallHook = [](NSString *label, NSDictionary *stalled, NSArray<NSDictionary *> *recent) {
+            record(@{@"event":@"metal4BridgeStall",@"label":label ?: @"",@"now":@(CACurrentMediaTime()),
+                @"stalled":stalled,@"recent":recent});
+        };
         NSMutableDictionary *startup = [@{@"event": @"start", @"mode": metalFXEnabled ? @"metalfx-menu" : @"diagnostic", @"device": device.name ?: @"unavailable",
                  @"spatial": @([MTLFXSpatialScalerDescriptor supportsDevice:device]),
                  @"temporal": @([MTLFXTemporalScalerDescriptor supportsDevice:device])} mutableCopy];

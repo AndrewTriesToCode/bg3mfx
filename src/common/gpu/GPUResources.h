@@ -46,6 +46,14 @@ extern "C" void (*_Nullable BG3MFXGPUTimingHook)(NSString *label, double gpuSeco
 // or on reaching its 64-allocation bound).
 extern "C" void (*_Nullable BG3MFXResidencyHook)(NSString *label, NSUInteger allocations, uint64_t bytes,
     NSUInteger added, BOOL replaced);
+// Diagnostics: when set, receives the allocations a residency change added
+// (with their index in the submission's allocation list) and dropped.
+extern "C" void (*_Nullable BG3MFXResidencyDetailHook)(NSString *label, NSArray<NSDictionary *> *added,
+    NSArray<id<MTLAllocation>> *dropped);
+// Diagnostics: when set, receives the bridge's recent submission timelines
+// (encode, BG3 buffer scheduled/completed, Metal 4 feedback; media-time
+// seconds) whenever a submission takes over half a second or fails.
+extern "C" void (*_Nullable BG3MFXBridgeStallHook)(NSString *label, NSDictionary *stalled, NSArray<NSDictionary *> *recent);
 #endif
 
 NS_ASSUME_NONNULL_END
