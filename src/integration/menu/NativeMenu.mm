@@ -677,3 +677,15 @@ extern "C" BOOL BG3MFXSetStandaloneFrameGeneration(BOOL enabled) {
 #endif
 
 BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported(); }
+
+// The MetalFX types run as BG3's FSR type, so the game's settings need no
+// change: track FSR and drop the saved MetalFX type. Video options then open on
+// AMD FSR 1.0 (BG3's own type), and the next launch starts with it.
+BOOL BG3MFXFallBackToFSR(void) {
+    if (!originalInit) return NO;
+    selectedScalingMode.store(1);
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults removeObjectForKey:scalingPreference];
+    [defaults synchronize];
+    return YES;
+}

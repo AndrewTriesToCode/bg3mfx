@@ -805,9 +805,9 @@ static void releaseFrameGeneration(void) {
 static void resetFrameGeneration(void) { frameGenerationResetPending=true; }
 static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *request);
 
-// A failed MetalFX upscaler is off until the player chooses an Upscaling Type
-// again: BG3's TAA and FSR, which the menu has already set up underneath,
-// render instead (see dispatch and suppressTemporalTAA).
+// A failed MetalFX upscaler is off until the player chooses it again: BG3's
+// TAA and FSR, which the menu has already set up underneath, render instead
+// (see dispatch and suppressTemporalTAA), and the menu selects AMD FSR 1.0.
 static void failFeature(BOOL temporal, NSString *reason) {
     { std::lock_guard<std::recursive_mutex> lock(guard());
       if (temporal ? temporalFailed : spatialFailed) return;
@@ -819,7 +819,10 @@ static void failFeature(BOOL temporal, NSString *reason) {
     NSString *message = [[@"MetalFX " stringByAppendingString:feature] stringByAppendingFormat:@" stopped: %@",reason];
     fprintf(stderr,"%s\n",message.UTF8String); fflush(stderr);
     record(@{@"event":temporal ? @"temporalUpscaleError" : @"spatialUpscaleError",@"error":message});
-    showNotice([NSString stringWithFormat:@"MetalFX %@ is off",feature],[reason stringByAppendingString:
+    BOOL menu = BG3MFXFallBackToFSR();
+    record(@{@"event":@"upscalingFallback",@"to":@"AMD FSR 1.0",@"menu":@(menu)});
+    showNotice([NSString stringWithFormat:@"MetalFX %@ is off",feature],[reason stringByAppendingString:menu ?
+        [NSString stringWithFormat:@"\n\nUpscaling Type is now AMD FSR 1.0. To retry, choose MetalFX %@ in Video options.",feature] :
         @"\n\nThe game continues with AMD FSR 1.0 upscaling. To retry, choose another Upscaling Type "
         "and then this one again in Video options."]);
 }
@@ -2026,6 +2029,21 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
     BOOL temporal = mode == 3;
     BOOL selectedMetalFX = (mode == 2 && metalFXEnabled) || (temporal && metalFXEnabled);
     if (selectedMetalFX) {
+#ifndef BG3MFX_NO_TRACE
+        // Diagnostic: BG3MFX_TEST_FAIL_METALFX=<seconds> fails the running
+        // MetalFX upscaler once after that long, to exercise the fallback live.
+        static const double failAfter = getenv("BG3MFX_TEST_FAIL_METALFX") ? atof(getenv("BG3MFX_TEST_FAIL_METALFX")) : 0;
+        static double firstMetalFX = 0;
+        static std::atomic<bool> forced{false};
+        if (failAfter > 0 && !forced.load()) {
+            double now = NSProcessInfo.processInfo.systemUptime;
+            if (!firstMetalFX) firstMetalFX = now;
+            if (now - firstMetalFX >= failAfter && !forced.exchange(true)) {
+                if (temporal) failTemporal(@"Forced failure (BG3MFX_TEST_FAIL_METALFX).");
+                else failSpatial(@"Forced failure (BG3MFX_TEST_FAIL_METALFX).");
+            }
+        }
+#endif
         if (temporal ? temporalFailed : spatialFailed) goto native;
         if ([pipelineName isEqualToString:@"FSR"]) {
             id<MTLTexture> source = textures[@"0"], scaled = textures[@"1"];
