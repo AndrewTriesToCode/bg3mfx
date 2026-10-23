@@ -39,7 +39,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **MetalFX Spatial Upscaling** | Upscales a smaller rendered image to the final game resolution. |
 | **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. |
 | **Dynamic Upscaling** | Changes MetalFX Temporal Upscaling factor in real time to maintain a minimum target FPS. |
-| **Dynamic Upscaling Thermal Guard** | Changes MEtalFX Temporal Upscaling factor in real time to reduce GPU usage and heat. |
+| **Dynamic Upscaling Thermal Guard** | Changes MetalFX Temporal Upscaling factor in real time to reduce GPU usage and heat. |
 | **Shadow Rendering Optimizations** | Fixes base game shadow rendering bugs and adds other optimizations. |
 | **Depth Prepass Optimization** | Skips some repeated work when drawing scene depth. |
 
