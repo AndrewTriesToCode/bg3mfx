@@ -146,10 +146,14 @@ int main(int argc, char **argv) {
             }
         }
         if ([mode isEqualToString:@"tonemap"]) {
-            // MetalFX reads FSR_Tonemap's input, so the draw is skipped and its
-            // cleared target stays 0. A frame that falls back to native FSR (a
-            // new size that has not settled) must get the compressed colour.
+            // MetalFX reads FSR_Tonemap's input, so the draw is skipped; once its
+            // target is known, the pass stores nothing either (frames 2 and 3).
+            // Frames that fall back to native FSR (a new size that has not
+            // settled) must still get the compressed colour, the second one
+            // after a dropped store.
             bool skipped = !(getenv("BG3MFX_SKIP_FSR_TONEMAP") && strcmp(getenv("BG3MFX_SKIP_FSR_TONEMAP"),"0") == 0);
+            auto storesDropped = (NSUInteger(*)(void))dlsym(runtime,"BG3MFXStandaloneFSRTonemapStoresDropped");
+            if (!storesDropped) return 36;
             auto readBack = [&](id<MTLTexture> source, id<MTLBuffer> into) -> bool {
                 id<MTLCommandBuffer> buffer = [queue commandBuffer];
                 id<MTLComputeCommandEncoder> e = [buffer computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
@@ -168,39 +172,50 @@ int main(int argc, char **argv) {
                 }
                 return true;
             };
-            const float cleared[3] = {0,0,0}, compressed[3] = {0.375f,0.625f,0.875f};
-            if (!readBack(tonemapped,pixels)) return 30;
-            if (!check(pixels,256,skipped ? cleared : compressed,
-                       skipped ? "FSR_Tonemap ran on a MetalFX frame" : "FSR_Tonemap output with the skip disabled")) return 31;
+            const float compressed[3] = {0.375f,0.625f,0.875f};
+            auto expectDropped = [&](NSUInteger expected, const char *when) -> bool {
+                if (storesDropped() == expected) return true;
+                fprintf(stderr,"%s: %lu FSR_Tonemap stores dropped, expected %lu\n",when,(unsigned long)storesDropped(),(unsigned long)expected);
+                return false;
+            };
+            if (skipped) { if (!expectDropped(2,"After three MetalFX frames")) return 31; }
+            else {
+                if (!readBack(tonemapped,pixels)) return 30;
+                if (!check(pixels,256,compressed,"FSR_Tonemap output with the skip disabled") || !expectDropped(0,"Skip disabled")) return 31;
+            }
             const NSUInteger size = 320;
             id<MTLTexture> sInput=texture(device,size), sTAA=texture(device,size), sBloom=texture(device,size);
             id<MTLTexture> sGraded=texture(device,size), sTonemapped=texture(device,size);
             id<MTLTexture> sScaled=texture(device,size*2), sDestination=texture(device,size*2);
-            *(uint32_t *)nativeDispatches.contents = 0;
-            id<MTLCommandBuffer> buffer = [queue commandBufferWithUnretainedReferences];
-            id<MTLComputeCommandEncoder> e = [buffer computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
-            [e setComputePipelineState:pipelines[0]]; [e setTexture:sInput atIndex:0];
-            [e dispatchThreads:MTLSizeMake(size,size,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)]; [e endEncoding];
-            drawPass(buffer,sInput,sTAA,renderPipelines[0]);
-            drawPass(buffer,sTAA,sBloom,renderPipelines[1]);
-            drawPass(buffer,sBloom,sGraded,renderPipelines[2]);
-            drawPass(buffer,sGraded,sTonemapped,renderPipelines[3]);
-            e = [buffer computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
-            [e setComputePipelineState:pipelines[1]]; [e setTexture:sTonemapped atIndex:0]; [e setTexture:sScaled atIndex:1];
-            [e setBuffer:nativeDispatches offset:0 atIndex:0];
-            [e dispatchThreads:MTLSizeMake(size*2,size*2,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];
-            [e setComputePipelineState:pipelines[2]]; [e setTexture:sScaled atIndex:0]; [e setTexture:sDestination atIndex:2];
-            [e dispatchThreads:MTLSizeMake(size*2,size*2,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)]; [e endEncoding];
-            [buffer commit]; [buffer waitUntilCompleted];
-            if (buffer.status != MTLCommandBufferStatusCompleted) return 32;
-            if (*(uint32_t *)nativeDispatches.contents != 2) {
-                fprintf(stderr,"An unsettled size ran %u native FSR/RCAS dispatches, expected 2\n",*(uint32_t *)nativeDispatches.contents); return 33;
-            }
             id<MTLBuffer> fallback = [device newBufferWithLength:size*2*size*2*4*sizeof(float) options:MTLResourceStorageModeShared];
-            if (!readBack(sScaled,fallback)) return 34;
-            if (!check(fallback,size*2,compressed,"Native FSR fallback input")) return 35;
-            printf("FSR_Tonemap %s on MetalFX frames; a native FSR fallback frame got the compressed colour.\n",
-                skipped ? "was skipped" : "ran (skip disabled)");
+            // Both frames run well within the 0.3 s settle time.
+            for (int frame=0; frame<2; ++frame) {
+                *(uint32_t *)nativeDispatches.contents = 0;
+                id<MTLCommandBuffer> buffer = [queue commandBufferWithUnretainedReferences];
+                id<MTLComputeCommandEncoder> e = [buffer computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
+                [e setComputePipelineState:pipelines[0]]; [e setTexture:sInput atIndex:0];
+                [e dispatchThreads:MTLSizeMake(size,size,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)]; [e endEncoding];
+                drawPass(buffer,sInput,sTAA,renderPipelines[0]);
+                drawPass(buffer,sTAA,sBloom,renderPipelines[1]);
+                drawPass(buffer,sBloom,sGraded,renderPipelines[2]);
+                drawPass(buffer,sGraded,sTonemapped,renderPipelines[3]);
+                e = [buffer computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
+                [e setComputePipelineState:pipelines[1]]; [e setTexture:sTonemapped atIndex:0]; [e setTexture:sScaled atIndex:1];
+                [e setBuffer:nativeDispatches offset:0 atIndex:0];
+                [e dispatchThreads:MTLSizeMake(size*2,size*2,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)];
+                [e setComputePipelineState:pipelines[2]]; [e setTexture:sScaled atIndex:0]; [e setTexture:sDestination atIndex:2];
+                [e dispatchThreads:MTLSizeMake(size*2,size*2,1) threadsPerThreadgroup:MTLSizeMake(8,8,1)]; [e endEncoding];
+                [buffer commit]; [buffer waitUntilCompleted];
+                if (buffer.status != MTLCommandBufferStatusCompleted) return 32;
+                if (*(uint32_t *)nativeDispatches.contents != 2) {
+                    fprintf(stderr,"Unsettled frame %d ran %u native FSR/RCAS dispatches, expected 2\n",frame,*(uint32_t *)nativeDispatches.contents); return 33;
+                }
+                if (!readBack(sScaled,fallback)) return 34;
+                if (!check(fallback,size*2,compressed,frame ? "Native FSR input after a dropped store" : "Native FSR fallback input")) return 35;
+            }
+            if (!expectDropped(skipped ? 3 : 0,"After two fallback frames")) return 37;
+            printf("FSR_Tonemap %s on MetalFX frames; native FSR fallback frames got the compressed colour.\n",
+                skipped ? "was skipped and stored nothing" : "ran (skip disabled)");
             return 0;
         }
         if ([mode isEqualToString:@"resize"]) {

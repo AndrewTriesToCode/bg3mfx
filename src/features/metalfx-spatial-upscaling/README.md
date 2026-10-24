@@ -8,9 +8,10 @@ available. Spatial consumes BG3's linear HDR scene after bloom and color
 grading, before `FSR_Tonemap`, then returns the scaled image to BG3's normal
 tone mapping and UI path. BG3's independent anti-aliasing setting remains active unless Frame Generation is enabled;
 Spatial works with TAA, SMAA or no anti-aliasing, because it needs only the color image.
-BG3's `FSR_Tonemap` draw, whose output MetalFX does not use, is skipped; a frame
-that falls back to native FSR gets the same compression from a bg3mfx kernel
-(`BG3MFX_SKIP_FSR_TONEMAP=0` keeps the draw). Its saving is not measured.
+BG3's `FSR_Tonemap` draw, whose output MetalFX does not use, is skipped and its
+pass stores nothing; a frame that falls back to native FSR gets the same
+normalization from a bg3mfx kernel (`BG3MFX_SKIP_FSR_TONEMAP=0` keeps the
+draw). Its saving is not measured.
 
 The upscaler is implemented in
 [`SpatialUpscaler.mm`](../../../src/features/metalfx-spatial-upscaling/SpatialUpscaler.mm), using

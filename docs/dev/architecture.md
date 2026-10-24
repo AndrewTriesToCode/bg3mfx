@@ -58,15 +58,22 @@ SMAA, bloom and color grading writing that input; before this seeding, every
 SMAA frame fell back to native FSR.
 
 While Spatial or Temporal is selected and has not failed, BG3's `FSR_Tonemap`
-draw is skipped: MetalFX reads its input, and its output feeds only FSR. Its
-render pass still runs and clears the target. Whether a frame falls back to
-native FSR (size settling, mismatched resources) is known only at the FSR
-dispatch, after that pass has ended, so at a fallback dispatch `Trace.mm` first
-runs its own compute kernel with the same compression, `rgb / (1 + max(rgb))`,
-from the skipped draw's source into its target inside BG3's compute encoder, then
-restores BG3's FSR pipeline and textures. Replaying BG3's draw there would need a
-render encoder and BG3's transient uniforms. `BG3MFX_SKIP_FSR_TONEMAP=0` keeps
-the draw.
+draw is skipped: MetalFX reads its input, and its output feeds only FSR (it is
+FSR 1's reversible `rgb / (1 + max(rgb))` normalization, undone by RCAS). BG3
+gives that draw its own render pass, loading nothing (DontCare) and storing its
+one color target (October 21 Temporal capture). The pass itself stays, since BG3
+caches encoder state it believes it has set and only resets that cache when it
+ends a real encoder (a nil encoder would leave it stale), but a pass into a
+target a skipped draw has written starts with an Unknown store action that
+`endEncoding` resolves: DontCare when the FSR_Tonemap draw was skipped and
+nothing else drew or bound another pipeline, Store otherwise. Whether a frame
+falls back to native FSR (size settling, mismatched resources) is known only at
+the FSR dispatch, after that pass has ended, so at a fallback dispatch
+`Trace.mm` first runs its own compute kernel with the same normalization from the
+skipped draw's source into its target inside BG3's compute encoder, then
+restores BG3's FSR pipeline and textures. BG3's draw cannot run there: a render
+pass cannot open inside the active compute encoder. `BG3MFX_SKIP_FSR_TONEMAP=0`
+keeps the draw and the store.
 
 `Trace.mm` captures HDR scene color, device depth, motion, camera constants, and
 BG3's original jitter at the TAA stage. It copies current color into the skipped

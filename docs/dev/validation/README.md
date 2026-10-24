@@ -252,11 +252,18 @@ Synthetic, offscreen only (M5 Pro); live validation pending.
   deferred submission. With a buffer encoded and never committed, the next 40
   submissions take 0.02 s and release its inputs; before the out-of-order
   submission of dropped work, the scaler's next submission timed out on the GPU.
-- `spatial-hook-smoke tonemap` (both libraries): FSR_Tonemap's target stays
-  cleared on MetalFX frames, and a frame at an unsettled size runs native FSR on
-  the compressed colour (0.375, 0.625, 0.875) from the replacement kernel;
-  `BG3MFX_SKIP_FSR_TONEMAP=0` keeps the draw. The other Spatial and Temporal
-  hook smokes pass unchanged.
+- `spatial-hook-smoke tonemap` (both libraries): the FSR_Tonemap draw is
+  skipped, and once its target is known the pass stores nothing (two of three
+  MetalFX frames). Two frames at an unsettled size run native FSR on the
+  compressed colour (0.375, 0.625, 0.875) from the replacement kernel, the
+  second after a dropped store. `BG3MFX_SKIP_FSR_TONEMAP=0` keeps the draw and
+  drops no store. Clean under Metal API validation. The other Spatial and
+  Temporal hook smokes pass unchanged. (Under validation, `temporal-hook-smoke`
+  fails its resize retention check with the skip on or off: the validation
+  layer keeps the textures.)
+- A GPU capture (October 21, Temporal, 2304×1440 render size) shows BG3's
+  FSR_Tonemap pass loads nothing and stores its 13.2 MiB target; the dropped
+  store's saving is not measured.
 - Not yet checked live: frame time, Metal 4 Temporal and Frame Generation in
   BG3, and the fallback frames during a resize.
 
