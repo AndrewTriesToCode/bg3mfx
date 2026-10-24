@@ -127,6 +127,11 @@ $(BIN_DIR)/libBG3MetalFXTest.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BI
 	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 -DBG3MFX_STANDALONE_TEST_HOOKS=1 -dynamiclib $(RUNTIME_SOURCES) $(FRAMEWORKS) -o $@
 	codesign --force --sign - $@
 
+# Synthetic BG3/Metal 4 bridge handshake scenarios (developer probe; several
+# deliberately stall for seconds, so it is not part of make test).
+$(BIN_DIR)/bridge-handshake-sim: tools/probes/bridge_handshake_sim.mm src/common/gpu/GPUResources.mm src/common/gpu/GPUResources.h | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $< src/common/gpu/GPUResources.mm $(FRAMEWORKS) -o $@
+
 $(BIN_DIR)/metalfx-probe: tools/probes/metalfx_probe.m | $(BIN_DIR)
 	xcrun clang -fobjc-arc -mmacosx-version-min=26.0 $< $(FRAMEWORKS) -o $@
 

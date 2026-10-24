@@ -564,7 +564,8 @@ static void record(NSDictionary *event) {
         [kind isEqualToString:@"temporalValidationProgress"] || [kind isEqualToString:@"temporalScalerCreated"] || [kind hasPrefix:@"frameGeneration"] || [kind isEqualToString:@"nativeMenuOption"] ||
 [kind isEqualToString:@"prepassTrim"] || [kind hasPrefix:@"cullTiming"] || [kind isEqualToString:@"redundantBinds"] ||
         [kind hasPrefix:@"threadIdling"] || [kind hasPrefix:@"uniformSlices"] || [kind hasPrefix:@"luaJumpFix"] ||
-        [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"clusterBufferGuard"] ||
+        [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"metal4BridgeStall"] ||
+        [kind isEqualToString:@"upscalingFallback"] || [kind isEqualToString:@"clusterBufferGuard"] ||
         [kind isEqualToString:@"viewportReductionPass"] || [kind hasPrefix:@"dynamicResolution"] || [kind isEqualToString:@"surfaceDebugFragment"] ||
         [kind isEqualToString:@"surfaceGrid"] || [kind isEqualToString:@"subsurfaceScale"] ||
         [kind isEqualToString:@"stencilDump"];
