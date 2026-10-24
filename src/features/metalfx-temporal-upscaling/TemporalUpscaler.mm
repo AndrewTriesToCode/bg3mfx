@@ -87,7 +87,7 @@ static void captureInputs(id<MTLCommandBuffer> buffer, id<MTLTexture> color,
     _outputWidth = outputWidth; _outputHeight = outputHeight; _lock = [NSLock new];
 
     // PPTAA's Current input is linear HDR. FSR_Tonemap compresses it later,
-    // before native FSR; only Spatial captures that bounded texture. Preserve
+    // before native FSR; both MetalFX modes take color before it. Preserve
     // HDR at both ends of Temporal for native tone mapping and UI composition.
     // MetalFX reads BG3's RG11B10 color and D32S8 depth directly and writes
     // RG11B10. These kernels only convert for diagnostic input capture, and
