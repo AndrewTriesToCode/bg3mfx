@@ -244,6 +244,22 @@ returned to their steady size within 1–3 s (`replaced`): Temporal 11 → 9 →
 allocations (18.9 → 7.8 MB), Frame Generation 7 → 4 (21.2 → 14.5 MB). The run
 before it, accidentally on the unfixed library, grew Temporal to 14.
 
+## Deferred Metal 4 submission and FSR_Tonemap skip (October 24, 2026)
+
+Synthetic, offscreen only (M5 Pro); live validation pending.
+- The Metal 4 bridge now submits after BG3 commits the buffer it encoded into.
+  `metal4-bridge-smoke` passes eight in-flight frames with immediate and
+  deferred submission. With a buffer encoded and never committed, the next 40
+  submissions take 0.02 s and release its inputs; before the out-of-order
+  submission of dropped work, the scaler's next submission timed out on the GPU.
+- `spatial-hook-smoke tonemap` (both libraries): FSR_Tonemap's target stays
+  cleared on MetalFX frames, and a frame at an unsettled size runs native FSR on
+  the compressed colour (0.375, 0.625, 0.875) from the replacement kernel;
+  `BG3MFX_SKIP_FSR_TONEMAP=0` keeps the draw. The other Spatial and Temporal
+  hook smokes pass unchanged.
+- Not yet checked live: frame time, Metal 4 Temporal and Frame Generation in
+  BG3, and the fallback frames during a resize.
+
 ## Dynamic resolution probe (October 21, 2026)
 
 Goal: vary only the upscaler's input resolution per frame; output stays at the

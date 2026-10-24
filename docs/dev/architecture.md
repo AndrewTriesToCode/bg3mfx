@@ -57,6 +57,17 @@ its output) seeds the chain there. A live trace with SMAA (October 19) showed
 SMAA, bloom and color grading writing that input; before this seeding, every
 SMAA frame fell back to native FSR.
 
+While Spatial or Temporal is selected and has not failed, BG3's `FSR_Tonemap`
+draw is skipped: MetalFX reads its input, and its output feeds only FSR. Its
+render pass still runs and clears the target. Whether a frame falls back to
+native FSR (size settling, mismatched resources) is known only at the FSR
+dispatch, after that pass has ended, so at a fallback dispatch `Trace.mm` first
+runs its own compute kernel with the same compression, `rgb / (1 + max(rgb))`,
+from the skipped draw's source into its target inside BG3's compute encoder, then
+restores BG3's FSR pipeline and textures. Replaying BG3's draw there would need a
+render encoder and BG3's transient uniforms. `BG3MFX_SKIP_FSR_TONEMAP=0` keeps
+the draw.
+
 `Trace.mm` captures HDR scene color, device depth, motion, camera constants, and
 BG3's original jitter at the TAA stage. It copies current color into the skipped
 TAA output and tracks that color through native bloom, color grading, and outline
@@ -85,6 +96,14 @@ Temporal uses `MTL4FXTemporalScaler` on devices reporting `supportsMetal4FX:`;
 other devices retain `MTLFXTemporalScaler`. A dedicated Metal 4 queue waits on
 an event signaled after BG3 produces the scaler inputs, then signals another
 event that BG3's original Metal 3 buffer waits on before consuming the output.
+The Metal 4 work is recorded during BG3's encoding but submitted from the
+`commit` hook, after BG3 commits that buffer: a queue-level wait has no
+per-command-buffer form, so work submitted earlier would hold the whole Metal 4
+queue on a buffer BG3 had not committed yet, or never would. A buffer BG3 drops
+uncommitted is detected when a later one commits (BG3 commits in order); its
+Metal 4 work is then submitted without the wait, because the MetalFX scaler
+stalls its next submission if any command buffer it encoded into never runs.
+When committing a buffer would not reach the hook, the work is submitted at once.
 Per-submission residency and feedback-owned resources preserve GPU lifetimes.
 This does not convert BG3's renderer or presentation to Metal 4. See the
 [Metal 4 audit](validation/metal4-temporal.md) for the API/model distinction and

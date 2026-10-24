@@ -20,7 +20,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Runs Metal 4 FX work between earlier and later commands of a Metal 3 command
 // buffer, entirely on the GPU timeline. Allocators, command buffers, events and
-// the residency set are reused once their previous submission completes.
+// the residency set are reused once their previous submission completes. The
+// Metal 4 work is recorded at once; when BG3MFXMetal4CommitHooked reports that
+// committing the Metal 3 buffer reaches the runtime's hook, it is submitted
+// from there (BG3MFXMetal4BridgeCommitted), otherwise at once.
 @interface BG3MFXMetal4Bridge : NSObject
 - (instancetype)init NS_UNAVAILABLE;
 - (nullable instancetype)initWithDevice:(id<MTLDevice>)device label:(NSString *)label error:(NSError **)error;
@@ -36,6 +39,13 @@ NS_ASSUME_NONNULL_BEGIN
 // in flight keep their own reference, and the next one starts a new set.
 - (void)releaseResidency;
 @end
+
+// Set by the runtime: whether committing `buffer` reaches its commit hook,
+// which then calls BG3MFXMetal4BridgeCommitted. Unset or NO: submit at once.
+extern "C" BOOL (*_Nullable BG3MFXMetal4CommitHooked)(id<MTLCommandBuffer> buffer);
+// Call right after committing a Metal 3 command buffer: submits the Metal 4
+// work bridges recorded into it. A no-op for buffers without any.
+extern "C" void BG3MFXMetal4BridgeCommitted(id<MTLCommandBuffer> buffer);
 
 // Every build: GPU start and end of each Metal 4 bridge submission (MetalFX
 // work on its own queue), for dynamic resolution's GPU-busy measurement.

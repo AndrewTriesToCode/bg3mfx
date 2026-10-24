@@ -10,6 +10,10 @@ auxiliary views retain BG3's TAA. Upscaled scenes use quality-dependent
 14/18/24/32-phase Halton jitter, and the Dynamic quality
 ([dynamic resolution](../dynamic-resolution/README.md)) ceil(8 / area) phases;
 other views keep the native eight-phase table.
+BG3's `FSR_Tonemap` draw is skipped as for
+[Spatial](../metalfx-spatial-upscaling/README.md). With the Metal 4 scaler, the
+MetalFX work is submitted to its own queue once BG3 commits the frame's command
+buffer (see [architecture](../../../docs/dev/architecture.md)).
 
 The feature implementation is in
 [`TemporalUpscaler.mm`](../../../src/features/metalfx-temporal-upscaling/TemporalUpscaler.mm),

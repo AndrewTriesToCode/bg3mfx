@@ -1,4 +1,5 @@
 #import "common/gpu/GPUResources.h"
+#import <objc/runtime.h>
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
@@ -8,6 +9,7 @@ static std::atomic<NSUInteger> poolAllocations{0};
 extern "C" NSUInteger BG3MFXTexturePoolAllocations(void) { return poolAllocations.load(); }
 #endif
 extern "C" void (*BG3MFXGPUWorkHook)(double, double) = nullptr;
+extern "C" BOOL (*BG3MFXMetal4CommitHooked)(id<MTLCommandBuffer>) = nullptr;
 #ifndef BG3MFX_NO_TRACE
 extern "C" void (*BG3MFXGPUTimingHook)(NSString *, double) = nullptr;
 extern "C" void (*BG3MFXResidencyHook)(NSString *, NSUInteger, uint64_t, NSUInteger, BOOL) = nullptr;
@@ -98,6 +100,27 @@ static NSError *resourceError(NSString *reason) {
 @implementation BG3MFXMetal4Slot
 @end
 
+// A recorded Metal 4 submission waiting for BG3 to commit its buffer: `submit`
+// queues it behind BG3's signal; `orphan` runs it without that wait, for a
+// buffer BG3 dropped uncommitted (see -resolveThrough:).
+@interface BG3MFXMetal4Pending : NSObject
+@property(nonatomic) BG3MFXMetal4Bridge *bridge;
+@property(nonatomic, copy) void (^submit)(void);
+@property(nonatomic, copy) void (^orphan)(void);
+@end
+@implementation BG3MFXMetal4Pending
+@end
+@interface BG3MFXMetal4Bridge ()
+- (void)resolveThrough:(BG3MFXMetal4Pending *)pending;
+@end
+static char pendingSubmissionsKey;
+extern "C" void BG3MFXMetal4BridgeCommitted(id<MTLCommandBuffer> buffer) {
+    NSArray<BG3MFXMetal4Pending *> *pending=objc_getAssociatedObject(buffer,&pendingSubmissionsKey);
+    if (!pending) return;
+    objc_setAssociatedObject(buffer,&pendingSubmissionsKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    for (BG3MFXMetal4Pending *submission in pending) [submission.bridge resolveThrough:submission];
+}
+
 @implementation BG3MFXMetal4Bridge {
     id<MTLDevice> _device;
     id<MTL4CommandQueue> _queue;
@@ -105,6 +128,8 @@ static NSError *resourceError(NSString *reason) {
     NSString *_label;
     std::mutex _mutex;
     NSMutableArray<BG3MFXMetal4Slot *> *_free;
+    // Recorded submissions not yet on the queue, in encode order.
+    NSMutableArray<BG3MFXMetal4Pending *> *_unresolved;
     // Submission count, and the last submission that used each member of
     // _residency (keyed by identity; the set keeps every key alive).
     uint64_t _submissions;
@@ -124,7 +149,7 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
     if (!(self=[super init])) return nil;
     auto descriptor=[MTL4CommandQueueDescriptor new]; descriptor.label=label;
     _device=device; _label=[label copy]; _queue=[device newMTL4CommandQueueWithDescriptor:descriptor error:error];
-    _free=[NSMutableArray array];
+    _free=[NSMutableArray array]; _unresolved=[NSMutableArray array];
     if (!_queue) { if (error && !*error) *error=resourceError(@"Could not create the Metal 4 queue."); return nil; }
     return self;
 }
@@ -227,6 +252,21 @@ static constexpr double StallSeconds = 0.5, StallReportDelay = 5;
     std::lock_guard<std::mutex> lock(_mutex);
     _residency = nil; _lastUse.clear();
 }
+// Queues `pending` and, first, every submission recorded before it that is
+// still unresolved. BG3 commits buffers in order, so those buffers were dropped
+// and will never signal; MetalFX still needs every command buffer it encoded
+// to run, in order (skipping one stalls its next submission), so they run
+// without the wait. Their frames are discarded anyway.
+- (void)resolveThrough:(BG3MFXMetal4Pending *)pending {
+    NSArray<BG3MFXMetal4Pending *> *dropped;
+    { std::lock_guard<std::mutex> lock(_mutex);
+      NSUInteger index=[_unresolved indexOfObjectIdenticalTo:pending];
+      if (index==NSNotFound) return;
+      dropped=[_unresolved subarrayWithRange:NSMakeRange(0,index)];
+      [_unresolved removeObjectsInRange:NSMakeRange(0,index+1)]; }
+    for (BG3MFXMetal4Pending *orphan in dropped) { orphan.orphan(); orphan.submit=nil; orphan.orphan=nil; }
+    pending.submit(); pending.submit=nil; pending.orphan=nil;
+}
 - (BOOL)encodeIntoBuffer:(id<MTLCommandBuffer>)buffer allocations:(NSArray<id<MTLAllocation>> *)allocations
                 retained:(NSArray *)retained encode:(void (^)(id<MTL4CommandBuffer>))encode
                  failure:(void (^)(NSError *))failure error:(NSError **)error {
@@ -283,10 +323,35 @@ static constexpr double StallSeconds = 0.5, StallReportDelay = 5;
         if (completed.status==MTLCommandBufferStatusError && event.signaledValue<ready) event.signaledValue=ready;
     }];
     [buffer encodeSignalEvent:slot.event value:ready];
-    [_queue waitForEvent:slot.event value:ready];
-    [_queue commit:&commands count:1 options:options];
-    [_queue signalEvent:slot.event value:done];
     [buffer encodeWaitForEvent:slot.event value:done];
+    // Submit only once BG3 commits `buffer` (BG3MFXMetal4BridgeCommitted, from
+    // the commit hook). Submitted earlier, the queue would wait on a signal
+    // from a buffer BG3 might never commit and stall every later submission
+    // for 4 s. Without the hook nothing would submit and `buffer` would wait
+    // for `done` until the GPU times it out (a scheduled handler does not run
+    // in time), so then submit at once.
+    id<MTL4CommandQueue> queue=_queue;
+    BG3MFXMetal4Pending *pending=[BG3MFXMetal4Pending new];
+    pending.bridge=self;
+    pending.submit=^{
+        id<MTL4CommandBuffer> submitted=commands;
+        [queue waitForEvent:event value:ready];
+        [queue commit:&submitted count:1 options:options];
+        [queue signalEvent:event value:done];
+    };
+    pending.orphan=^{
+        id<MTL4CommandBuffer> submitted=commands;
+        [queue commit:&submitted count:1 options:options];
+        [queue signalEvent:event value:done];
+    };
+    { std::lock_guard<std::mutex> lock(_mutex); [_unresolved addObject:pending]; }
+    if (!BG3MFXMetal4CommitHooked || !BG3MFXMetal4CommitHooked(buffer)) { [self resolveThrough:pending]; return YES; }
+    NSMutableArray *submissions=objc_getAssociatedObject(buffer,&pendingSubmissionsKey);
+    if (!submissions) {
+        submissions=[NSMutableArray array];
+        objc_setAssociatedObject(buffer,&pendingSubmissionsKey,submissions,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    [submissions addObject:pending];
     return YES;
 }
 @end
