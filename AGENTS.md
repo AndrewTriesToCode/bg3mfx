@@ -35,6 +35,7 @@
 
 ## Development and tests
 
+- Never push commits upstream without first checkign with the user.
 - Never edit README.md without first checking with the user.
 - Use available skills and capabilities such as gpucapture and gputrace.
 - `make` builds the quiet runtime and the `bg3mfx` launcher. `make test` runs
@@ -64,6 +65,7 @@
 - Keep Steam running.
 - Skip the launcher and intro if possible.
 - Give user instructions on how to interface with app to get the data you need. Do not control the app.
+- When starting from your own process the game gets a niceness penalty impacting performance. Do not do that.
 
 ## Local installation
 
