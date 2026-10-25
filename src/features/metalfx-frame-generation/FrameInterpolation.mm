@@ -73,7 +73,13 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
     d.colorTextureFormat=color; d.outputTextureFormat=MTLPixelFormatRGBA16Float;
     d.depthTextureFormat=depth; d.motionTextureFormat=MTLPixelFormatRG16Float;
     if (color!=MTLPixelFormatRGBA16Float) {
+        // The macOS 26 SDK (Homebrew builds on macOS 26) lacks this property;
+        // such builds always take the copied-scene path below.
+#if defined(__MAC_27_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_27_0
         if (@available(macOS 27.0, *)) d.requiresPrevColorTexture=NO; else return NO;
+#else
+        return NO;
+#endif
     }
     _effect=_effect3=nil; _effect4=nil;
     if ([MTLFXFrameInterpolatorDescriptor supportsMetal4FX:_device]) {
@@ -94,7 +100,11 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
     // Prefer reading BG3's own textures. MetalFX accepts its scene and depth
     // formats; any input it cannot read as-is is converted into a pooled copy.
     BOOL sceneDirect=scene && !scene.framebufferOnly && scene.width==ow && scene.height==oh;
+#if defined(__MAC_27_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_27_0
     if (@available(macOS 27.0, *)) {} else sceneDirect=NO;
+#else
+    sceneDirect=NO;
+#endif
     BOOL depthDirect=depth && depth.width==w && depth.height==h;
     if (sceneDirect || depthDirect) {
         NSError *ignored=nil;

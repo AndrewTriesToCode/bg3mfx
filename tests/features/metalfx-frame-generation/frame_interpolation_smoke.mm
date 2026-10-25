@@ -17,7 +17,10 @@ int main() { @autoreleasepool {
         : [[BG3MFXFrameInterpolation alloc] initWithDevice:device width:128 height:128 outputWidth:256 outputHeight:256 error:&error];
     if (!effect) { fprintf(stderr,"%s\n",error.description.UTF8String);return 2; }
     if (direct) {
-        BOOL sceneExpected=NO; if (@available(macOS 27.0, *)) sceneExpected=YES;
+        BOOL sceneExpected=NO;
+#if defined(__MAC_27_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_27_0
+        if (@available(macOS 27.0, *)) sceneExpected=YES;
+#endif
         if (effect.directColor!=sceneExpected || !effect.directDepth || !effect.directMotion) {
             fprintf(stderr,"direct inputs not used: color %d depth %d motion %d\n",effect.directColor,effect.directDepth,effect.directMotion);return 8;
         }
