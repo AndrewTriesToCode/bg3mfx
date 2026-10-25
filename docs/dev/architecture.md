@@ -338,9 +338,9 @@ does not alter the app bundle.
 - `build/bin/`: disposable compiled launchers, libraries, tests, and probes.
 - `build/evidence/<date>-<experiment>/`: retained captures, traces, and pixel-test
   images. New diagnostic traces and temporal quality runs use dated folders.
-- Other existing `build/` paths are retained historical artifacts and downloaded
-  references, including `build/profiling/` (formerly `perf/data/`). Cleanup never
-  removes these. Never place game assets in tracked folders.
+- `build/analysis/baseline/`: retained unmodded-game baseline evidence.
+- Other `build/` paths (`build/profiling/`, downloaded references) are local
+  only; `make clean` never removes them. Never place game assets in tracked folders.
 - `docs/dev/performance.md`: renderer and CPU performance measurements.
 
 Use source-root include paths (for example `common/gpu/GPUResources.h`) with

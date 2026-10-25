@@ -76,9 +76,8 @@ Temporal MSE is 12–22% of bilinear MSE in these cases for either API. This sho
 no quality gain from changing the public command-buffer API on this OS/device;
 it does not prove equality for all inputs or identify the exact neural model.
 
-`gpucapture` captured the full standalone comparison through process exit:
-`build/temporal-quality/metal3-metal4-api-comparison.gputrace`, 85 MiB.
-`gpudebug` confirms separate `MTLFXTemporalScaler` and `MTL4FXTemporalScaler`
+`gpucapture` captured the full standalone comparison through process exit (an
+85 MiB trace, since deleted). `gpudebug` confirms separate `MTLFXTemporalScaler` and `MTL4FXTemporalScaler`
 property/encode calls. This capture exposes the effects as opaque calls, not
 internal neural kernels. Do not claim matching kernels from it. Metal 3 output
 readback was fetchable; Metal 4 buffer replay reported empty data, so a replayed
@@ -93,8 +92,7 @@ Quiet/diagnostic renderer-hook tests also pass API validation. The retained
 Metal 3 path passes its selection, pixel, reset and invalid-input checks under
 the diagnostic override. Older hardware has not been physically tested.
 
-Evidence stays in ignored `build/temporal-quality/`, including API comparison
-logs/readbacks and `metal4-*-validation.log`. The separate historical private
+The comparison logs and readbacks have since been deleted. The separate historical private
 MetalFX shader-validation fault is not declared resolved by these API checks.
 
 ## Live validation

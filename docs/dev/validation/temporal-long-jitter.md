@@ -76,13 +76,12 @@ and Temporal geometry seams are also not an expected target of this change.
 
 ## Live result
 
-`build/temporal-quality/long-jitter-live-v3.jsonl` records successful installation
+A diagnostic trace recorded successful installation
 in PID 10309 and 2,106 world-view samples using 24 phases at Balanced in the
 initial audit. Every recorded longer-sequence sample matches its native frame
 index modulo phase count. The world renders at 1505×847 for 2560×1440 output.
 
-`build/temporal-quality/long-jitter-inventory.gputrace` is a three-frame capture,
-4.0 GiB on disk. Despite its requested filename, the inspected capture contains
+A three-frame capture (4.0 GiB, since deleted) was also taken. Despite its requested filename, the inspected capture contains
 world rendering, not a separate inventory-preview pass; do not cite it as new
 GPU proof of inventory routing. It records MetalFX jitter pairs
 (0.3125, -0.3519), (-0.1875, -0.01852), (0.0625, 0.3148), with `setReset:0` in

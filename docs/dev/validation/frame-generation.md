@@ -6,8 +6,8 @@ acceptance status is maintained in the [validation index](README.md).
 
 ## Scope
 
-Frame Generation is the "MetalFX Frame Generation" checkbox, shown after the
-upscaling controls on supported devices, and combines with every Upscaling Type
+Frame Generation is the "MetalFX Frame Generation" checkbox, shown below VSync
+on supported devices, and combines with every Upscaling Type
 (see [architecture](../architecture.md#frame-generation)). Clearing it releases
 the interpolator and presentation worker. Earlier settings migrate to the
 checkbox: the Temporal-only checkbox of the first builds, and the later
@@ -19,8 +19,9 @@ History: the first build offered an independent checkbox for all four upscalers.
 Off/FSR/Spatial relied on native TAA supplying camera, depth, and motion, and
 AA-off had no inputs. A Temporal-only checkbox followed. In live use it could
 show checked while dimmed under another upscaler, and the HUD kept reporting
-interpolation after unchecking because the idle effect stayed allocated. The
-dropdown entry removes both mismatches.
+interpolation after unchecking because the idle effect stayed allocated.
+Upscaling Type entries replaced it, then the current checkbox for every type,
+which releases the effect when cleared.
 
 The FPS limiter continues controlling rendered frames. Frame interpolation
 attempts to insert one additional display frame between successive real frames;
@@ -76,11 +77,11 @@ choppier):
   frame's display time plus half the frame interval. The real image is presented
   at the generated image's measured display time plus half an interval.
 - Live pacing measurements drove two changes. Waiting for display inside the
-  worker slowed BG3 to about 13 fps (`build/fg-pacing-1.jsonl`), so the worker
+  worker slowed BG3 to about 13 fps, so the worker
   no longer waits for display with vsync on. `presentDrawable:atTime:` rounds to
   the display refresh even when BG3's vsync is off. Every present landed 16.7 or
   33.3 ms apart on the user's 60 Hz Studio Display, capping BG3 at about 24 real
-  fps against about 55 with Temporal alone (`build/fg-pacing-2.jsonl`). With
+  fps against about 55 with Temporal alone. With
   vsync off (`displaySyncEnabled == NO`) the worker now commits both copies at
   once and presents each drawable itself with `-present` at its time. The vsync-on
   path keeps `presentDrawable:atTime:`. Neither path is validated live yet.
@@ -111,8 +112,7 @@ choppier):
   hook records BG3's later changes instead of applying them, and the latest one
   is restored on leaving the entry. The fixture checks the two/three limits and
   the restore. Recommended setting: vsync on with Frame Generation.
-- Vsync off, Upscaling Off, no FPS limiter (diagnostic trace, October 13,
-  `build/fg-vsyncoff.jsonl`): BG3 rendered about 20 fps without Frame Generation
+- Vsync off, Upscaling Off, no FPS limiter (diagnostic trace, October 13): BG3 rendered about 20 fps without Frame Generation
   and about 19 with it (frames every ~52 ms; interpolation 5-6 ms GPU; BG3 never
   waited on stand-ins). The HUD showed about 10 "rendered" fps, so its rendered
   figure is unreliable with the unsynced `-present` path. Motion was very choppy:
@@ -247,54 +247,20 @@ from the synthetic tests.
 - `frame_interpolation_smoke.mm` runs GPU-produced private scene/depth/motion
   through Metal 4 interpolation, checks finite static output with preserved
   history and rejects invalid inputs. Metal API validation passes on M5 Pro.
-- `frame_generation_hook_smoke.mm` steps through menu choices 0, 1, 2, 3, 4, 4,
-  4, 3, 4 and follows BG3's order: present before `CombineUI`. Choices 0–3 must
-  receive real drawables, produce no pair and leave no worker; FSR still runs its
-  two native dispatches. Choice 4 must receive a stand-in, and its generated
-  composite must match BG3's real composite for the static scene (observed
-  difference 0). The worker must submit the pair to real drawables. The third
-  consecutive choice-4 frame must allocate no pooled textures. The layer is
+- `frame_generation_hook_smoke.mm` steps through every Upscaling Type with and
+  without the checkbox (choices 0–3 without, 4–7 with) and follows BG3's order:
+  present before `CombineUI`. Without Frame Generation a frame must receive a real
+  drawable, produce no pair and leave no worker; FSR still runs its two native
+  dispatches. With it, BG3 must receive a stand-in, and the generated composite
+  must match BG3's real composite for the static scene (observed difference 0).
+  The worker must submit the pair to real drawables. The third consecutive Frame
+  Generation frame must allocate no pooled textures. The layer is
   unattached: this proves the stand-in, hook and worker handoff, not display or
   pacing. Both runtimes pass, with and without Metal API validation, in ten
   repeated runs.
 - `spatial_hook_smoke.mm` now also requires that Spatial frames after the first
   allocate no textures. Temporal, Spatial and Metal 4 bridge tests pass under
   Metal API validation with pooled resources.
-
-### Live presentation audit
-
-The first live run (`build/frame-generation-live-2.*`) confirmed the former
-checkbox's insertion before ID 83 and Metal 4 interpolation at 2258×1270 depth/motion input and 3840×2160
-scene/output, but zero presentation submissions. The user reported normal
-response but slow performance: extra GPU work without displayed interpolation.
-
-A bounded audit (`build/frame-generation-presentation-audit.jsonl`) spent its
-budget at the main menu and was inconclusive. A second audit counted only after
-the first encoded pair (`build/fg-audit-2.jsonl`, Temporal, Metal API
-validation). Across 360 encoded pairs: 359 present calls, all
-`presentDrawable:`, zero matched a pair, and 359 pairs were encoded on a buffer
-that had already presented. All 64 logged presents were on buffers that later
-encoded a pair, and every logged late pair targeted the exact drawable already
-presented. This rules out a separate present path or command buffer: BG3
-presents before `CombineUI`. The deferred-present change addresses this. It
-was then tested live.
-
-### Live display results (Temporal checkbox build)
-
-`build/fg-live-4.jsonl`: all 742 encoded pairs reached the presentation worker.
-`build/fg-live-5.jsonl` added presented handlers: 1,167 generated and 1,166 real
-worker drawables were shown, 33/34 dropped (about 97% displayed). In steady play
-the display received about 38 drawables/s against about 19 rendered frames/s;
-displayed intervals were P10 14–17 ms, P50 19–24 ms, P90 22–30 ms. That pacing
-is uneven. The user reports the Metal HUD's FPS roughly equal to its rendered FPS
-and no visible smoothness change. The HUD and presented-handler evidence
-disagree, and an on/off HUD comparison is still pending. `build/fg-live-6.jsonl`
-shows encoding stopped whenever the checkbox was cleared or Spatial selected.
-These runs were launched from the user's Terminal; a launch from a process
-without Documents access starts BG3 with a blank profile.
-
-Moving-scene image quality and pacing remain pending. Logs remain ignored in
-`build/`.
 
 ### 2026-10-19 chain breaks found in a live diagnostic trace
 

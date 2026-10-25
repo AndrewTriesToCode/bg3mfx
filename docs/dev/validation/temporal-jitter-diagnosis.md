@@ -57,26 +57,22 @@ gradientY * deltaSampleY` on interior, smooth depth pixels gives:
 All seven checked transitions agree in sign. This is a first-order fit affected
 by animation and depth discontinuities, not an exact offset estimator. Combined
 with the independent reconstruction fixture, it identifies the adapter error.
-The earlier history note's conclusion that same-sign depth shifts argued against
+An earlier note's conclusion that same-sign depth shifts argued against
 a sign reversal was incorrect: it confused sampling and image displacement.
 
 The same 16 captured game frames were replayed with legacy and corrected
 conversions. Purple rune strokes are visibly cleaner after correction. The
 sequence was captured while loading/exposure was settling, so it does not prove
 stationary convergence in a fully settled game. The comparison uses identical
-inputs and no sharpening. Local artifacts:
-
-- `build/temporal-quality/20261011-120744/inputs/`: unchanged HDR/depth/motion inputs.
-- `build/temporal-quality/replay-before/` and `replay-after/`: raw RGBA16Float outputs.
-- `build/temporal-quality/runes-jitter-before-after.png`: native-size crops;
-  identical diagnostic Reinhard plus gamma preview, not BG3's final tone mapper.
-- `build/temporal-quality/regression/`: analytic native-reference, bilinear, and
-  Temporal PPM comparisons at both scales, stationary and moving.
+inputs and no sharpening. The captured inputs, replay outputs and crops have
+since been deleted. `make test` regenerates the analytic native-reference,
+bilinear, and Temporal PPM comparisons (both scales, stationary and moving)
+under a dated `build/evidence/` folder.
 
 Replay diagnostics are test-only:
 
 ```sh
-BG3MFX_REPLAY_SEQUENCE=1 BG3MFX_REPLAY_FRAMES=16 BG3MFX_REPLAY_JITTER_SIGN=-1 BG3MFX_REPLAY_OUTPUT=build/temporal-quality/replay-after ./build/temporal-replay-smoke build/temporal-quality/20261011-120744/inputs/frame-0
+BG3MFX_REPLAY_SEQUENCE=1 BG3MFX_REPLAY_FRAMES=16 BG3MFX_REPLAY_JITTER_SIGN=-1 BG3MFX_REPLAY_OUTPUT=OUT_DIR build/bin/temporal-replay-smoke INPUTS/frame-0
 ```
 
 The sign override applies only to historical metadata containing the old
@@ -86,9 +82,8 @@ conversion. New diagnostic captures already contain the corrected conversion.
 
 The user launched the unmodified bundle with `MTL_CAPTURE_ENABLED=1`, selected
 Continue/Temporal/Balanced, and kept the saved camera. `gpucapture` recorded
-eight layer frames from PID 8058; `gpudebug` inspected the resulting capture:
-`build/temporal-quality/live-temporal-balanced.gputrace` (about 11 GiB downloaded
-GPU data). This capture predates the fix.
+eight layer frames from PID 8058; `gpudebug` inspected the resulting capture
+(about 11 GiB, since deleted). This capture predates the fix.
 
 - Input: 1129×635, RG11B10Float HDR → private RGBA16Float, exact integer copy.
 - Original device depth: 1129×635 Depth32Float_Stencil8 → private R32Float;

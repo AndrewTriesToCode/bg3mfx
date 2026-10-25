@@ -5,8 +5,10 @@ the active Mac implementation; see the [architecture](../architecture.md) and
 [current validation status](../validation/README.md).
 
 The licensed Steam download on 2026-10-10 contains `bin/bg3.exe`,
-`bin/bg3_dx11.exe`, and `bin/nvngx_dlss.dll`. These files stay in ignored
-`build/windows-reference`; they are reference inputs, not distributable tool assets.
+`bin/bg3_dx11.exe`, and `bin/nvngx_dlss.dll`. `tools/reference/download-windows-reference.command`
+downloads them into ignored `build/windows-reference` (it needs DepotDownloader
+in `build/depotdownloader/`); they are reference inputs, not distributable tool
+assets.
 
 The following addresses apply only to this downloaded DirectX 11 executable,
 using its preferred image base `0x140000000`. They are not Mac patch addresses.

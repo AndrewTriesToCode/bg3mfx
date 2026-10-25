@@ -97,7 +97,6 @@ build/bin/bg3mfx --dry-run`.
 
 - [Architecture and behavior contracts](architecture.md)
 - [Current validation status and next checks](validation/README.md)
-- [Temporal image-quality plan](temporal-quality-plan.md)
 - [macOS renderer reference](reference/mac-renderer.md)
 - [Windows DLSS research](reference/windows-dlss.md)
 

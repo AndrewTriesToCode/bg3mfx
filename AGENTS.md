@@ -57,8 +57,7 @@
   ARM64 runtime UUID `3B6F6492-114E-3EA2-BC64-DFDDBD361434`.
 - Read [architecture](docs/dev/architecture.md) and
   [current validation](docs/dev/validation/README.md) before changing the
-  renderer. Historical experiments are under
-  `docs/dev/validation/history/` and may have been superseded.
+  renderer.
 
 ## Live BG3 tests
 

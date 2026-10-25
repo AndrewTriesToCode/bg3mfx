@@ -1,7 +1,7 @@
 # Current validation status
 
-Updated October 21, 2026. This page is the active record. Detailed dated notes
-are archived under [`history/`](history/).
+Updated October 24, 2026. This page is the active record. Raw traces and
+captures it cites stay local in ignored `build/` and may no longer exist.
 
 ## Shadow Rendering Optimizations
 
@@ -164,25 +164,6 @@ before any real velocity target has shown the usage to copy. Frame Generation no
 presents those frames unpaired; the `startup-reset` variant checks that the
 first real frame creates the only interpolator.
 
-## CPU worker threads (removed)
-
-BG3 sizes its job system as N high- plus N low-priority workers, N = min(cores -
-3, available cores, 6). The title "(6 + 6 WT)" reflects the hard cap of 6, set in
-`CoreLibSDM::Init` at `0x1064b728c`. An opt-in launcher flag replaced the cap
-with half the available cores (9 + 9 on the 18-core M5 Pro). The user found it
-did not help and it was removed. The scheduler, thread names and worker bounds
-check allow 16 per priority if this is revisited.
-
-## Native (anti-aliasing only) quality (not pursued)
-
-BG3's FSR1 scale table is `[1.3, 1.5, 1.7, 2.0]` at `0x107872d40`.
-`BaseApp::InitAPI`, `RenderFrame::Resize` and `PostProcessStep_FSR` treat any
-FSR1 mode above 3 as scale 1.0: the scene renders at output size and the FSR
-stage still runs. MetalFX Temporal creates at 1:1 on the M5 Pro (supported
-scale 1.0-3.0). A fifth "Native (Anti-Aliasing Only)" quality was prototyped
-and dropped at the user's request, since it adds GPU cost without a
-performance benefit.
-
 ## Direct MetalFX inputs
 
 Temporal and Frame Generation feed BG3's native-format textures to MetalFX
@@ -196,10 +177,6 @@ Generation with vsync Triple showed ~85.4 vs ~85.0 displayed. Both differences
 are within HUD noise. The change is kept for fewer passes and less memory, not
 for a measurable frame-rate gain; MetalFX itself (about 3.1 ms Temporal, 6.3 ms
 interpolation) dominates.
-
-Local traces, captures, samples and replay inputs under `build/` were deleted on
-October 12, 2026. Validation pages that cite those paths describe results that
-can no longer be re-inspected locally.
 
 ## Spatial without TAA (October 19, 2026)
 
@@ -277,9 +254,8 @@ the render-resolution viewport by the square root of a reduction factor at
 Viewport constant buffer from those rectangles through
 `rf::IAppStage::BindViewport*`. The shaders already apply `g_ViewportScale`,
 `g_ViewportOffset` and UV clamps (split-screen support), and TAA and SSSR carry
-previous-frame viewport values. The diagnostic `ViewportReductionProbe` set
-the factor before each frame recorded; see the
-[architecture code map](../architecture.md#code-map).
+previous-frame viewport values. A diagnostic probe set the factor before each
+frame recorded; see the [architecture code map](../architecture.md#code-map).
 
 The probe has since become the quiet-runtime Dynamic Upscaling Quality
 ([feature README](../../../src/features/dynamic-resolution/README.md)). Its
@@ -304,20 +280,20 @@ respect the reduced viewport and are fixed in the probe; everything else
 inspected rendered correctly, water included, and grass showed no problem.
 Auto-exposure, found by the later audit, is fixed the same way:
 
-- Volumetric fog history (`dcb491a`). `ls::LightingRenderStage::ExecuteWTKernel`
+- Volumetric fog history. `ls::LightingRenderStage::ExecuteWTKernel`
   saves the previous viewport for the fog reprojection (`_ReprojectData`
   `g_ViewportScale_Prev`/`g_ViewportOffset_Prev`) from view +0x2170/+0x2178,
   which stay at scale 1, offset 0, so the history was read as if it filled the
   target. The probe patches the two loads (`0x105ff8f50`, `0x105ff8f58`, in
   memory only) to read the composed render viewport at +0x21f8/+0x2200 and
   refuses to install if the original instructions differ.
-- Volumetric fog composite (`a12d631`). BG3 pairs `DeferredFog_*` with
+- Volumetric fog composite. BG3 pairs `DeferredFog_*` with
   `DefaultVS`, whose texture coordinates span the whole target, instead of
   `PPDefaultVS`, which maps them through the `_Viewport` buffer. While the probe
   is enabled those pipelines get `BG3MFXViewportFogVS`, which applies the
   `_Viewport` scale and offset (buffer 9, already bound), with `DefaultVS`'s
   interface.
-- Surfaces: blood, water and other ground fluids (`96f34a9`). Blood under
+- Surfaces: blood, water and other ground fluids. Blood under
   Temporal was blocky with a hard edge up close and vanished when zoomed out;
   it was correct whenever the probe was idle (Spatial, FSR, Frame Generation).
   Stencil dumps, constant buffers, the grid textures and the depth and normal
@@ -387,9 +363,7 @@ rectangle:
   frame, which MetalFX would treat as motion. The probe moves both divisors to
   +0x2208 (`BeginFrame` recalculates it for every view before recording, and
   every pass binds the viewport built from it), so BG3 jitters a whole rendered
-  pixel, velocity cancels exactly, and MetalFX gets BG3's jitter unscaled; the
-  earlier region-share scaling and `BG3MFX_VIEWPORT_REDUCTION_JITTER` are
-  removed. Velocity maps the previous position through the current viewport,
+  pixel, velocity cancels exactly, and MetalFX gets BG3's jitter unscaled. Velocity maps the previous position through the current viewport,
   in current rendered pixels, which stays consistent when the area changes
   between frames.
 - Bloom and DOF radius (fixed). `PostProcessStep_Bloom` and
@@ -489,8 +463,7 @@ resolution and grazing views make each quad span more ground, so the artifacts
 grow as dynamic resolution lowers the area. (An earlier note blamed a sun-facing
 cutoff; the full IR has none.) Experimental fix:
 [improved shadows](#improved-shadows-october-23-2026). Evidence:
-`build/evidence/2026-10-21-dynamic-resolution/fsr-seams.gputrace` and
-`fsr-seams-fetch/`.
+`build/evidence/2026-10-21-dynamic-resolution/fsr-seams-fetch/`.
 
 The investigation added diagnostic-only tools: per-pass viewport logging while
 reducing (`viewportReductionPass`), a surface debug fragment shader that colors
@@ -536,7 +509,7 @@ validation and tracing; this has not been compared on the quiet runtime. The
 first run's `VolumetricFogGather`/`VolumetricFogLighting` stand-in events were
 a diagnostic gap (compute `setBytes`, and passes that don't declare the
 buffer), fixed before the second run. Evidence:
-`build/evidence/2026-10-19-cc-crash/` (`trace-guard-2.jsonl`).
+`build/evidence/2026-10-19-cc-crash/` (`stderr-validation-guard-2.txt`).
 
 Live lldb tracing (diagnostic runtime, guard on) of a reproduced entry found
 the mechanism. Entering character creation loads `ecl::BasicGameObjectRenderer`
@@ -596,18 +569,6 @@ build-maintenance record below). Full Metal
 shader validation still reports invalid threadgroup loads in Apple's private
 `BBRNetAnisoGaussian` kernel, in both the analytic test and captured-input replay.
 Successful completion and finite output do not make those validation runs clean.
-
-## Cleanup refactor check
-
-The cleanup refactor rebuilt the quiet and diagnostic runtimes and passed
-`make test`: standalone Spatial/Temporal pixel checks, runtime hook checks, and
-quiet/diagnostic renderer-hook tests all succeeded with Metal GPU access. The
-reduced development-launch helper suite passed three tests. A quiet launch
-started BG3 in a 1280×800 window with the Metal HUD enabled and the app bundle
-unchanged. Screen capture was unavailable in this session, so the in-game menu
-was not visually rechecked after the launch-tool and naming cleanup. The test
-process was closed after normal quit via Apple Events failed; no settings were
-changed.
 
 ## Feature coverage
 
@@ -684,11 +645,6 @@ artifacts and licensed reference downloads remain untouched by cleanup.
 
 ## Repeatable checks
 
-The active [Temporal quality plan](../temporal-quality-plan.md) uses the user's
-latest save and saved camera as the primary comparison case. Spatial and setting
-persistence are accepted from the user's play; focus new work on Temporal image
-quality.
-
 Run the synthetic suite with:
 
 ```sh
@@ -707,12 +663,8 @@ avoid rebuilding a loaded library. Routine checks stay at the main menu. The
 already authorized Wilderness/Lower City Temporal tests may include camera
 movement and dialogue opening, without quest choices. Close BG3 after testing.
 
-## Dated history
+## Dated records
 
-- [October 10: Temporal HDR and settings integration](history/2026-10-10-temporal.md)
-- [October 11: Spatial HDR pass ordering](history/2026-10-11-spatial.md)
-- [October 11: Temporal quality inputs](history/2026-10-11-temporal-quality.md)
 - [October 11: Temporal jitter diagnosis and correction](temporal-jitter-diagnosis.md)
-- [October 11: pristine waterfall baseline](history/2026-10-11-waterfall-baseline.md)
 - [macOS renderer and menu research](../reference/mac-renderer.md)
 - [Windows DLSS research](../reference/windows-dlss.md)

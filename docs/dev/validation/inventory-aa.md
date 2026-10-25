@@ -23,11 +23,7 @@ change engine offsets, the native jitter sequence, or the installed bundle.
 
 ## GPU evidence
 
-Ignored local captures:
-
-- `build/temporal-quality/inventory-temporal.gputrace`: before fix, three frames.
-- `build/temporal-quality/inventory-temporal-fixed.gputrace`: after fix, three
-  frames, 4.1 GiB, captured from PID 9099.
+Three-frame captures before and after the fix (since deleted):
 
 Before: inventory `commands/cb2/re35` contains no TAA draw, followed by an
 injected raw-current-color copy. After: `cb2/re35/draw0`, `cb8/re35/draw0`, and

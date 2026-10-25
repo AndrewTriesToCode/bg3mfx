@@ -71,11 +71,10 @@ conversion if its format, usage, dimensions, and lifetime are suitable.
 ## Reproduction and remaining integration
 
 Launch with `BG3MFX_TRACE_CONSTANTS=1`, then run
-`python3 tools/analysis/analyze_camera_trace.py build/game-shader-layout.jsonl`.
+`python3 tools/analysis/analyze_camera_trace.py TRACE.jsonl` on the new trace.
 The analyzer uses reflected field offsets and reports projection depth checks.
-Current local evidence is in `game-shader-layout.jsonl`,
-`camera-shader-layout-report.json`, `VelocityBufferCamera_PS.ll`, and
-`LinearizeDepth-0.ll` under ignored build output.
+Local analysis output (`camera-shader-layout-report.json`,
+`VelocityBufferCamera_PS.ll`, `LinearizeDepth-0.ll`) stays in ignored `build/`.
 
 The integration now captures motion and camera data, converts the observed
 device-depth texture, encodes MetalFX in the game's command buffer, manages
@@ -101,8 +100,7 @@ and append complete lines so an injected child process cannot erase evidence
 from its parent.
 
 The revised temporal and spatial offscreen probes both completed on the live
-menu scene (Metal command buffer status 4, no error) in
-`build/game-dual-scaler-probe.jsonl`. They scaled 1280×800 to 2560×1600 into
+menu scene (Metal command buffer status 4, no error). They scaled 1280×800 to 2560×1600 into
 RGBA16Float. Temporal scaling consumed pre-TAA scene color, copied device depth,
 and actual RG16Float velocity. Spatial scaling consumed the TAA render target
 with explicit HDR color processing. Each output had 38,475 sampled RGB components,
