@@ -2,18 +2,25 @@
 
 Technical name: `render-thread-optimizations`.
 
-Enabled by default; `BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0` disables filtering. The renderer
-filters repeated fragment texture and pipeline binds. `BindFilter.h` holds the per-encoder cache and
-forwarding rules; [`Trace.mm`](../../integration/renderer/Trace.mm) applies
-them at Metal's encoder hooks. Texture references are unretained because the
+Opt-in with `BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1` (the `bg3mfx` launcher sets it);
+requires metal-hooks.
+The renderer filters repeated fragment texture and pipeline binds.
+metal-hooks' [`BindFilter.h`](../metal-hooks/BindFilter.h) holds the
+per-encoder cache and forwarding rules.
+[`RenderThreadOptimizations.mm`](RenderThreadOptimizations.mm) registers the
+feature and turns the filter on; [`MetalHooks.mm`](../metal-hooks/MetalHooks.mm)
+applies the rules inline at Metal's encoder hooks, since a call per bind would
+cost more than the filter saves. Texture references are unretained because the
 encoder owns its active bindings. Bulk texture binds forward only changed
 runs, joining changes separated by at most two unchanged slots. A range that
 does not fit the 64-slot cache is forwarded intact.
 
 The focused regression executable is
-[`bind_filter_smoke.mm`](../../../tests/features/render-thread-optimizations/bind_filter_smoke.mm).
+[`bind_filter_smoke.mm`](../../../tests/features/metal-hooks/bind_filter_smoke.mm).
 It covers repeated and nil binds, pipeline filtering, changed runs, mixed
 single and bulk binds, cache boundaries, and overflow-safe fallback.
+`prepass-trim-smoke` also runs with the filter on through the hooks
+(synthetic, offscreen), with and without the prepass trim.
 
 October 14 diagnostic counters found about 30,000 fragment texture slots and
 1,130 texture-bind calls per frame, with 92% of slots already holding the same
