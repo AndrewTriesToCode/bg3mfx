@@ -1,6 +1,8 @@
 #pragma once
 #import <Metal/Metal.h>
 
+// The new-character-crash-fix feature (requires metal-hooks).
+//
 // BG3's clustered lighting reads ClusterInfoBuffer at compute and fragment
 // buffer index 1, and ClusterAssignment writes it at compute index 6. At some
 // render sizes (live: 1796×1123 entering character creation) BG3 dispatches

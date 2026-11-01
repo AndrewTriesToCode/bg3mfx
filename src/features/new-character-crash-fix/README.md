@@ -1,9 +1,9 @@
 # Character Creation Crash Fix
 
-Technical name: `cluster-buffer-guard`.
+Technical name: `new-character-crash-fix`.
 
-Experimental. The `bg3mfx` launcher and the runtime enable it unless the
-player sets `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0`. BG3 4.1.1
+Experimental. Opt-in with `BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1`; the
+`bg3mfx` launcher sets it unless the player sets it to 0. BG3 4.1.1
 sometimes dispatches its clustered-lighting passes without binding
 `ClusterInfoBuffer`. This happens at some render sizes; live, it happened at
 1796×1123 (FSR 1.0 Ultra Quality, fullscreen 2336×1460) when entering
@@ -24,15 +24,20 @@ null entry, so BG3 skips the bind. This lasts until BG3 destroys the preview
 renderer on leaving character creation and reconfigures the main graph again.
 Why the create pass finds no buffer is not yet pinned down.
 
-[`ClusterBufferGuard.mm`](ClusterBufferGuard.mm) owns one 8 MB zero-filled
+[`NewCharacterCrashFix.mm`](NewCharacterCrashFix.mm) owns one 8 MB zero-filled
 stand-in per device. It uses shared storage and is untracked, so encoders
-don't serialize on it. [`Trace.mm`](../../integration/renderer/Trace.mm) binds
+don't serialize on it. Through metal-hooks' new-encoder hook point, it binds
 the stand-in on every new encoder BG3 creates: compute indices 1 and 6, and
 fragment index 1. A bind from BG3 replaces it, so the stand-in is only read
 where BG3 left the slot empty, and those passes see a frame with no local
-lights. Diagnostic builds hook compute buffer binds and record
-`clusterBufferGuard` events. Each event names a cluster pass that dispatched
-with the stand-in still bound, or with an explicit nil bind.
+lights. Diagnostic builds also observe compute buffer binds and dispatches and
+record `clusterBufferGuard` events. Each event names a cluster pass that
+dispatched with the stand-in still bound, or with an explicit nil bind. Pass
+names need `BG3MFX_TRACE_RENDER_CALLS=1`.
+
+[`new_character_crash_fix_smoke.mm`](../../../tests/features/new-character-crash-fix/new_character_crash_fix_smoke.mm)
+is a synthetic, offscreen check (`make test`). An unbound `ClusterAssignment`
+pass reads the zero stand-in, and the diagnostic runtime reports it.
 
 Live on October 19, at the settings that hung, the first entry into character
 creation in one run reproduced the trigger. `ClusterAssignment` and the
