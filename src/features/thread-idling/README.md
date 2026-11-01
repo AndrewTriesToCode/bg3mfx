@@ -2,8 +2,8 @@
 
 Technical name: `cpu-thread-idling`.
 
-Enabled by default; `BG3MFX_CPU_THREAD_IDLING=0` restores BG3's original idle
-loops. The feature replaces busy waits in idle workers, the worker scheduler,
+Opt-in with `BG3MFX_FEATURE_THREAD_IDLING=1` (the `bg3mfx` launcher sets it);
+without it BG3 keeps its original idle loops. The feature replaces busy waits in idle workers, the worker scheduler,
 and frame and server tick pacing with sleeps. Idle workers and the scheduler
 sleep at once; `CapFrame` sleeps in 250 µs steps, still running queued jobs
 between them, then sleeps until 200 µs before its deadline. Batch completion
@@ -27,7 +27,7 @@ For measurement, each part can be tuned at launch:
 
 The implementation is in
 [`ThreadIdling.mm`](../../../src/features/thread-idling/ThreadIdling.mm),
-installed through [`NativeMenu.mm`](../../../src/integration/menu/NativeMenu.mm).
+installed by [root](../root/README.md).
 
 Live on October 14 in Lower City, Ultra, Upscaling Off, Frame Cap off, on an
 M5 Pro, CPU power fell from 23.7 W to about 11 W with optimized idling alone;

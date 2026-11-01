@@ -238,14 +238,19 @@ static int launch(NSString *appOverride, BOOL dryRun) {
     NSNumber *hud = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("BG3MFXMetalHUD"), (__bridge CFStringRef)GameBundleID));
     NSMutableDictionary *environment = [@{
         @"DYLD_INSERT_LIBRARIES": runtime,
-        @"BG3MFX_ENABLE_METALFX": @"1",
+        @"BG3MFX_ENABLE": @"1",
         @"SteamAppId": SteamAppID,
         @"SteamGameId": SteamAppID,
         @"MTL_HUD_ENABLED": @"1",
     } mutableCopy];
     if (![hud isKindOfClass:NSNumber.class] || !hud.boolValue) environment[@"MTL_HUD_HIDDEN"] = @"1";
-    // Experimental features are on; set the variable to 0 to turn one off.
-    for (NSString *key in @[@"BG3MFX_CHARACTER_CREATION_CRASH_FIX", @"BG3MFX_REDUCE_LOCKING"])
+    // The runtime enables nothing by default; players get every feature. Set a
+    // variable to 0 to turn that feature off.
+    for (NSString *key in @[@"BG3MFX_FEATURE_METAL_HUD", @"BG3MFX_FEATURE_METALFX",
+            @"BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX", @"BG3MFX_FEATURE_IMPROVED_SHADOWS", @"BG3MFX_FEATURE_DEPTH_PREPASS",
+            @"BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS",
+            @"BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX", @"BG3MFX_FEATURE_LUA_JUMP_FIX", @"BG3MFX_FEATURE_THREAD_IDLING",
+            @"BG3MFX_FEATURE_REDUCE_LOCKING", @"BG3MFX_FEATURE_SSAO_BLUR_FIX"])
         environment[key] = NSProcessInfo.processInfo.environment[key] ?: @"1";
     NSArray *arguments = @[@"-NoLauncher", @"1"];
     if (dryRun) {

@@ -46,6 +46,35 @@ uint32_t BG3MFXBranch(uintptr_t from, uintptr_t to) {
     return 0x14000000|(uint32_t((intptr_t(to)-intptr_t(from))/4)&0x03ffffff);
 }
 
+bool BG3MFXRelocatable(uint32_t word) {
+    return (word&0x7c000000)!=0x14000000 &&  // B, BL
+        (word&0xff000010)!=0x54000000 &&      // B.cond
+        (word&0x7e000000)!=0x34000000 &&      // CBZ, CBNZ
+        (word&0x7e000000)!=0x36000000 &&      // TBZ, TBNZ
+        (word&0x1f000000)!=0x10000000 &&      // ADR, ADRP
+        (word&0x3b000000)!=0x18000000;        // LDR (literal), LDRSW, PRFM
+}
+
+void BG3MFXEncodeEntryIsland(uint32_t words[BG3MFXEntryIslandBytes / 4], uintptr_t island, uintptr_t function,
+    uint32_t first, uintptr_t hook) {
+    words[0]=0x58000050;  // ldr x16, #8
+    words[1]=0xd61f0200;  // br x16
+    memcpy(words+2,&hook,8);
+    words[4]=first;
+    words[5]=BG3MFXBranch(island+BG3MFXEntryOriginalOffset+4,function+4);
+}
+
+bool BG3MFXPatchPointer(void **slot, void *value, bool *restored) {
+    uintptr_t page=reinterpret_cast<uintptr_t>(slot)&~(uintptr_t(vm_page_size)-1);
+    *restored=false;
+    if (vm_protect(mach_task_self(),page,vm_page_size,FALSE,VM_PROT_READ|VM_PROT_WRITE|VM_PROT_COPY)!=KERN_SUCCESS) return false;
+    // One aligned store: a thread reading the slot sees the old or new pointer.
+    __atomic_store_n(slot,value,__ATOMIC_RELEASE);
+    for (int attempt=0; attempt<3 && !*restored; ++attempt)
+        *restored=vm_protect(mach_task_self(),page,vm_page_size,FALSE,VM_PROT_READ)==KERN_SUCCESS;
+    return true;
+}
+
 BG3MFXCodePatchResult BG3MFXPatchCode(const std::vector<std::pair<uintptr_t, size_t>> &ranges,
     const std::function<void()> &write) {
     const uintptr_t mask=~(uintptr_t(vm_page_size)-1);

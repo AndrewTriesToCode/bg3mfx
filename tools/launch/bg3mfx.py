@@ -28,6 +28,26 @@ def supported_build_value(name):
 
 
 SUPPORTED_EXECUTABLE_SHA256 = supported_build_value("BG3MFX_SUPPORTED_SHA256")
+# The runtime enables only the features named here (BG3MFX_FEATURE_<NAME>=1),
+# with the features they require, so a live test exercises one at a time. The
+# player launcher enables all of them.
+FEATURES = (
+    "metal-hud",
+    "metalfx",
+    "duplicate-shadow-fix",
+    "improved-shadows",
+    "depth-prepass",
+    "render-thread-optimizations",
+    "new-character-crash-fix",
+    "lua-jump-fix",
+    "thread-idling",
+    "reduce-locking",
+    "ssao-blur-fix",
+)
+
+
+def feature_variable(name):
+    return "BG3MFX_FEATURE_" + name.upper().replace("-", "_")
 SUPPORTED_VERSION = supported_build_value("BG3MFX_SUPPORTED_VERSION")
 HUD_MENU_WARNING = re.compile(
     rb"NSEventModifierFlagFunction specified to -setKeyEquivalentModifierMask: "
@@ -112,7 +132,7 @@ def default_trace_output():
     return project / "build" / "evidence" / folder / f"trace-{stamp}.jsonl"
 
 
-def launch(app_arg, diagnostic_output=None):
+def launch(app_arg, diagnostic_output=None, features=()):
     app, _, executable = bundle(app_arg)
     require_stopped(executable)
     if digest(executable) != SUPPORTED_EXECUTABLE_SHA256:
@@ -143,8 +163,12 @@ def launch(app_arg, diagnostic_output=None):
         SteamAppId="1086940",
         SteamGameId="1086940",
         MTL_HUD_ENABLED="1",
-        BG3MFX_ENABLE_METALFX="1",
+        BG3MFX_ENABLE="1",
     )
+    for name in FEATURES:
+        env.pop(feature_variable(name), None)
+    for name in features:
+        env[feature_variable(name)] = "1"
     # As the player launcher does: Metal loads its HUD only when MTL_HUD_ENABLED
     # is set at launch, so the in-game checkbox can toggle it. Start hidden
     # unless the checkbox was left on.
@@ -155,10 +179,11 @@ def launch(app_arg, diagnostic_output=None):
         env["MTL_HUD_HIDDEN"] = "1"
 
     shown = "shown" if hud else "hidden until enabled in Options"
+    print("Features: " + (", ".join(features) if features else "none"), flush=True)
     if output:
         print(f"Launching MetalFX with diagnostics; Metal HUD {shown}.", flush=True)
     else:
-        print(f"Launching the quiet MetalFX runtime; Metal HUD {shown}.", flush=True)
+        print(f"Launching the quiet runtime; Metal HUD {shown}.", flush=True)
     print("Skipping the Larian launcher with -NoLauncher 1; app bundle remains unchanged.", flush=True)
     result = run_streaming(
         [str(executable), "-NoLauncher", "1"], cwd=executable.parent, env=env
@@ -183,16 +208,19 @@ def main():
     trace = commands.add_parser("launch-trace", help="Run with diagnostic tracing enabled")
     trace.add_argument("--app", type=Path, default=DEFAULT_APP)
     trace.add_argument("--output", type=Path, help="Trace file path (defaults to build/evidence/<date>-diagnostic/)")
+    for command in (quiet, trace):
+        command.add_argument("--feature", action="append", default=[], choices=FEATURES,
+                             help="Enable a feature (repeatable); none are enabled otherwise")
     args = parser.parse_args()
 
     try:
         if args.command == "inspect":
             inspect(args.app)
         elif args.command == "launch":
-            launch(args.app)
+            launch(args.app, features=args.feature)
         else:
             output = args.output or default_trace_output()
-            launch(args.app, output)
+            launch(args.app, output, features=args.feature)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
         print("bg3mfx: " + str(error), file=sys.stderr)
         if isinstance(error, subprocess.CalledProcessError) and error.stderr:

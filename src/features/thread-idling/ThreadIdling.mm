@@ -1,4 +1,5 @@
 #include "common/native/SupportedBuild.h"
+#include "common/Feature.h"
 #import "features/thread-idling/ThreadIdling.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -140,7 +141,7 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), N
     const uint64_t capMarginUs = setting("BG3MFX_CAPFRAME_MARGIN_US", 200, 1000000);
     // A step must leave CapFrame inside its 1 ms job-check window or past it.
     const uint64_t capPollUs = setting("BG3MFX_CAPFRAME_POLL_US", 250, 1000);
-    // NativeMenu has already checked the executable UUID; also check every
+    // Root has already checked the executable UUID; also check every
     // instruction replaced or branched to.
     uintptr_t worker = workerBudget + slide, idle = capIdleYield + slide;
     if (*reinterpret_cast<const uint32_t *>(worker) != workerBudgetLoad) return fail(@"Unsupported worker idle loop.");
@@ -187,3 +188,10 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), N
                          @"capFramePollUs": @(capPollUs), @"capFrameMarginUs": @(capMarginUs)});
     return YES;
 }
+
+namespace {
+BOOL installThreadIdling(const BG3MFXFeatureContext &context, NSError **error) {
+    return BG3MFXInstallThreadIdling(context.slide, context.report, error);
+}
+}
+BG3MFX_FEATURE(threadIdlingFeature, {"thread-idling", nullptr, true, nullptr, installThreadIdling, nullptr});

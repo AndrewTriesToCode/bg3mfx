@@ -64,17 +64,27 @@ namespace Lua {
 inline constexpr uintptr_t LongjmpCall = 0x100769e8c;
 inline constexpr uintptr_t SetjmpCall = 0x100769f64;
 }
-namespace ServerPacing {
-inline constexpr uintptr_t TickStart = 0x100c8ff0c;
-inline constexpr uintptr_t World = 0x100c8ffa0;
-inline constexpr uintptr_t TickEnd = 0x100c9002c;
-inline constexpr uintptr_t Cap = 0x100c90090;
-inline constexpr uintptr_t ProcessTarget = 0x1064bd494;
-inline constexpr uintptr_t WorldTarget = 0x10638ec08;
-inline constexpr uintptr_t GettimeofdayTarget = 0x1077cce0c;
-inline constexpr uintptr_t CapTarget = 0x1064d1b8c;
+// SSAO blur fix (src/features/ssao-blur-fix/): rf::RendererCommandBuffer::
+// CompareSetAndBindConstantBuffer<ls::sb::PPSAO_Blur::blur> (0x1061085ec).
+// A changed value goes to the DynamicCB's next ring slot at once (counter
+// +0x28, slots at +0x00). With unified memory it then records op 0x08 with
+// the DynamicCB itself, and replay binds the slot of the counter at replay:
+// the frame's last write, the vertical direction, for both blur passes
+// (docs/dev/baseline/command-buffer.md). Bind is that branch, from its
+// AddCommand setup to its `b` to the tail: `mov w21, #0x8` (the op) and
+// `str x20, [x0, #0x8]` (the record's buffer) are patched to op 0x07 and a
+// call to BindIsland, which stores the slot just written: ldr w9, [x20,
+// #0x28]; and w9, w9, #0x3; ldr x9, [x20, w9, uxtw #3]; str x9, [x0, #0x8];
+// ret. The function saved x30, and x9 is free there.
+namespace SSAOBlur {
+inline constexpr uintptr_t Bind = 0x1061086c8;
+inline constexpr uint32_t BindOriginal[] = {0x91002260, 0x52800115, 0x52800501, 0x52800102, 0x940e7a50, 0xf9000414, 0x9000bb48,
+                                            0x3dc2e500, 0x3d800400, 0x52801fe8, 0x39008008, 0x39000015, 0x1400000e};
+inline constexpr size_t OpWord = 1, BufferWord = 5;
+inline constexpr uint32_t OpPatched = 0x528000f5; // mov w21, #0x7
+inline constexpr uint32_t BindIsland[] = {0xb9402a89, 0x12000529, 0xf8695a89, 0xf9000409, 0xd65f03c0};
 }
-// Dynamic resolution (src/features/dynamic-resolution/): BG3's render viewport reduction.
+// Dynamic resolution (src/features/metalfx/dynamic-resolution/): BG3's render viewport reduction.
 namespace ViewportReduction {
 inline constexpr uintptr_t StartRecordingFirst = 0x1060dbd3c;
 inline constexpr uintptr_t StartRecordingSecond = 0x1060dbe80;
@@ -152,10 +162,138 @@ inline constexpr uintptr_t SSRValidLoad = 0x10611268c, SSRValidReturn = 0x106112
 inline constexpr uint32_t SSRValidOriginal = 0x3940836b; // ldrb w11, [x27, #0x20]
 inline constexpr uint32_t SSRValidRender[] = {0x3940836b, 0x580000b0, 0x39400210, 0x34000050, 0x5280000b};
 }
+// View stage lists (src/features/custom-render-stages/). BaseApp::
+// InitFrameStages(view) passes fixed packs of AppStageType codes, one virtual
+// call each, to BaseApp::InitFrameStages(view, Span); App's vtable (the only
+// subclass) holds both. Packs are function-local statics in __TEXT,__const.
+namespace CustomRenderStages {
+inline constexpr uintptr_t AppInitSlot = 0x1086a5408;     // vtable for App + 0x10 + 0x2c0
+inline constexpr uintptr_t AppAddSpanSlot = 0x1086a5410;  // + 0x2c8
+inline constexpr uintptr_t AppInit = 0x100bd6f30;         // App::InitFrameStages(view)
+inline constexpr uintptr_t AddSpan = 0x105d1aa80;         // BaseApp::InitFrameStages(view, Span)
+inline constexpr uintptr_t FullScreenPack = 0x10789ffc0;
+inline constexpr uintptr_t ShadowPack = 0x10789ffc3;
+inline constexpr uintptr_t FirstPack = 0x10789ffc4;
+inline constexpr uintptr_t EarlyVtResolvePack = 0x10789ffcb;
+inline constexpr uintptr_t SecondPack = 0x10789ffcc;
+inline constexpr uintptr_t ThirdPack = 0x10789ffd4;
+inline constexpr uintptr_t AdditionalPack = 0x10789ffdc;
+// Stage methods features can override: the stage class's vtable entry (vtable
+// + 0x10 + slot * 8) and BG3's method in it. Slots count from the address
+// point of ls::RenderStage's primary vtable.
+struct StageMethodSlot { uint8_t type, slot; uintptr_t entry, method; };
+inline constexpr StageMethodSlot StageMethods[] = {
+    {0x03, 3, 0x10885c890, 0x105d45ac0},  // CascadedShadowMaskStage::Load
+    {0x03, 4, 0x10885c898, 0x105d48588},  // CascadedShadowMaskStage::Unload
+    {0x03, 7, 0x10885c8b0, 0x1060d914c},  // CascadedShadowMaskStage::StartRecording (RenderStage's)
+    {0x0b, 3, 0x10885dc20, 0x105dd5ae4},  // DeferredBufferStage::Load
+    {0x0b, 4, 0x10885dc28, 0x105dd8710},  // DeferredBufferStage::Unload
+    {0x0b, 5, 0x10885dc30, 0x105dd8c08},  // DeferredBufferStage::Submit
+    {0x0b, 7, 0x10885dc40, 0x105dd8cec},  // DeferredBufferStage::StartRecording
+};
+}
+namespace CustomRenderStages::Layout {
+// BaseApp's default ("default") and Fullscreen views; a view's RenderFrame,
+// whose +0x38 (RenderFrameDesc +0x28) is set for offscreen frames.
+inline constexpr size_t AppDefaultView = 0x88;
+inline constexpr size_t AppFullscreenView = 0x90;
+inline constexpr size_t ViewFrame = 0x8;
+inline constexpr size_t FrameOffscreen = 0x38;
+}
+// A pipeline record (0x2b, 0x88 bytes): the rf::PrepareDrawData that
+// SetPipelineState builds from an rf::PipelineState, from record +0x08.
+// MetalRenderer::PrepareDraw copies it into the renderer's pending state:
+// the program (BG3's ShaderID, pending +0x20e0), the depth-stencil state
+// handle (+0x20f8), the stencil reference (u32, +0x2104), the rasterizer
+// state pointer (+0x20e8) and the blend state handle (+0x20f0). AcquirePass
+// builds the Metal pipeline from the program and the blend state, which are
+// in its cache key; the depth-stencil state and rasterizer are encoder state.
+// +0x80 is the PipelineState's descriptor hash.
+namespace PipelineRecord {
+inline constexpr uint8_t Op = 0x2b;
+inline constexpr size_t Bytes = 0x88;
+inline constexpr size_t Program = 0x08, DepthState = 0x10, StencilRef = 0x18, Rasterizer = 0x20, Blend = 0x28;
+}
+
+// Custom pipeline bundles (src/features/custom-pipeline-bundles/). BG3 calls
+// a program a shader (ShaderID, CreateShader); its pieces of a pipeline are
+// made by these functions. They are internal, so the compiler dropped unused
+// parameters: the argument lists below are the ones the code takes, not the
+// symbols'. Each first instruction is moved to an island by an entry hook.
+namespace CustomPipelineBundles {
+// ls::Path::Path<STDString, _StringView>(root, prefix, name), as
+// RenderStage::LoadEngineShader calls it with root 1 and *DefaultShaderPath.
+inline constexpr uintptr_t MakePath = 0x1020cbcec;
+inline constexpr uintptr_t DestroyPath = 0x100bb6abc;            // ls::Path::~Path()
+inline constexpr uintptr_t DefaultShaderPath = 0x108af4100;      // rf::details::RendererBase::s_DefaultShaderPath
+inline constexpr uintptr_t RendererData = 0x108af4050;           // (anonymous namespace)::s_Data
+inline constexpr int EngineShaderRoot = 1;
+// rf::DataLoader::CreateShader(Path const&): reads a .bshd and has the device
+// make a program, uncached. ShaderManager::GetShader calls it for each path
+// it hasn't cached (the path's string is its cache key); `sub sp, sp, #0x150`.
+inline constexpr uintptr_t CreateShader = 0x106419d50;
+inline constexpr uint32_t CreateShaderFirst = 0xd10543ff;
+// rf::metal::GPUDevice::CreateDepthState(device, bool depth, bool write,
+// compare (MTLCompareFunction's values), bool stencil, u8 readMask, u8
+// writeMask, StencilOpDesc front, StencilOpDesc back); `sub sp, sp, #0xa0`.
+inline constexpr uintptr_t CreateDepthState = 0x106459568;
+inline constexpr uint32_t CreateDepthStateFirst = 0xd10283ff;
+// rf::metal::GPUDevice::CreateBlendState(device, srcRGB, dstRGB, rgbOp,
+// writeMask, srcAlpha, dstAlpha, alphaOp): stores the seven bytes in that
+// order at the entry's +0x00; both bools of the symbol are gone. Blending is
+// off for the invalid handle and on for any other. `sub sp, sp, #0x90`.
+inline constexpr uintptr_t CreateBlendState = 0x106459080;
+inline constexpr uint32_t CreateBlendStateFirst = 0xd10243ff;
+// rf::metal::GPUDevice::CreateRasterizerState(cull, fill, scissor, depthBias,
+// depthClip): no device; mallocs 16 bytes: cull, fill, 0, scissor, depth
+// bias, depth clip, then the invalid handle at +0x08. Never freed. `stp x24,
+// x23, [sp, #-0x40]!`.
+inline constexpr uintptr_t CreateRasterizerState = 0x106459c7c;
+inline constexpr uint32_t CreateRasterizerStateFirst = 0xa9bc5ff8;
+}
+namespace CustomPipelineBundles::Layout {
+// s_Data's GPU device, and its ObjectContainers: each with entry pages, salt
+// pages and entries per page, at +0x00, +0x08 and +0x10.
+inline constexpr size_t DataDevice = 0x2128;
+inline constexpr size_t Programs = 0x08, BlendStates = 0x1e8, DepthStates = 0x278;
+inline constexpr size_t Pages = 0x00, Salts = 0x08, PageSize = 0x10;
+inline constexpr size_t CoreLibrary = 0x840;                     // Core.metallib; +0x848 Materials.metallib
+// A program's entry and its stage functions; +0x28 is a third stage,
+// presumably compute.
+inline constexpr size_t ProgramBytes = 0x50, Vertex = 0x18, Fragment = 0x20;
+// Blend and depth-stencil entries: 16 bytes, the entry's own handle at +0x08.
+// A depth-stencil entry holds its id<MTLDepthStencilState> at +0x00; a blend
+// entry its seven bytes (Metal makes blending part of the pipeline).
+inline constexpr size_t StateBytes = 0x10;
+// ls::Path: 16 bytes, an ls::STDString. Byte +0x0f negative:
+// heap text at +0x00, length u32 at +0x08; otherwise inline text, length in
+// byte +0x0f (ResourceManager::InstantiateShader reads it so).
+inline constexpr size_t PathBytes = 0x10, PathHeapLength = 0x08, PathInlineLength = 0x0f;
+}
+
+// Improved shadows (src/features/improved-shadows/ImprovedShadows.mm): ls::CascadedShadowMaskStage's
+// kernel records into the list embedded at List. It picks this frame's
+// program from the table into Current, begins its render pass and subpass
+// (BeginRenderSubPass resets MetalRenderer's highest bound slots, not its
+// texture table), binds fragment textures 0-5 and 36, and draws.
+// GetTextureSRV(out, sceneGraph, hash, -1, 0) is called as the kernel calls
+// it; SetTextureSafe(list, sb::Binding by value, info*) records a texture
+// bind, or binds it at once when the list's byte +0x82 is set, and binds
+// GlobalRenderResources' transparent default texture for a texture it
+// doesn't know (null included). Load gets its programs with
+// ShaderManager::GetShader by name; Unload calls RemoveShader on each.
 namespace Shadows {
-inline constexpr uintptr_t FirstStageAdd = 0x105d1a7c8;
-inline constexpr uintptr_t SecondStageAdd = 0x105d1a818;
-inline constexpr uintptr_t StageType = 0x10789ffc3;
+inline constexpr uintptr_t GetTextureSRV = 0x1064410cc;
+inline constexpr uintptr_t SetTextureSafe = 0x10642c5c0;
+inline constexpr uint8_t StageType = 0x03;
+inline constexpr uint32_t GBuffer0 = 0x4c0d1b61;               // view-space normal, RG16Float
+}
+namespace Shadows::Layout {
+// Load's 12 programs: 3 quality rows (PCSS 2048, PCSS 1024, PCF 1024) of
+// 1-4 cascades. The kernel copies one to Current.
+inline constexpr size_t Programs = 0x2198, Current = 0x2190;
+inline constexpr size_t SceneGraphOwner = 0x10;
+inline constexpr size_t List = 0x30;
 }
 
 namespace Menu::Layout {
@@ -247,24 +385,20 @@ inline constexpr size_t Views = 0x42f0, ViewCount = 0x42fc, ViewRenderRect = 0x2
 inline constexpr size_t SettingsUpscaling = 0x97;
 }
 
-namespace ServerPacing::Layout {
-inline constexpr size_t Target = 0x18, Debt = 0x28;
-inline constexpr size_t WorkerTarget = 0x98, WorkerDebt = 0xa8;
-}
-
 // Reserved half-open ranges relative to HeaderPadding. Validate every island
 // against its own zero bytes before patching, in addition to these overlap checks.
 struct Island { size_t offset, bytes; };
 namespace Islands {
 inline constexpr Island Temporal{0x000, 3 * 64};
 inline constexpr Island Lua{0x700, 32};
-inline constexpr Island ServerPacing{0x800, 4 * 24};
 inline constexpr Island ThreadIdle{0x9c0, 32};
 inline constexpr Island UniformSlices{0xa00, 64};
 inline constexpr Island ViewportReduction{0xa40, 2 * 24};
 inline constexpr Island SSRHistory{0xa70, 12 * 4};
 inline constexpr Island SSRValid{0xaa0, 32};
-inline constexpr Island All[] = {Temporal, Lua, ServerPacing, ThreadIdle, UniformSlices, ViewportReduction, SSRHistory, SSRValid};
+inline constexpr Island SSAOBlur{0xac0, 24};
+inline constexpr Island CustomPipelineBundles{0xad8, 2 * 24};
+inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, ViewportReduction, SSRHistory, SSRValid, SSAOBlur, CustomPipelineBundles};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];

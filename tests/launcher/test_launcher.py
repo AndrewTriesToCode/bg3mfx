@@ -56,17 +56,19 @@ class LauncherTests(unittest.TestCase):
                 "BG3MFX_RUNTIME": str(runtime)})
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"DYLD_INSERT_LIBRARIES={runtime}", result.stdout)
-            self.assertIn("BG3MFX_ENABLE_METALFX=1", result.stdout)
+            self.assertIn("BG3MFX_ENABLE=1", result.stdout)
             self.assertIn("SteamAppId=1086940", result.stdout)
             # The HUD is always loaded so the in-game checkbox can toggle it.
             self.assertIn("MTL_HUD_ENABLED=1", result.stdout)
             self.assertIn("Arguments: -NoLauncher 1", result.stdout)
             self.assertIn("was not started", result.stdout)
-            # Experimental features are on unless the player opts out.
-            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=1", result.stdout)
-            self.assertIn("BG3MFX_REDUCE_LOCKING=1", result.stdout)
+            # Every feature is on unless the player opts out.
+            for feature in ("METAL_HUD", "METALFX", "DUPLICATE_SHADOW_FIX", "IMPROVED_SHADOWS", "DEPTH_PREPASS",
+                            "RENDER_THREAD_OPTIMIZATIONS", "NEW_CHARACTER_CRASH_FIX", "LUA_JUMP_FIX",
+                            "THREAD_IDLING", "REDUCE_LOCKING", "SSAO_BLUR_FIX"):
+                self.assertIn(f"BG3MFX_FEATURE_{feature}=1", result.stdout)
 
-    def test_experimental_features_can_be_opted_out(self):
+    def test_features_can_be_opted_out(self):
         with tempfile.TemporaryDirectory() as root:
             payload = b"pretend supported build"
             game = fake_game(root, payload=payload)
@@ -75,10 +77,10 @@ class LauncherTests(unittest.TestCase):
             result = self.run_launcher("--dry-run", "--game", str(game), env={
                 "BG3MFX_TEST_SUPPORTED_SHA256": hashlib.sha256(payload).hexdigest(),
                 "BG3MFX_RUNTIME": str(runtime),
-                "BG3MFX_REDUCE_LOCKING": "0"})
+                "BG3MFX_FEATURE_REDUCE_LOCKING": "0"})
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("BG3MFX_REDUCE_LOCKING=0", result.stdout)
-            self.assertIn("BG3MFX_CHARACTER_CREATION_CRASH_FIX=1", result.stdout)
+            self.assertIn("BG3MFX_FEATURE_REDUCE_LOCKING=0", result.stdout)
+            self.assertIn("BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1", result.stdout)
 
     def test_test_hash_override_only_applies_to_dry_runs(self):
         with tempfile.TemporaryDirectory() as root:

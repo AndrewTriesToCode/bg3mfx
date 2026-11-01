@@ -28,7 +28,15 @@ python3 tools/launch/bg3mfx.py launch
 ```
 
 This injects the quiet library from `build/bin/`, skips the Larian launcher with
-`-NoLauncher 1`, enables the Metal HUD, and leaves the app bundle unchanged. Run
+`-NoLauncher 1`, enables the Metal HUD, and leaves the app bundle unchanged.
+It enables no features unless you name them, so a live test exercises one at a
+time: `--feature depth-prepass`, repeatable, with any of `metal-hud`,
+`metalfx`, `duplicate-shadow-fix`,
+`improved-shadows`, `depth-prepass`,
+`render-thread-optimizations`, `new-character-crash-fix`, `lua-jump-fix`,
+`thread-idling`, `reduce-locking` and `ssao-blur-fix`. A feature brings the features it
+requires (custom-menu for the menu options, custom-render-stages for the shadow
+features). Shell `BG3MFX_FEATURE_*` variables are ignored. Run
 it from your own Terminal: a process without access to `~/Documents` starts BG3
 with a blank profile. To A/B a variant, build it to another path and set
 `BG3MFX_RUNTIME=/path/to/libBG3MetalFX.dylib`; read frame rates from
@@ -40,6 +48,22 @@ make build/bin/libBG3MetalFXTrace.dylib
 python3 tools/launch/bg3mfx.py launch-trace
 # Or pass --output /absolute/path/to/new-trace.jsonl
 ```
+
+A diagnostic session records only what the enabled features report, plus any
+opt-in probes. Set these before the launch command to add more:
+
+- `BG3MFX_TRACE_RENDER_CALLS=1`: every Metal call (texture binds, pipelines,
+  render passes, encoder ends, command buffers, presents, labels). BG3 binds
+  about 30,000 texture slots a frame, so this makes the game slow, and the
+  trace stops adding call events at 20,000 lines. `BG3MFX_TRACE_TEMPORAL_CHAIN`
+  and `BG3MFX_CAPTURE_WATERFALL` turn it on too.
+- `BG3MFX_TRACE_CONSTANTS=1`: camera shader constants and their reflection,
+  for `tools/analysis/analyze_camera_trace.py`, and the SSAO blur's
+  constants (`PPSAO_Blur_PS`), each snapshotted when its encoder ends.
+
+With `BG3MFX_TRACE_STAGE_LIST=1` set, a diagnostic session records each pack
+`BaseApp::InitFrameStages` passes (`stageListCall`: view, kind, pack, and
+whether it was forwarded, replaced or skipped).
 
 The unmodded Steam app bundle is at
 `/Users/acw/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app`.

@@ -1,4 +1,5 @@
 #include "common/native/SupportedBuild.h"
+#include "common/Feature.h"
 #import "features/reduce-locking/UniformSlices.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -105,7 +106,7 @@ BOOL BG3MFXInstallUniformSlices(intptr_t slide, void (*report)(NSDictionary *), 
         unsigned long long parsed = strtoull(value, &end, 10);
         if (*value && !*end && parsed >= 256 && parsed <= (1u << 20) && !(parsed % 16)) sliceBytes = parsed;
     }
-    // NativeMenu has already checked the executable UUID; also check every
+    // Root has already checked the executable UUID; also check every
     // instruction replaced.
     uintptr_t bind = Native::BindAlloc + slide, setup = Native::SetupAlloc + slide, reset = Native::FrameReset + slide;
     if (memcmp(reinterpret_cast<const void *>(bind), bindOriginal, sizeof bindOriginal) != 0 ||
@@ -154,3 +155,10 @@ BOOL BG3MFXInstallUniformSlices(intptr_t slide, void (*report)(NSDictionary *), 
                          @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
     return YES;
 }
+
+namespace {
+BOOL installReduceLocking(const BG3MFXFeatureContext &context, NSError **error) {
+    return BG3MFXInstallUniformSlices(context.slide, context.report, error);
+}
+}
+BG3MFX_FEATURE(reduceLockingFeature, {"reduce-locking", nullptr, true, nullptr, installReduceLocking, nullptr});

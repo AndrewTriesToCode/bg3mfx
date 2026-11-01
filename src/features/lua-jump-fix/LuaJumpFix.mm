@@ -1,4 +1,5 @@
 #include "common/native/SupportedBuild.h"
+#include "common/Feature.h"
 #import "features/lua-jump-fix/LuaJumpFix.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -30,7 +31,7 @@ BOOL BG3MFXInstallLuaJumpFix(intptr_t slide, void (*report)(NSDictionary *), NSE
         if (error) *error = [NSError errorWithDomain:@"BG3MFXLuaJumpFix" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
     };
-    // NativeMenu has already checked the executable UUID; also check both calls.
+    // Root has already checked the executable UUID; also check both calls.
     uintptr_t throwCall = longjmpSite + slide, protectCall = setjmpSite + slide;
     const auto *throwWords = reinterpret_cast<const uint32_t *>(throwCall - 8);
     const auto *protectWords = reinterpret_cast<const uint32_t *>(protectCall - 4);
@@ -64,3 +65,10 @@ BOOL BG3MFXInstallLuaJumpFix(intptr_t slide, void (*report)(NSDictionary *), NSE
     if (report) report(@{@"event": @"luaJumpFixInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
     return YES;
 }
+
+namespace {
+BOOL installLuaJumpFix(const BG3MFXFeatureContext &context, NSError **error) {
+    return BG3MFXInstallLuaJumpFix(context.slide, context.report, error);
+}
+}
+BG3MFX_FEATURE(luaJumpFixFeature, {"lua-jump-fix", nullptr, true, nullptr, installLuaJumpFix, nullptr});

@@ -14,13 +14,14 @@ import bg3mfx
 
 
 class LaunchTests(unittest.TestCase):
-    def run_launch(self, returncode=0, executable_hash=None, hud=False):
+    def run_launch(self, returncode=0, executable_hash=None, hud=False, features=()):
         executable = Path("/test/BG3.app/Contents/MacOS/BG3")
         runtime = Path(bg3mfx.__file__).resolve().parents[2] / "build/bin/libBG3MetalFX.dylib"
         with patch.dict(os.environ, {
             "BG3MFX_TRACE": "/test/should-not-open.jsonl",
             "BG3MFX_TRACE_CONSTANTS": "1",
             "BG3MFX_SCENE_PROBE": "1",
+            "BG3MFX_FEATURE_IMPROVED_SHADOWS": "1",
         }, clear=True), \
                 patch.object(bg3mfx, "bundle", return_value=(Path("/test/BG3.app"), {}, executable)), \
                 patch.object(bg3mfx, "require_stopped"), \
@@ -29,13 +30,16 @@ class LaunchTests(unittest.TestCase):
                 patch.object(Path, "is_file", return_value=True), \
                 patch.object(bg3mfx, "run_streaming", return_value=subprocess.CompletedProcess([], returncode)) as run, \
                 contextlib.redirect_stdout(io.StringIO()):
-            bg3mfx.launch(Path("/test/BG3.app"))
+            bg3mfx.launch(Path("/test/BG3.app"), features=features)
             self.assertEqual(run.call_args.args[0], [str(executable), "-NoLauncher", "1"])
             env = run.call_args.kwargs["env"]
             self.assertEqual(env["DYLD_INSERT_LIBRARIES"], str(runtime))
             self.assertEqual(env["MTL_HUD_ENABLED"], "1")
             self.assertEqual(env.get("MTL_HUD_HIDDEN"), None if hud else "1")
-            self.assertEqual(env["BG3MFX_ENABLE_METALFX"], "1")
+            self.assertEqual(env["BG3MFX_ENABLE"], "1")
+            # Only the requested features, never ones inherited from the shell.
+            enabled = {key for key, value in env.items() if key.startswith("BG3MFX_FEATURE_") and value == "1"}
+            self.assertEqual(enabled, {bg3mfx.feature_variable(name) for name in features})
             self.assertFalse({"BG3MFX_TRACE", "BG3MFX_TRACE_CONSTANTS", "BG3MFX_SCENE_PROBE"} & env.keys())
             return run
 
@@ -137,8 +141,12 @@ class LaunchTests(unittest.TestCase):
         self.assertRegex(output.parent.name, r"^\d{4}-\d{2}-\d{2}-diagnostic$")
         self.assertRegex(output.name, r"^trace-\d{6}-\d{6}\.jsonl$")
 
-    def test_quiet_launch_enables_features_hud_and_launcher_bypass(self):
+    def test_quiet_launch_enables_hud_and_launcher_bypass_without_features(self):
         self.run_launch()
+
+    def test_launch_enables_only_the_requested_features(self):
+        self.run_launch(features=("depth-prepass",))
+        self.run_launch(features=("metalfx", "duplicate-shadow-fix", "improved-shadows"))
 
     def test_hud_starts_shown_only_when_the_checkbox_was_left_on(self):
         self.run_launch(hud=True)
