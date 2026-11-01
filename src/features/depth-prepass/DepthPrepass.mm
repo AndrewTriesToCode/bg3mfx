@@ -16,7 +16,7 @@ std::atomic<unsigned> skipped{0}, swapped{0};
 // fragments, which the GPU's hidden-surface removal already does. If any
 // prepass variant of a stem has a fragment function (an alpha test or cutout),
 // the stem's G-buffer draws may rely on the Equal test and are left alone.
-void BG3MFXClassifyPrepass(MTLRenderPipelineDescriptor *desc, id state, BG3MFXMarkPrepassPipeline mark) {
+void BG3MFXClassifyPrepass(MTLRenderPipelineDescriptor *desc, id state, BG3MFXTagPipeline mark) {
     NSString *vertex = desc.vertexFunction.name;
     if (!state || !vertex) return;
     BOOL prepass = [vertex hasSuffix:@"_DEP_vertexMain"], gbuffer = [vertex hasSuffix:@"_DEF_vertexMain"];
@@ -72,6 +72,8 @@ TrimRole BG3MFXPrepassRole(MTLRenderPassDescriptor *desc) {
     return RoleNone;
 }
 
+// For each Equal/no-write state (a G-buffer draw tested against the prepass),
+// an otherwise identical state that tests GreaterEqual and writes depth.
 void BG3MFXPreparePrepassDepth(id device, SEL selector, MTLDepthStencilDescriptor *desc, id state, BG3MFXCreateDepthState create) {
     if (state && desc.depthCompareFunction == MTLCompareFunctionEqual && !desc.isDepthWriteEnabled) {
         MTLDepthStencilDescriptor *writes = [desc copy];
@@ -85,11 +87,20 @@ void BG3MFXPreparePrepassDepth(id device, SEL selector, MTLDepthStencilDescripto
 id BG3MFXPrepassReplacement(__unsafe_unretained id state) {
     return objc_getAssociatedObject(state,&depthReplacementKey);
 }
+BG3MFXDrawFilterAction BG3MFXPrepassDraw(uint8_t pipeline, uint8_t role, __unsafe_unretained id depthState) {
+    if (pipeline == TrimPrepassOpaque && role == RolePrepass) {
 #ifndef BG3MFX_NO_TRACE
-void BG3MFXCountPrepass(bool skip) {
-    if (skip) ++skipped; else ++swapped;
-}
+        ++skipped;
 #endif
+        return {true, nil};
+    }
+    if (pipeline != TrimGBufferOpaque || role != RoleGBuffer || !depthState) return {};
+    __unsafe_unretained id replacement = BG3MFXPrepassReplacement(depthState);
+#ifndef BG3MFX_NO_TRACE
+    if (replacement) ++swapped;
+#endif
+    return {false, replacement};
+}
 BG3MFXPrepassCounts BG3MFXDrainPrepassCounts() {
 #ifndef BG3MFX_NO_TRACE
     return {skipped.exchange(0),swapped.exchange(0)};

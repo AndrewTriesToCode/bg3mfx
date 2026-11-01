@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
         bool expectTrim = !strcmp(argv[2], "expect-trim");
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
         if (!device) return 2;
-        setenv("BG3MFX_ENABLE_METALFX", "1", 1);
+        setenv("BG3MFX_ENABLE", "1", 1);
         void *runtime = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
         if (!runtime) { fprintf(stderr, "%s\n", dlerror()); return 3; }
 
