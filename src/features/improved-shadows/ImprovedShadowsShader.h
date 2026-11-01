@@ -68,8 +68,11 @@ static float3 normalOffset(constant Lighting &l, int i, float3 normal, bool flip
     return offset;
 }
 
-// BG3's stereographic G-buffer normal, view space, rotated like the lighting pass.
+// BG3's stereographic G-buffer normal, view space, rotated like the lighting
+// pass. Zero, for no normal offset, when BG3 has no G-buffer normal and binds
+// its transparent default texture: its alpha is 0, where RG16Float reads 1.
 static float3 gbufferNormal(Inputs in, uint2 pixel) {
+    if (in.gbuffer0.read(uint2(0)).w == 0) return 0;
     float3 m = float3(in.gbuffer0.read(pixel).xy * 0x1.c71758p+1 - 0x1.c71758p+0, 1);
     float m2 = dot(m, m);
     float3 n = m2 > 0x1.29254dp+35 ? float3(0, 0, 1) : float3(m.xy * (2 / m2), 1 - 2 / m2);
@@ -185,7 +188,7 @@ fragment float BG3MFXImprovedShadows(In in [[stage_in]],
     texture2d<float> linearDepth [[texture(0)]], texture2d<float> gbuffer2 [[texture(1)]],
     depth2d_array<float> vista [[texture(2)]], depth2d_array<float> vistaDetailed [[texture(3)]],
     texture2d<float> noise [[texture(4)]], texture2d<float> gbuffer3 [[texture(5)]],
-    depth2d_array<float> shadow [[texture(36)]], texture2d<float> gbuffer0 [[texture(40)]],
+    depth2d_array<float> shadow [[texture(36)]], texture2d<float> gbuffer0 [[texture(6)]],
     sampler pointSampler [[sampler(0)]], sampler shadowSampler [[sampler(9)]],
     constant ShadowMaskParams &params [[buffer(0)]], constant Lighting &lighting [[buffer(7)]],
     constant PerCamera &camera [[buffer(11)]], constant PerView &view [[buffer(12)]],

@@ -3,13 +3,15 @@
 // - on a flat ground plane under a checkerboard of blockers, pixels well
 //   inside a blocker square are shadowed and pixels well inside an open square
 //   are lit, for both filters, at a normal and a low render size; the sky
-//   stays lit.
+//   stays lit;
+// - with BG3's transparent default texture in place of the G-buffer normal
+//   (RGBA8, alpha 0), the shader still matches without a normal offset.
 #import <Metal/Metal.h>
 #include <simd/simd.h>
 #include <cmath>
 #include <cstdio>
 #include <vector>
-#include "features/shadows/ImprovedShadowsShader.h"
+#include "features/improved-shadows/ImprovedShadowsShader.h"
 
 static constexpr int MapSize = 1024, Square = 64, Margin = 12;
 
@@ -126,7 +128,7 @@ int main() {
         id<MTLLibrary> vertexLibrary = [device newLibraryWithSource:@(vertexSource) options:nil error:&error];
         id<MTLFunction> vertex = [vertexLibrary newFunctionWithName:@"TestVS"];
         // Renders the plane at size x size and checks each pixel against the checkerboard.
-        auto run = [&](int size, bool pcss) {
+        auto run = [&](int size, bool pcss, bool normal = true) {
             std::vector<float> depth(size * size);
             for (int y = 0; y < size; ++y) for (int x = 0; x < size; ++x) {
                 float ny = 1 - (y + 0.5f) / size * 2;
@@ -136,7 +138,9 @@ int main() {
             // BG3's stereographic encoding of the view-space up normal.
             std::vector<float> normals(size * size * 2);
             for (int i = 0; i < size * size; ++i) { normals[i * 2] = 1.7777778f / 3.5555556f; normals[i * 2 + 1] = 2.7777778f / 3.5555556f; }
-            id<MTLTexture> gbuffer0 = texture(MTLPixelFormatRG32Float, size, size, normals.data(), size * 8, MTLTextureUsageShaderRead);
+            uint32_t transparent = 0;
+            id<MTLTexture> gbuffer0 = normal ? texture(MTLPixelFormatRG32Float, size, size, normals.data(), size * 8, MTLTextureUsageShaderRead) :
+                texture(MTLPixelFormatRGBA8Unorm, 1, 1, &transparent, 4, MTLTextureUsageShaderRead);
             std::vector<uint32_t> zeros(size * size);
             id<MTLTexture> gbuffer2 = texture(MTLPixelFormatRGBA8Unorm, size, size, zeros.data(), size * 4, MTLTextureUsageShaderRead);
             id<MTLTexture> gbuffer3 = texture(MTLPixelFormatRGBA8Unorm, size, size, zeros.data(), size * 4, MTLTextureUsageShaderRead);
@@ -160,7 +164,7 @@ int main() {
             [encoder setFragmentTexture:noise atIndex:4];
             [encoder setFragmentTexture:gbuffer3 atIndex:5];
             [encoder setFragmentTexture:shadow atIndex:36];
-            [encoder setFragmentTexture:gbuffer0 atIndex:40];
+            [encoder setFragmentTexture:gbuffer0 atIndex:6];
             [encoder setFragmentSamplerState:pointSampler atIndex:0];
             [encoder setFragmentSamplerState:shadowSampler atIndex:9];
             [encoder setFragmentBytes:&params length:sizeof params atIndex:0];
@@ -188,13 +192,15 @@ int main() {
                 if (blocked) { shadowed += value < 0.1f; wrong += value >= 0.1f; }
                 else { lit += value > 0.9f; wrong += value <= 0.9f; }
             }
-            printf("%s %dx%d: %d shadowed, %d lit, %d wrong, %d sky wrong\n", pcss ? "PCSS" : "PCF", size, size, shadowed, lit, wrong, skyWrong);
+            printf("%s%s %dx%d: %d shadowed, %d lit, %d wrong, %d sky wrong\n", pcss ? "PCSS" : "PCF", normal ? "" : " (no normal)", size, size, shadowed, lit, wrong, skyWrong);
             return shadowed > 0 && lit > 0 && wrong == 0 && skyWrong == 0;
         };
         check(run(64, true), "PCSS matches the checkerboard at 64x64");
         check(run(16, true), "PCSS matches the checkerboard at 16x16");
         check(run(64, false), "PCF matches the checkerboard at 64x64");
         check(run(16, false), "PCF matches the checkerboard at 16x16");
+        check(run(64, true, false), "PCSS without a normal matches the checkerboard");
+        check(run(64, false, false), "PCF without a normal matches the checkerboard");
     }
     printf(failures ? "FAILED\n" : "PASSED\n");
     return failures ? 1 : 0;
