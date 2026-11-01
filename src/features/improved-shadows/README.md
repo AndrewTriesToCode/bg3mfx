@@ -121,15 +121,16 @@ from the sun then partly shadow themselves.
   metal-hooks. It is in git history (before this change); metal-hooks keeps
   its draw-replacement API.
 
-## Planned: live check of the native path
+## Live check of the native path
 
-The native path has been checked synthetically only (below). A live check
-should show `improved shadows: ready` in the `shadow` log, the same displayed
-results as before, and in a GPU capture BG3's own pipeline with
-`BG3MFXImprovedShadows` as its fragment function and GBuffer0 at fragment
-texture 6 at the draw. The first live run (bound at slot 40 after
-`BeginRenderPass`) flashed; the StartRecording version hasn't been run live
-yet.
+November 1, 2026 (quiet runtime, displayed, M5 Pro, BG3 4.1.1.7631656, with
+metalfx and duplicate-shadow-fix): `improved shadows: ready` was logged at
+startup, and the user saw correct sun shadows, with no flashing, dotted
+lines, diamond patches or dark slopes, at High and Low Shadow Quality,
+with Upscaling Off and with MetalFX Temporal. No GPU capture was taken, so
+the pipeline and the slot-6 bind were not inspected at the draw. The first
+live run of this path (bound at slot 40 after `BeginRenderPass`) had
+flashed.
 
 ## Improvement
 
@@ -170,7 +171,7 @@ Visual, not a speed change; the cost estimate is the last item below.
     speckle or striping;
   - displayed, G-buffer normal on every pixel with no fade (this design): the
     user judged it good on terrain, foliage, decals and hair.
-- Low (PCF): synthetic only; not yet checked live.
+- Low (PCF): checked live on November 1 through the native path (above).
 - Cost: one extra texture read (RG16Float at the pixel) and its decode per
   pixel, against 16-24 shadow-map samples (PCSS) or 6-17 (PCF); BG3's
   derivative normal and quad pooling are skipped. Estimated at a few percent
