@@ -1,4 +1,4 @@
-#import "features/metalfx-frame-generation/FrameLog.h"
+#import "features/metalfx/frame-generation/FrameLog.h"
 #include <os/log.h>
 #include <algorithm>
 #include <array>

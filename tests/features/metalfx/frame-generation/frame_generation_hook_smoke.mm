@@ -18,7 +18,7 @@ int main(int argc,char **argv) { @autoreleasepool {
     // "overlays": BG3's live post-TAA chain for Off + Frame Generation: grading in place on the TAA
     // output (bloom off), the EoCSight ping-pong, and a UI model VFX blended onto the CAS output.
     bool startupReset=argc==3 && !strcmp(argv[2],"startup-reset");
-    bool hdrOutput=argc==3 && !strcmp(argv[2],"hdr"),scaledOutput=argc==3 && !strcmp(argv[2],"scaled"),overlays=argc==3 && !strcmp(argv[2],"overlays");setenv("BG3MFX_ENABLE_METALFX","1",1);
+    bool hdrOutput=argc==3 && !strcmp(argv[2],"hdr"),scaledOutput=argc==3 && !strcmp(argv[2],"scaled"),overlays=argc==3 && !strcmp(argv[2],"overlays");setenv("BG3MFX_ENABLE","1",1);setenv("BG3MFX_FEATURE_METALFX","1",1);
     void *lib=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);if(!lib){fprintf(stderr,"%s\n",dlerror());return 2;}
     auto setMode=(BOOL(*)(int))dlsym(lib,"BG3MFXSetStandaloneScalingMode");
     auto setFrameGeneration=(BOOL(*)(BOOL))dlsym(lib,"BG3MFXSetStandaloneFrameGeneration");

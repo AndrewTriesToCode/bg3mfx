@@ -4,8 +4,8 @@
 
 // Dynamic resolution: the "Dynamic" Upscaling Quality (BG3 quality 4, which
 // BG3 renders at scale 1.0) with MetalFX Temporal. It keeps a minimum frame
-// rate (NativeMenu's slider), at native resolution when it can; with
-// NativeMenu's Thermal Guard checkbox it also lowers the area while macOS
+// rate (metalfx's Upscaler Target Minimum FPS slider), at native resolution when it can; with
+// metalfx's Thermal Guard checkbox it also lowers the area while macOS
 // reports a thermal state above nominal (NSProcessInfo thermalState). Before each on-screen frame
 // records, BG3's own render-viewport reduction (RenderFrame +0x4368, otherwise
 // unused) is set from a GPU-time controller and its viewports are recalculated,
@@ -16,11 +16,10 @@
 // M-series GPUs), and stays at 1 until the Temporal integration reports it.
 // Reduces only with MetalFX Temporal and BG3's FSR stage on; otherwise the
 // reduction returns to 1. Frame Generation stretches the reduced region. Requires the UUID-checked ARM64
-// executable. BG3MFX_DYNAMIC_RESOLUTION=0 skips installation (Dynamic is then
-// not offered). Diagnostic runtime only: BG3MFX_DYNAMIC_RESOLUTION_AREA is a
+// executable. The dynamic-resolution feature, wanted with metalfx; if it
+// cannot install, root reports it skipped and MetalFX does not offer Dynamic. Diagnostic runtime only: BG3MFX_DYNAMIC_RESOLUTION_AREA is a
 // fixed area fraction ("0.5") or "min,max,seconds" for a triangle wave, used
 // with any Temporal quality instead of the controller.
-BOOL BG3MFXInstallDynamicResolution(intptr_t slide, void (*report)(NSDictionary *), NSError **error);
 BOOL BG3MFXDynamicResolutionInstalled(void);
 // BG3's settings select a Dynamic quality (or the diagnostic area override is
 // set), so Temporal scalers need dynamic input content.

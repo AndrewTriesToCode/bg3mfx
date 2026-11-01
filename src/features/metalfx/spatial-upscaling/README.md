@@ -1,6 +1,6 @@
 # MetalFX Spatial Upscaling
 
-Technical name: `metalfx-spatial-upscaling`.
+Part of the [metalfx](../README.md) feature (`BG3MFX_FEATURE_METALFX`).
 
 Adds the “MetalFX Spatial” choice to BG3's Upscaling Type menu. It is user-selected and
 defaults to BG3's native Off setting; native Off and AMD FSR 1.0 remain
@@ -14,14 +14,14 @@ normalization from a bg3mfx kernel (`BG3MFX_SKIP_FSR_TONEMAP=0` keeps the
 draw). Its saving is not measured.
 
 The upscaler is implemented in
-[`SpatialUpscaler.mm`](../../../src/features/metalfx-spatial-upscaling/SpatialUpscaler.mm), using
+[`SpatialUpscaler.mm`](../../../../src/features/metalfx/spatial-upscaling/SpatialUpscaler.mm), using
 the shared MetalFX resource code in
-[`MetalFXPipeline.mm`](../../../src/common/gpu/MetalFXPipeline.mm) and
-[`Trace.mm`](../../../src/integration/renderer/Trace.mm). Menu and saved-quality
-integration is in [`NativeMenu.mm`](../../../src/integration/menu/NativeMenu.mm).
+[`MetalFXPipeline.mm`](../../../../src/common/gpu/MetalFXPipeline.mm) and
+[`MetalFXRenderer.mm`](../MetalFXRenderer.mm). Menu and saved-quality
+integration is in [`MetalFXOptions.mm`](../MetalFXOptions.mm).
 
 No per-feature frame-rate or GPU-time gain is measured. The user confirmed
 good colors, saved settings, and improved performance versus Off, without a
 recorded matched numerical comparison. Synthetic and main-menu checks passed.
-See [architecture](../../../docs/dev/architecture.md) and
-[current validation](../../../docs/dev/validation/README.md).
+See [architecture](../../../../docs/dev/architecture.md) and
+[current validation](../../../../docs/dev/validation/README.md).

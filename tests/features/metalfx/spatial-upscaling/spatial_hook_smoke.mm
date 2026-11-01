@@ -44,7 +44,8 @@ int main(int argc, char **argv) {
         SEL plain = sel_registerName("computeCommandEncoder");
         Method method = class_getInstanceMethod(object_getClass(earlyBuffer),plain);
         baselineCompute = method_getImplementation(method);
-        setenv("BG3MFX_ENABLE_METALFX","1",1);
+        setenv("BG3MFX_ENABLE","1",1);
+        setenv("BG3MFX_FEATURE_METALFX","1",1);
         void *runtime = dlopen(argv[1],RTLD_NOW | RTLD_LOCAL);
         if (!runtime) { fprintf(stderr,"%s\n",dlerror()); return 3; }
         auto select = (BOOL(*)(int))dlsym(runtime,"BG3MFXSetStandaloneScalingMode");

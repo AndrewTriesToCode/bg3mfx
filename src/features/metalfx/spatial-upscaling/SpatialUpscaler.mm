@@ -1,4 +1,4 @@
-#import "features/metalfx-spatial-upscaling/SpatialUpscaler.h"
+#import "features/metalfx/spatial-upscaling/SpatialUpscaler.h"
 #import "common/gpu/GPUResources.h"
 
 @implementation BG3MFXSpatialUpscaler {

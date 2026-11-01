@@ -1,6 +1,7 @@
+#include "common/Feature.h"
 #include "common/native/SupportedBuild.h"
-#import "features/dynamic-resolution/DynamicResolution.h"
-#import "integration/menu/NativeMenu.h"
+#import "features/metalfx/dynamic-resolution/DynamicResolution.h"
+#import "features/metalfx/MetalFX.h"
 #include "common/native/CodePatch.h"
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -353,7 +354,7 @@ void BG3MFXDynamicResolutionGPUWork(double start, double end) {
     if (gpuIntervals.size() < 4096) gpuIntervals.emplace_back(start, end);
 }
 
-BOOL BG3MFXInstallDynamicResolution(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
+static BOOL installDynamic(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXDynamicResolution" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
@@ -484,3 +485,17 @@ BOOL BG3MFXInstallDynamicResolution(intptr_t slide, void (*report)(NSDictionary 
     if (report) report(@{@"event":@"dynamicResolutionInstalled"});
     return YES;
 }
+
+// The dynamic-resolution feature. Wanted with metalfx rather than required by
+// it, so MetalFX still starts, without the Dynamic quality, when this cannot
+// install. Installed before BG3 creates its device, so renderer pipelines see
+// the installed state.
+namespace {
+bool dynamicResolutionWanted(const BG3MFXFeatureContext &context) {
+    return context.runtimeEnabled && BG3MFXFeatureEnabled("BG3MFX_FEATURE_METALFX");
+}
+BOOL installDynamicResolution(const BG3MFXFeatureContext &context, NSError **error) {
+    return installDynamic(context.slide, context.report, error);
+}
+}
+BG3MFX_FEATURE(dynamicResolution, {"dynamic-resolution", nullptr, true, dynamicResolutionWanted, installDynamicResolution, nullptr});

@@ -1,4 +1,4 @@
-#import "features/metalfx-temporal-upscaling/TemporalUpscaler.h"
+#import "features/metalfx/temporal-upscaling/TemporalUpscaler.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

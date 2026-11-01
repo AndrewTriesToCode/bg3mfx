@@ -1,6 +1,6 @@
-#import "features/metalfx-frame-generation/FrameInterpolation.h"
+#import "features/metalfx/frame-generation/FrameInterpolation.h"
 #import "common/gpu/GPUResources.h"
-#import "features/metalfx-frame-generation/FrameLog.h"
+#import "features/metalfx/frame-generation/FrameLog.h"
 #import <MetalFX/MetalFX.h>
 #include <cmath>
 #include <thread>

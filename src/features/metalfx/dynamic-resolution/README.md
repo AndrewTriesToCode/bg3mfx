@@ -32,7 +32,10 @@ and jitter to match. Dynamic's target counts rendered frames, as BG3's Max
 Frame Rate does; Frame Generation shows twice as many. Dynamic keeps
 native resolution for 60 frames after any change of size, Upscaling Type or
 quality.
-`BG3MFX_DYNAMIC_RESOLUTION=0` skips installation, and Dynamic is then not offered.
+The dynamic-resolution feature, part of [metalfx](../README.md): root installs
+it whenever metalfx is enabled (`wanted`), without metalfx requiring it. If it
+cannot install, root reports it in `featureSkipped` and MetalFX does not offer
+Dynamic.
 
 ## Implementation
 
@@ -51,8 +54,8 @@ quality.
   - the render-rectangle loads for forward lighting clamps, bloom and DOF radii,
     and the projection jitter divisor.
 
-  See [validation](../../../docs/dev/validation/README.md#dynamic-resolution-probe-october-21-2026).
-- [`Trace.mm`](../../../src/integration/renderer/Trace.mm) does the following:
+  See [validation](../../../../docs/dev/validation/README.md#dynamic-resolution-probe-october-21-2026).
+- [`MetalFXRenderer.mm`](../MetalFXRenderer.mm) does the following:
   - accepts the reduced TAA viewport as the Temporal content region;
   - creates Dynamic Temporal scalers with `inputContentPropertiesEnabled`;
   - gives the fog composite a viewport-mapped vertex shader;
@@ -60,9 +63,9 @@ quality.
     reducing;
   - reports the GPU start and end of each of BG3's command buffers while the
     controller measures.
-- [`TemporalJitter.mm`](../../../src/features/metalfx-temporal-upscaling/TemporalJitter.mm)
+- [`TemporalJitter.mm`](../../../../src/features/metalfx/temporal-upscaling/TemporalJitter.mm)
   uses ceil(8 / area) Halton phases (8–128), about eight samples per output pixel.
-- [`NativeMenu.mm`](../../../src/integration/menu/NativeMenu.mm) does the following:
+- [`MetalFXOptions.mm`](../MetalFXOptions.mm) does the following:
   - appends Dynamic (4) after BG3 rebuilds the quality list;
   - saves it with the other MetalFX qualities. BG3 starts with its own
     quality (at most Ultra Quality), so until Video options are first built,

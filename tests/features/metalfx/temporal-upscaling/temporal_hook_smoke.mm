@@ -11,7 +11,8 @@ static id<MTLTexture> texture(id<MTLDevice> device, NSUInteger size, MTLPixelFor
 int main(int argc, char **argv) {
     @autoreleasepool {
         if (argc != 2) return 1;
-        setenv("BG3MFX_ENABLE_METALFX","1",1);
+        setenv("BG3MFX_ENABLE","1",1);
+        setenv("BG3MFX_FEATURE_METALFX","1",1);
         void *runtime = dlopen(argv[1],RTLD_NOW | RTLD_LOCAL);
         if (!runtime) { fprintf(stderr,"%s\n",dlerror()); return 2; }
         auto select = (BOOL(*)(int))dlsym(runtime,"BG3MFXSetStandaloneScalingMode");

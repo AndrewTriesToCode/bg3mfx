@@ -1,4 +1,4 @@
-#import "features/metalfx-frame-generation/FrameInterpolation.h"
+#import "features/metalfx/frame-generation/FrameInterpolation.h"
 #include <cmath>
 static id<MTLTexture> texture(id<MTLDevice> device, NSUInteger size, MTLPixelFormat format, MTLTextureUsage usage) {
     auto d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format width:size height:size mipmapped:NO];

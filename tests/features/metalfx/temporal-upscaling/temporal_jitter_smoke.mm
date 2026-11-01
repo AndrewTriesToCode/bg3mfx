@@ -1,6 +1,6 @@
 // Test-only native-layout fixtures; no BG3 code or assets are linked.
 #define BG3MFX_JITTER_TEST 1
-#import "features/metalfx-temporal-upscaling/TemporalJitter.mm"
+#import "features/metalfx/temporal-upscaling/TemporalJitter.mm"
 #import "common/native/CodePatch.mm"
 #include <cstdio>
 #include <vector>
@@ -8,6 +8,7 @@ static int mode=3;
 int BG3MFXSelectedScalingMode(void) { return mode; }
 static float area=1;
 float BG3MFXDynamicResolutionArea(void) { return area; }
+void BG3MFXShowNotice(NSString *, NSString *) {}
 extern "C" void BG3MFXTestJitterProjection(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterCamera(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterVelocity(void *,void *,void *,void *);

@@ -1,8 +1,9 @@
+#include "common/Feature.h"
 #include "common/native/SupportedBuild.h"
-#import "features/metalfx-temporal-upscaling/TemporalJitter.h"
+#import "common/Notice.h"
 #include "common/native/CodePatch.h"
-#import "integration/menu/NativeMenu.h"
-#import "features/dynamic-resolution/DynamicResolution.h"
+#import "features/metalfx/MetalFX.h"
+#import "features/metalfx/dynamic-resolution/DynamicResolution.h"
 #include <algorithm>
 #include <mach/mach.h>
 #include <mach-o/loader.h>
@@ -103,13 +104,13 @@ static void writeIsland(uintptr_t stub, uintptr_t wrapper, uintptr_t resume) {
 }
 
 extern "C" void BG3MFXJitterProjection(), BG3MFXJitterCamera(), BG3MFXJitterVelocity();
-BOOL BG3MFXInstallTemporalJitter(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
+static BOOL installJitter(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
     gameSlide=slide; reportEvent=report;
     auto fail=[&](NSString *message) { if(error) *error=[NSError errorWithDomain:@"BG3MFXTemporalJitter" code:1 userInfo:@{NSLocalizedDescriptionKey:message}]; return NO; };
     struct Site { uintptr_t address; uint32_t load; void (*wrapper)(); };
     const Site sites[]={{Native::ProjectionLoad,0xfc685923,BG3MFXJitterProjection},
         {Native::CameraLoad,0xfc685921,BG3MFXJitterCamera},{Native::VelocityLoad,0xfc685920,BG3MFXJitterVelocity}};
-    // NativeMenu has already checked the executable UUID. Validate all new
+    // Root has already checked the executable UUID. Validate all new
     // sampling sites and the classifier's vtable methods before any mutation.
     for (auto s:sites) if (*reinterpret_cast<uint32_t *>(s.address+slide)!=s.load)
         return fail(@"Unsupported native jitter sampling instructions.");
@@ -146,3 +147,18 @@ BOOL BG3MFXInstallTemporalJitter(intptr_t slide, void (*report)(NSDictionary *),
     if(report) report(@{@"event":@"temporalJitterInstalled",@"phases":@[@14,@18,@24,@32]});
     return YES;
 }
+
+// The temporal-upscaling feature: Temporal's native jitter, which metalfx
+// requires. The jitter reports each view's sample every frame.
+namespace {
+BOOL installTemporalUpscaling(const BG3MFXFeatureContext &context, NSError **error) {
+    if (installJitter(context.slide, context.trace, error)) return YES;
+    // Root then skips metalfx: without the menu options nothing selects
+    // MetalFX, so BG3 renders as usual.
+    NSString *reason = (error && *error ? (*error).localizedDescription : nil) ?: @"Temporal's jitter could not be installed.";
+    fprintf(stderr, "MetalFX could not start: %s\n", reason.UTF8String); fflush(stderr);
+    BG3MFXShowNotice(@"MetalFX could not start", [reason stringByAppendingString:@"\n\nThe game continues without MetalFX."]);
+    return NO;
+}
+}
+BG3MFX_FEATURE(temporalUpscaling, {"temporal-upscaling", nullptr, true, nullptr, installTemporalUpscaling, nullptr});

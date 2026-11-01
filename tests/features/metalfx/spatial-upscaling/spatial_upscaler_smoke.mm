@@ -1,4 +1,4 @@
-#import "features/metalfx-spatial-upscaling/SpatialUpscaler.h"
+#import "features/metalfx/spatial-upscaling/SpatialUpscaler.h"
 #include <cmath>
 
 static id<MTLTexture> texture(id<MTLDevice> device, NSUInteger width, NSUInteger height, MTLPixelFormat format) {
