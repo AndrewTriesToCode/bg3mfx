@@ -40,8 +40,10 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. |
 | **Dynamic Upscaling** | Changes MetalFX Temporal Upscaling factor in real time to maintain a minimum target FPS. |
 | **Dynamic Upscaling Thermal Guard** | Changes MetalFX Temporal Upscaling factor in real time to reduce GPU usage and heat. |
-| **Shadow Rendering Optimizations** | Fixes base game shadow rendering bugs and adds other optimizations. |
 | **Depth Prepass Optimization** | Skips some repeated work when drawing scene depth. |
+| **Duplicate Shadow Fix** | Draws the sun's shadows once per frame instead of twice. |
+| **Improved Shadows** | Replaces the sun shadow filter to fix dotted lines, diamond patches and dark slopes in shadows. |
+| **Ambient Occlusion Blur Fix** | Fixes the game's ambient occlusion blur, which on Macs smooths only vertically, so it smooths horizontally too. |
 
 ### CPU features
 
@@ -150,18 +152,22 @@ To turn off an upscaler, set **Upscaling Type** to **Off** in Options → Video.
 Untick **MetalFX Frame Generation** or **Show Metal HUD** to turn off those
 options.
 
-The other features can be disabled with these environment variables. Set the
-variable in the environment used to launch `bg3mfx`:
+`bg3mfx` turns every feature on. To turn one off, set its variable to `0` in
+the environment used to launch `bg3mfx`:
 
 | Feature | Environment variable |
 | --- | --- |
-| **Shadow Rendering Optimizations** | `BG3MFX_SHADOW_RENDERING_OPTIMIZATIONS=0` disables the feature. |
-| **Depth Prepass Optimization** | `BG3MFX_DEPTH_PREPASS_OPTIMIZATION=0` |
-| **Render Thread Optimizations** | `BG3MFX_RENDER_THREAD_OPTIMIZATIONS=0` |
-| **CPU Thread Idling** | `BG3MFX_CPU_THREAD_IDLING=0` |
-| **Lua System Call Elimination** | `BG3MFX_LUA_SYSTEM_CALL_ELIMINATION=0` |
-| **Reduced Locking** | `BG3MFX_REDUCE_LOCKING=0` |
-| **Character Creation Crash Fix** | `BG3MFX_CHARACTER_CREATION_CRASH_FIX=0` |
+| **MetalFX upscaling and Frame Generation** | `BG3MFX_FEATURE_METALFX=0` removes the MetalFX options from Options → Video, and Dynamic Resolution with them. |
+| **Duplicate Shadow Fix** | `BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=0` |
+| **Improved Shadows** | `BG3MFX_FEATURE_IMPROVED_SHADOWS=0` |
+| **Depth Prepass Optimization** | `BG3MFX_FEATURE_DEPTH_PREPASS=0` |
+| **Render Thread Optimizations** | `BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=0` |
+| **CPU Thread Idling** | `BG3MFX_FEATURE_THREAD_IDLING=0` |
+| **Lua System Call Elimination** | `BG3MFX_FEATURE_LUA_JUMP_FIX=0` |
+| **Reduced Locking** | `BG3MFX_FEATURE_REDUCE_LOCKING=0` |
+| **Character Creation Crash Fix** | `BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=0` |
+| **Ambient Occlusion Blur Fix** | `BG3MFX_FEATURE_SSAO_BLUR_FIX=0` |
+| **Metal HUD** | `BG3MFX_FEATURE_METAL_HUD=0` removes the Show Metal HUD option. |
 
 ## Uninstall
 
