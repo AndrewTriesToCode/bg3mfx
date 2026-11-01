@@ -5,7 +5,7 @@
 #include <limits>
 #include <vector>
 
-#include "features/render-thread-optimizations/BindFilter.h"
+#include "features/metal-hooks/BindFilter.h"
 
 static void check(bool condition, const char *message) {
     if (!condition) {
