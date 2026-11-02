@@ -18,9 +18,6 @@ afterwards:
 - new-encoder and render-pass observers (up to four each);
 - one draw replacement, which takes the non-indexed draws of the render
   pipelines it claims (metalfx's renderer);
-- one draw filter, which tags render pipelines and passes and, for tagged
-  pipelines' draws only, skips them or swaps the depth-stencil state for the
-  draw (depth-prepass);
 - redundant bind filtering ([`BindFilter.h`](BindFilter.h)), metal-hooks' own
   rules inline in its bind hooks, switched on by render-thread-optimizations;
 - in the diagnostic runtime, compute bind and dispatch observers.
@@ -38,12 +35,12 @@ waterfall capture.
 ## Improvement
 
 None by itself. An observer point with nothing registered costs one count
-check; an untagged draw one tag check.
+check.
 
 ## Tests
 
 [`bind_filter_smoke.mm`](../../../tests/features/metal-hooks/bind_filter_smoke.mm)
 covers the bind filter's rules. The hook regressions (`spatial-hook-smoke`,
-`temporal-hook-smoke`, `frame-generation-hook-smoke`, `prepass-trim-smoke`,
+`temporal-hook-smoke`, `frame-generation-hook-smoke`,
 `new-character-crash-fix-smoke`) run metal-hooks through both runtimes on
 synthetic offscreen draws.

@@ -30,9 +30,8 @@ python3 tools/launch/bg3mfx.py launch
 This injects the quiet library from `build/bin/`, skips the Larian launcher with
 `-NoLauncher 1`, enables the Metal HUD, and leaves the app bundle unchanged.
 It enables no features unless you name them, so a live test exercises one at a
-time: `--feature depth-prepass`, repeatable, with any of `metal-hud`,
-`metalfx`, `duplicate-shadow-fix`,
-`improved-shadows`, `depth-prepass`,
+time: `--feature thread-idling`, repeatable, with any of `metal-hud`,
+`metalfx`, `duplicate-shadow-fix`, `improved-shadows`,
 `render-thread-optimizations`, `new-character-crash-fix`, `lua-jump-fix`,
 `thread-idling`, `reduce-locking` and `ssao-blur-fix`. A feature brings the features it
 requires (custom-menu for the menu options, custom-render-stages for the shadow

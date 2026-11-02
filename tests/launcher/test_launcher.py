@@ -63,7 +63,7 @@ class LauncherTests(unittest.TestCase):
             self.assertIn("Arguments: -NoLauncher 1", result.stdout)
             self.assertIn("was not started", result.stdout)
             # Every feature is on unless the player opts out.
-            for feature in ("METAL_HUD", "METALFX", "DUPLICATE_SHADOW_FIX", "IMPROVED_SHADOWS", "DEPTH_PREPASS",
+            for feature in ("METAL_HUD", "METALFX", "DUPLICATE_SHADOW_FIX", "IMPROVED_SHADOWS",
                             "RENDER_THREAD_OPTIMIZATIONS", "NEW_CHARACTER_CRASH_FIX", "LUA_JUMP_FIX",
                             "THREAD_IDLING", "REDUCE_LOCKING", "SSAO_BLUR_FIX"):
                 self.assertIn(f"BG3MFX_FEATURE_{feature}=1", result.stdout)

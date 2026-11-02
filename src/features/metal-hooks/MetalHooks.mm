@@ -59,11 +59,6 @@ static const char *waterfallDirectory() { static const char *value = getenv("BG3
 #endif
 static NSMutableDictionary<NSString *, NSNumber *> *constantSamples;
 static NSMutableDictionary<NSString *, NSDictionary *> *shaderBufferSizes;
-// The draw filter (MetalHooks.h), e.g. depth-prepass's. Its tags are separate
-// from PipelineKind, so scene tracking still sees those pipelines as
-// unrecognized.
-static BG3MFXDrawFilter drawFilter;
-static bool filterDraws;
 #ifndef BG3MFX_NO_TRACE
 #endif
 // Bind dedup: BG3 rebinds about 27 fragment texture slots per call when about
@@ -86,12 +81,6 @@ template<class Observer> BOOL Observers<Observer>::add(Observer observer) {
     return YES;
 }
 void BG3MFXMetalHooksFilterRedundantBinds(void) { if (!hooksActive) bindDedup = runtimeEnabled; }
-BOOL BG3MFXMetalHooksFilterDraws(BG3MFXDrawFilter filter) {
-    if (hooksActive || drawFilter.draw || !filter.pipelineCreated || !filter.renderPass || !filter.draw) return NO;
-    drawFilter = filter;
-    filterDraws = runtimeEnabled;
-    return YES;
-}
 static Observers<void (*)(id, BOOL)> encoderObservers;
 BOOL BG3MFXMetalHooksOnNewEncoder(void (*observer)(id, BOOL)) { return encoderObservers.add(observer); }
 static Observers<void (*)(MTLRenderPassDescriptor *)> renderPassObservers;
@@ -452,51 +441,16 @@ void metalhooks::hook(id object, const char *name, IMP replacement) {
     originalsGeneration.fetch_add(1, std::memory_order_release);
     class_replaceMethod(cls, selector, replacement, method_getTypeEncoding(method));
 }
-static void tagPipeline(id pipeline, uint8_t tag) {
-    if (__unsafe_unretained BG3MFXPipelineInfo *info = objc_getAssociatedObject(pipeline, &pipelineKey)) info->drawTag = tag;
-}
-static void setFilteredDepth(__unsafe_unretained id encoder, __unsafe_unretained id state) {
-    SEL set = @selector(setDepthStencilState:);
-    ((void(*)(id,SEL,id))original(encoder,set))(encoder,set,state);
-}
-// One draw through the draw filter: skipped, or drawn with the filter's
-// depth-stencil state and BG3's restored after. The states are borrowed, so
-// no draw retains anything.
-struct DrawFilterScope {
-    __unsafe_unretained id encoder = nil, restore = nil;
-    bool skip = false;
-    explicit DrawFilterScope(__unsafe_unretained id self) {
-        if (!filterDraws) return;
-        __unsafe_unretained BG3MFXEncoderState *s = encoderState(self);
-        if (!s || !s->drawTag) return;
-        const BG3MFXDrawFilterAction action = drawFilter.draw(s->drawTag, s->passTag, s->depthState);
-        if (action.skip) { skip = true; return; }
-        if (!action.depthState) return;
-        setFilteredDepth(self, action.depthState);
-        encoder = self; restore = s->depthState;
-    }
-    ~DrawFilterScope() { if (encoder) setFilteredDepth(encoder, restore); }
-    DrawFilterScope(const DrawFilterScope &) = delete;
-    DrawFilterScope &operator=(const DrawFilterScope &) = delete;
-};
-static id depthStencilStateHook(id self, SEL cmd, MTLDepthStencilDescriptor *desc) {
-    id state = ((id(*)(id,SEL,id))original(self,cmd))(self,cmd,desc);
-    if (filterDraws) drawFilter.depthStateCreated(self,cmd,desc,state,(BG3MFXCreateDepthState)original(self,cmd));
-    return state;
-}
+#ifndef BG3MFX_NO_TRACE
 static void setDepthStencilHook(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
     if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(self)) {
-#ifndef BG3MFX_NO_TRACE
-        if (redundantProbe) {
-            ++redundantCounts[DepthBinds];
-            if (s->seenDepth==state) ++redundantCounts[DepthBindsRedundant];
-            s->seenDepth=state;
-        }
-#endif
-        s->depthState = state;
+        ++redundantCounts[DepthBinds];
+        if (s->seenDepth==state) ++redundantCounts[DepthBindsRedundant];
+        s->seenDepth=state;
     }
 }
+#endif
 NSDictionary *metalhooks::texture(id<MTLTexture> t) {
     if (!t) return @{};
     std::lock_guard<std::recursive_mutex> lock(guard());
@@ -641,7 +595,6 @@ static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained i
         s->pipeline=state; s->description=description;
         s->kind=info ? info->kind : 0;
         s->slowDraw=slow;
-        s->drawTag=info && filterDraws ? info->drawTag : 0;
     }
     if (traceCalls) record(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": description});
 }
@@ -700,7 +653,6 @@ static void renderPipelineCreated(id self, MTLRenderPipelineDescriptor *desc, id
         info->replaceDraws = drawReplacement.claim && drawReplacement.claim(self, desc, state, (BG3MFXCreateRenderPipeline)original(self,create));
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         pipelineGeneration.fetch_add(1, std::memory_order_release);
-        if (filterDraws) drawFilter.pipelineCreated(desc,state,tagPipeline);
     }
     if (traceCalls) record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
 }
@@ -824,29 +776,21 @@ static bool replacedDraw(__unsafe_unretained id encoder, void (^call)(void)) {
     return drawReplacement.draw(encoder,s->pipeline,s->textures[0],s->textures[1],calls,call);
 }
 static void draw(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count) {
-    DrawFilterScope filtered(self);
-    if (filtered.skip) return;
     if (replacedDrawBound(self) && replacedDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); return; }
     slowDraw(self,DrawCall{type,start,count,1,0,0,nil,0,MTLIndexTypeUInt16,false},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count); });
 }
 static void drawInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances) {
-    DrawFilterScope filtered(self);
-    if (filtered.skip) return;
     if (replacedDrawBound(self) && replacedDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); return; }
     slowDraw(self,DrawCall{type,start,count,instances,0,0,nil,0,MTLIndexTypeUInt16,false},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances); });
 }
 static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger start, NSUInteger count, NSUInteger instances, NSUInteger base) {
-    DrawFilterScope filtered(self);
-    if (filtered.skip) return;
     if (replacedDrawBound(self) && replacedDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); return; }
     slowDraw(self,DrawCall{type,start,count,instances,base,0,nil,0,MTLIndexTypeUInt16,false},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); });
 }
 static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset) {
-    DrawFilterScope filtered(self);
-    if (filtered.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); return; }
 #ifndef BG3MFX_NO_TRACE
     captureWaterfall(self,@{@"indexCount":@(count),@"indexType":@(indexType),@"indexBuffer":buffer,@"indexOffset":@(offset),@"instances":@1,@"baseVertex":@0,@"baseInstance":@0});
@@ -854,8 +798,6 @@ static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType t
     slowDraw(self,DrawCall{type,0,count,1,0,0,buffer,offset,indexType,true},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); });
 }
 static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances) {
-    DrawFilterScope filtered(self);
-    if (filtered.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); return; }
 #ifndef BG3MFX_NO_TRACE
     captureWaterfall(self,@{@"indexCount":@(count),@"indexType":@(indexType),@"indexBuffer":buffer,@"indexOffset":@(offset),@"instances":@(instances),@"baseVertex":@0,@"baseInstance":@0});
@@ -863,8 +805,6 @@ static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimit
     slowDraw(self,DrawCall{type,0,count,instances,0,0,buffer,offset,indexType,true},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); });
 }
 static void drawIndexedBase(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances, NSInteger baseVertex, NSUInteger baseInstance) {
-    DrawFilterScope filtered(self);
-    if (filtered.skip) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger,NSInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances,baseVertex,baseInstance); return; }
 #ifndef BG3MFX_NO_TRACE
     captureWaterfall(self,@{@"indexCount":@(count),@"indexType":@(indexType),@"indexBuffer":buffer,@"indexOffset":@(offset),@"instances":@(instances),@"baseVertex":@(baseVertex),@"baseInstance":@(baseInstance)});
@@ -948,7 +888,9 @@ static void instrumentEncoder(id encoder) {
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:",(IMP)drawIndexed);
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:",(IMP)drawIndexedInstances);
         hook(encoder,"drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:",(IMP)drawIndexedBase);
-        if (filterDraws) hook(encoder,"setDepthStencilState:",(IMP)setDepthStencilHook);
+#ifndef BG3MFX_NO_TRACE
+        if (redundantProbe) hook(encoder,"setDepthStencilState:",(IMP)setDepthStencilHook);
+#endif
     }
     if (traceCalls) hook(encoder,"setLabel:",(IMP)label);
 #ifndef BG3MFX_NO_TRACE
@@ -1015,7 +957,6 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     notifyNewEncoder(encoder,NO);
     for (size_t i = 0; i < renderPassObservers.count; ++i) renderPassObservers.entries[i](desc);
     flushRedundantCounts();
-    if (filterDraws && encoder) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder)) s->passTag=drawFilter.renderPass(desc);
     if (traceCalls) {
     NSMutableArray *colors = [NSMutableArray array];
     for (NSUInteger i=0; i<8; ++i) if (desc.colorAttachments[i].texture)
@@ -1190,7 +1131,6 @@ static BOOL activateMetalHooks(const BG3MFXFeatureContext &, NSError **) {
         hook(device,"newRenderPipelineStateWithDescriptor:error:",(IMP)renderPipeline);
         hook(device,"newRenderPipelineStateWithDescriptor:options:reflection:error:",(IMP)renderPipelineOptions);
         hook(device,"newComputePipelineStateWithFunction:error:",(IMP)computePipeline);
-        if (filterDraws && drawFilter.depthStateCreated) hook(device,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
         // Multiple GPUs may use different concrete driver classes.
         for (id<MTLDevice> other in MTLCopyAllDevices()) {
             hook(other,"newCommandQueue",(IMP)newQueue);
@@ -1198,7 +1138,6 @@ static BOOL activateMetalHooks(const BG3MFXFeatureContext &, NSError **) {
             hook(other,"newRenderPipelineStateWithDescriptor:error:",(IMP)renderPipeline);
             hook(other,"newRenderPipelineStateWithDescriptor:options:reflection:error:",(IMP)renderPipelineOptions);
             hook(other,"newComputePipelineStateWithFunction:error:",(IMP)computePipeline);
-            if (filterDraws && drawFilter.depthStateCreated) hook(other,"newDepthStencilStateWithDescriptor:",(IMP)depthStencilStateHook);
         }
     }
     return YES;

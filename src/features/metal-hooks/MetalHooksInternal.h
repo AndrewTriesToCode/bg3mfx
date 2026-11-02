@@ -91,11 +91,6 @@ enum EncoderAssociation : uint16_t {
     bool hasViewport, hasScissor;
     MTLViewport viewport;
     MTLScissorRect scissor;
-    // The draw filter (MetalHooks.h): the bound pipeline's tag, this pass's
-    // tag, and BG3's current depth-stencil state (held unretained, like the
-    // pipeline).
-    uint8_t drawTag, passTag;
-    __unsafe_unretained id depthState;
 #ifndef BG3MFX_NO_TRACE
     // Diagnostics (BG3MFX_TRACE_REDUNDANT=1): every binding BG3 has made in
     // this encoder, to count binds that repeat what is already bound.
@@ -127,7 +122,6 @@ enum EncoderAssociation : uint16_t {
     __strong NSDictionary *description;
     uint8_t kind;           // the renderer extension's class (0: none)
     uint8_t rendererFlags;  // and its flags
-    uint8_t drawTag;        // the draw filter's tag (0: not filtered)
     // Its non-indexed draws go through the draw replacement.
     bool replaceDraws;
 }

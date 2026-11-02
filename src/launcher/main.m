@@ -247,7 +247,7 @@ static int launch(NSString *appOverride, BOOL dryRun) {
     // The runtime enables nothing by default; players get every feature. Set a
     // variable to 0 to turn that feature off.
     for (NSString *key in @[@"BG3MFX_FEATURE_METAL_HUD", @"BG3MFX_FEATURE_METALFX",
-            @"BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX", @"BG3MFX_FEATURE_IMPROVED_SHADOWS", @"BG3MFX_FEATURE_DEPTH_PREPASS",
+            @"BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX", @"BG3MFX_FEATURE_IMPROVED_SHADOWS",
             @"BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS",
             @"BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX", @"BG3MFX_FEATURE_LUA_JUMP_FIX", @"BG3MFX_FEATURE_THREAD_IDLING",
             @"BG3MFX_FEATURE_REDUCE_LOCKING", @"BG3MFX_FEATURE_SSAO_BLUR_FIX"])

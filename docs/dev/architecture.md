@@ -332,9 +332,8 @@ does not alter the app bundle.
   It owns hook installation, shared encoder state and original-method
   dispatch; `MetalHooks.h` is its interface for features and
   `MetalHooksInternal.h` the private one for metalfx's renderer. It includes
-  no feature's header: depth-prepass's rules reach it through the draw filter,
-  and the bind filter (`BindFilter.h`) is its own, switched on by
-  render-thread-optimizations.
+  no feature's header: the bind filter (`BindFilter.h`) is its own, switched
+  on by render-thread-optimizations.
 - Standalone probes and analysis programs live under `tools/probes/` and
   `tools/analysis/`.
 - `src/launcher/` and `packaging/homebrew/`: the player launcher and formula.
@@ -430,10 +429,8 @@ only for a feature that adds options to it (metal-hud, metalfx).
   every process (also outside BG3, for the hook regressions); it hooks Metal
   at activation, after the menu and the native patches. Features that require
   it register with its hook points (`MetalHooks.h`) from their install: a
-  new-encoder observer, a render-pass observer, one draw replacement, one
-  draw filter (pipeline and pass tags, then skip or a depth-stencil swap for
-  tagged draws only), and in the diagnostic runtime compute bind and
-  dispatch observers. Each point holds up to four observers in a fixed array,
+  new-encoder observer, a render-pass observer, one draw replacement, and in
+  the diagnostic runtime compute bind and dispatch observers. Each point holds up to four observers in a fixed array,
   read without locks; with none registered the cost is one count check.
 - `src/common/native/CodePatch.*`: shared in-memory code patching (header-padding branch
   islands, branch range checks, all-or-nothing page protection) and read-only
@@ -470,11 +467,6 @@ only for a feature that adds options to it (metal-hud, metalfx).
   programs' paths and depth-stencil states' settings; blend and rasterizer
   settings are read from BG3's own copies. See
   [DeferredBufferStage's hook points](baseline/deferred-buffer-stage.md#hook-points-for-the-merge).
-- `src/features/depth-prepass/DepthPrepass.*` implements Depth Prepass Optimization (`BG3MFX_FEATURE_DEPTH_PREPASS=1`, requires metal-hooks): vertex-only opaque prepass draws are skipped and
-  their G-buffer draws write depth. `DepthPrepassFeature.mm` registers its
-  rules (`BG3MFXClassifyPrepass`, `BG3MFXPrepassRole`,
-  `BG3MFXPreparePrepassDepth`, `BG3MFXPrepassDraw`) as metal-hooks' draw
-  filter (`BG3MFXMetalHooksFilterDraws`).
 - `src/features/render-thread-optimizations/` filters redundant binds (`BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1`, requires metal-hooks): fragment texture slots and pipelines
   already bound in the encoder are not forwarded to the driver. The rules
   are metal-hooks' (`src/features/metal-hooks/BindFilter.h`), inline in its

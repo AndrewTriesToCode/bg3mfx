@@ -19,14 +19,12 @@ The focused regression executable is
 [`bind_filter_smoke.mm`](../../../tests/features/metal-hooks/bind_filter_smoke.mm).
 It covers repeated and nil binds, pipeline filtering, changed runs, mixed
 single and bulk binds, cache boundaries, and overflow-safe fallback.
-`prepass-trim-smoke` also runs with the filter on through the hooks
-(synthetic, offscreen), with and without the prepass trim.
 
 October 14 diagnostic counters found about 30,000 fragment texture slots and
 1,130 texture-bind calls per frame, with 92% of slots already holding the same
 texture; 12% of pipeline binds repeated the active pipeline. Live A/B on an
 M5 Pro, Ultra, Upscaling Off, and windowed, with the duplicate-shadow fix and
-depth-prepass trim enabled, changed 83.1 to 84.0 fps at about 10.7 ms GPU time.
+depth-prepass trim (since removed) enabled, changed 83.1 to 84.0 fps at about 10.7 ms GPU time.
 CPU samples showed render-thread driver time down about 25% per frame and
 texture binds down 72%. The scene remained mostly GPU-limited, so the FPS
 change is small and within scene noise; CPU-heavier scenes may benefit more,

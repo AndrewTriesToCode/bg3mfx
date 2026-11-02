@@ -40,7 +40,6 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. |
 | **Dynamic Upscaling** | Changes MetalFX Temporal Upscaling factor in real time to maintain a minimum target FPS. |
 | **Dynamic Upscaling Thermal Guard** | Changes MetalFX Temporal Upscaling factor in real time to reduce GPU usage and heat. |
-| **Depth Prepass Optimization** | Skips some repeated work when drawing scene depth. |
 | **Duplicate Shadow Fix** | Draws the sun's shadows once per frame instead of twice. |
 | **Improved Shadows** | Replaces the sun shadow filter to fix dotted lines, diamond patches and dark slopes in shadows. |
 | **Ambient Occlusion Blur Fix** | Fixes the game's ambient occlusion blur, which on Macs smooths only vertically, so it smooths horizontally too. |
@@ -160,7 +159,6 @@ the environment used to launch `bg3mfx`:
 | **MetalFX upscaling and Frame Generation** | `BG3MFX_FEATURE_METALFX=0` removes the MetalFX options from Options → Video, and Dynamic Resolution with them. |
 | **Duplicate Shadow Fix** | `BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=0` |
 | **Improved Shadows** | `BG3MFX_FEATURE_IMPROVED_SHADOWS=0` |
-| **Depth Prepass Optimization** | `BG3MFX_FEATURE_DEPTH_PREPASS=0` |
 | **Render Thread Optimizations** | `BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=0` |
 | **CPU Thread Idling** | `BG3MFX_FEATURE_THREAD_IDLING=0` |
 | **Lua System Call Elimination** | `BG3MFX_FEATURE_LUA_JUMP_FIX=0` |

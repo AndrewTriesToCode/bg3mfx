@@ -36,7 +36,6 @@ FEATURES = (
     "metalfx",
     "duplicate-shadow-fix",
     "improved-shadows",
-    "depth-prepass",
     "render-thread-optimizations",
     "new-character-crash-fix",
     "lua-jump-fix",
