@@ -10,7 +10,7 @@
 
 namespace {
 BOOL installMetalFX(const BG3MFXFeatureContext &context, NSError **) {
-    BG3MFXInstallMetalFXOptions(context.report, context.slide);
+    BG3MFXInstallMetalFXOptions(context.slide);
     return YES;
 }
 BOOL activateMetalFX(const BG3MFXFeatureContext &, NSError **) {

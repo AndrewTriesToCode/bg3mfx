@@ -1,5 +1,6 @@
 #include "common/native/SupportedBuild.h"
 #include "common/Feature.h"
+#import "common/EventLog.h"
 #import "features/ssao-blur-fix/SSAOBlurFix.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -19,7 +20,7 @@ const size_t islandOffset = BG3MFXBuild::Islands::SSAOBlur.offset, islandBytes =
 static_assert(sizeof Native::BindIsland <= BG3MFXBuild::Islands::SSAOBlur.bytes, "the SSAO blur island fits its reservation");
 }
 
-BOOL BG3MFXInstallSSAOBlurFix(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
+BOOL BG3MFXInstallSSAOBlurFix(intptr_t slide, NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXSSAOBlurFix" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
@@ -43,13 +44,13 @@ BOOL BG3MFXInstallSSAOBlurFix(intptr_t slide, void (*report)(NSDictionary *), NS
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the SSAO blur binding writable.");
     // Written but not executable again: report it as installed, not skipped.
-    if (report) report(@{@"event": @"ssaoBlurFixInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
+    BG3MFX_EVENT(@{@"event": @"ssaoBlurFixInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
     return YES;
 }
 
 namespace {
 BOOL installSSAOBlurFix(const BG3MFXFeatureContext &context, NSError **error) {
-    return BG3MFXInstallSSAOBlurFix(context.slide, context.report, error);
+    return BG3MFXInstallSSAOBlurFix(context.slide, error);
 }
 }
 BG3MFX_FEATURE(ssaoBlurFixFeature, {"ssao-blur-fix", nullptr, true, nullptr, installSSAOBlurFix, nullptr});

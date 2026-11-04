@@ -1,4 +1,5 @@
 #include "common/native/SupportedBuild.h"
+#import "common/EventLog.h"
 #import "features/custom-render-stages/CustomRenderStages.h"
 #include "common/Feature.h"
 #include "common/native/CodePatch.h"
@@ -91,7 +92,6 @@ constexpr size_t MaxStages = 128;
 
 const uint8_t *packs[PackCount];  // where the running build keeps each pack
 AddSpan original;                 // BaseApp::InitFrameStages(view, Span)
-void (*reportEvent)(NSDictionary *);
 bool traceCalls, installed;
 struct List { std::string feature; std::vector<uint8_t> codes; };
 List lists[BG3MFXViewKindCount];  // indexed by BG3MFXViewKind; empty codes means BG3's packs
@@ -129,8 +129,8 @@ BG3MFXViewKind classify(void *app, void *view) {
     return BG3MFXViewKind::Player;
 }
 void trace(void *view, BG3MFXViewKind kind, int pack, const Span *span, NSString *action) {
-    if (!traceCalls || !reportEvent) return;
-    reportEvent(@{@"event":@"stageListCall", @"view":@((uintptr_t)view), @"kind":@(kindNames[size_t(kind)]),
+    if (!traceCalls) return;
+    BG3MFX_EVENT(@{@"event":@"stageListCall", @"view":@((uintptr_t)view), @"kind":@(kindNames[size_t(kind)]),
         @"pack":pack == Unknown ? @"unknown" : @(packInfo[pack].name), @"codes":@(span->end - span->begin), @"action":action});
 }
 // A registered list is added once, on the pack that opens the view's sequence,
@@ -159,8 +159,8 @@ void dispatch(void *app, void *view, BG3MFXViewKind kind, const Span *span) {
     } else if (pack == Unknown) {
         // A caller or pack this build's checks don't know: BG3's call, unchanged.
         static std::atomic<bool> reported{false};
-        if (!reported.exchange(true) && reportEvent)
-            reportEvent(@{@"event":@"stageListUnknownSpan", @"kind":@(kindNames[size_t(kind)]), @"codes":@(span->end - span->begin)});
+        if (!reported.exchange(true))
+            BG3MFX_EVENT(@{@"event":@"stageListUnknownSpan", @"kind":@(kindNames[size_t(kind)]), @"codes":@(span->end - span->begin)});
     }
     // A kind without a list, or a known pack outside an opened sequence.
     trace(view, kind, pack, span, @"forwarded");
@@ -249,7 +249,7 @@ BOOL BG3MFXOverrideStageMethod(uint8_t type, BG3MFXStageMethod method, const cha
 namespace {
 // Checks every overridden entry before changing any, then writes them; if a
 // write fails, the ones already written are put back.
-BOOL patchStageMethods(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
+BOOL patchStageMethods(intptr_t slide, NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXCustomRenderStages" code:2 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
@@ -271,18 +271,18 @@ BOOL patchStageMethods(intptr_t slide, void (*report)(NSDictionary *), NSError *
         restored = restored && pageRestored;
     }
     methodsPatched = true;
-    if (report) {
-        NSMutableArray *list = [NSMutableArray array];
-        for (const Override &o : overrides)
-            [list addObject:@{@"feature":@(o.feature.c_str()), @"type":@(o.slot->type), @"slot":@(o.slot->slot)}];
-        report(@{@"event":@"stageMethodsInstalled", @"overrides":list, @"protectionRestored":@(restored)});
-    }
+#ifndef BG3MFX_NO_TRACE
+    NSMutableArray *list = [NSMutableArray array];
+    for (const Override &o : overrides)
+        [list addObject:@{@"feature":@(o.feature.c_str()), @"type":@(o.slot->type), @"slot":@(o.slot->slot)}];
+    BG3MFX_EVENT(@{@"event":@"stageMethodsInstalled", @"overrides":list, @"protectionRestored":@(restored)});
+#endif
     return YES;
 }
 }
 
 namespace {
-BOOL installShim(intptr_t slide, bool trace, void (*report)(NSDictionary *), NSError **error) {
+BOOL installShim(intptr_t slide, bool trace, NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXCustomRenderStages" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
@@ -302,7 +302,7 @@ BOOL installShim(intptr_t slide, bool trace, void (*report)(NSDictionary *), NSE
     // the slot is App's own copy of the method, so BaseApp's vtable is left
     // alone. __DATA_CONST is read-only; BG3MFXPatchPointer opens the page,
     // stores the pointer atomically and makes it read-only again.
-    reportEvent = report; traceCalls = trace;
+    traceCalls = trace;
     original = reinterpret_cast<AddSpan>(*slot);
     bool restored = false;
     if (!BG3MFXPatchPointer(slot, reinterpret_cast<void *>(addSpan), &restored))
@@ -311,7 +311,7 @@ BOOL installShim(intptr_t slide, bool trace, void (*report)(NSDictionary *), NSE
     NSMutableDictionary *owners = [NSMutableDictionary dictionary];
     for (size_t i = 0; i < BG3MFXViewKindCount; ++i)
         if (!lists[i].codes.empty()) owners[@(kindNames[i])] = @(lists[i].feature.c_str());
-    if (report) report(@{@"event":@"stageListInstalled", @"lists":owners, @"trace":@(trace), @"protectionRestored":@(restored)});
+    BG3MFX_EVENT(@{@"event":@"stageListInstalled", @"lists":owners, @"trace":@(trace), @"protectionRestored":@(restored)});
     return YES;
 }
 
@@ -329,9 +329,9 @@ bool customRenderStagesWanted(const BG3MFXFeatureContext &context) { return cont
 BOOL installCustomRenderStages(const BG3MFXFeatureContext &, NSError **) { return YES; }
 // Then the vtables are patched only for what was registered.
 BOOL activateCustomRenderStages(const BG3MFXFeatureContext &context, NSError **error) {
-    if (!overrides.empty() && !patchStageMethods(context.slide, context.report, error)) return NO;
+    if (!overrides.empty() && !patchStageMethods(context.slide, error)) return NO;
     if (!BG3MFXStageListRequested() && !traceRequested()) return YES;
-    return installShim(context.slide, traceRequested(), context.report, error);
+    return installShim(context.slide, traceRequested(), error);
 }
 }
 BG3MFX_FEATURE(customRenderStages, {"custom-render-stages", nullptr, true, customRenderStagesWanted,

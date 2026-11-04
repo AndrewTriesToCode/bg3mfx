@@ -1,5 +1,6 @@
 #include "common/Feature.h"
 #include "common/native/SupportedBuild.h"
+#import "common/EventLog.h"
 #import "common/Notice.h"
 #include "common/native/CodePatch.h"
 #import "features/metalfx/MetalFX.h"
@@ -19,7 +20,6 @@ namespace Layout = BG3MFXBuild::Temporal::Layout;
 
 namespace {
 intptr_t gameSlide;
-void (*reportEvent)(NSDictionary *);
 #ifdef BG3MFX_JITTER_TEST
 void *testSettings;
 #endif
@@ -82,7 +82,7 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
             }
         }
 #ifndef BG3MFX_NO_TRACE
-        if (reportEvent) reportEvent(@{@"event":@"nativeTemporalJitter",@"view":@((uintptr_t)view),
+        BG3MFX_TRACE_EVENT(@{@"event":@"nativeTemporalJitter",@"view":@((uintptr_t)view),
             @"frame":@(index),@"phases":@(c.phases),@"sample":@[@(halton(index%c.phases+1,2)-0.5f),@(halton(index%c.phases+1,3)-0.5f)]});
 #endif
         // Native views are recreated on transitions; bound CPU bookkeeping.
@@ -104,8 +104,8 @@ static void writeIsland(uintptr_t stub, uintptr_t wrapper, uintptr_t resume) {
 }
 
 extern "C" void BG3MFXJitterProjection(), BG3MFXJitterCamera(), BG3MFXJitterVelocity();
-static BOOL installJitter(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
-    gameSlide=slide; reportEvent=report;
+static BOOL installJitter(intptr_t slide, NSError **error) {
+    gameSlide=slide;
     auto fail=[&](NSString *message) { if(error) *error=[NSError errorWithDomain:@"BG3MFXTemporalJitter" code:1 userInfo:@{NSLocalizedDescriptionKey:message}]; return NO; };
     struct Site { uintptr_t address; uint32_t load; void (*wrapper)(); };
     const Site sites[]={{Native::ProjectionLoad,0xfc685923,BG3MFXJitterProjection},
@@ -144,7 +144,7 @@ static BOOL installJitter(intptr_t slide, void (*report)(NSDictionary *), NSErro
     });
     if (result==BG3MFXCodePatchResult::NotWritable) return fail(@"Could not install native jitter sampling hooks.");
     if (result==BG3MFXCodePatchResult::NotRestored) return fail(@"Could not restore native jitter code protection.");
-    if(report) report(@{@"event":@"temporalJitterInstalled",@"phases":@[@14,@18,@24,@32]});
+    BG3MFX_TRACE_EVENT(@{@"event":@"temporalJitterInstalled",@"phases":@[@14,@18,@24,@32]});
     return YES;
 }
 
@@ -152,12 +152,12 @@ static BOOL installJitter(intptr_t slide, void (*report)(NSDictionary *), NSErro
 // requires. The jitter reports each view's sample every frame.
 namespace {
 BOOL installTemporalUpscaling(const BG3MFXFeatureContext &context, NSError **error) {
-    if (installJitter(context.slide, context.trace, error)) return YES;
+    if (installJitter(context.slide, error)) return YES;
     // Root then skips metalfx: without the menu options nothing selects
     // MetalFX, so BG3 renders as usual.
     NSString *reason = (error && *error ? (*error).localizedDescription : nil) ?: @"Temporal's jitter could not be installed.";
-    fprintf(stderr, "MetalFX could not start: %s\n", reason.UTF8String); fflush(stderr);
-    BG3MFXShowNotice(@"MetalFX could not start", [reason stringByAppendingString:@"\n\nThe game continues without MetalFX."]);
+    BG3MFXFail([@"MetalFX could not start: " stringByAppendingString:reason], @"MetalFX could not start",
+        [reason stringByAppendingString:@"\n\nThe game continues without MetalFX."]);
     return NO;
 }
 }

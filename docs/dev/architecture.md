@@ -294,7 +294,7 @@ at 4K); it is kept because it removes passes and memory, not for frame rate.
 ## Failure and diagnostics
 
 No failure closes BG3: the player may have unsaved progress. Each turns off
-what failed and shows one notice on the main run loop (`BG3MFXShowNotice` in
+what failed and shows one notice on the main run loop (`BG3MFXFail` in
 `common/Notice.mm`); with `BG3MFX_TEST_ERRORS_STDERR=1` the message goes only to stderr.
 
 - A MetalFX Spatial or Temporal initialization, resource, sequencing,
@@ -532,8 +532,8 @@ only for a feature that adds options to it (metal-hud, metalfx).
   capture accepts the reduced viewport, a dynamic-resolution scaler upscales
   just that region, and `MetalFXRenderer.mm`'s commit hook reports BG3's command-buffer
   GPU intervals to the controller. Diagnostic runtime: `BG3MFX_DYNAMIC_RESOLUTION_AREA=<area>`
-  or `<min>,<max>,<seconds>` overrides the controller; logged to category
-  `resolution`. It also patches the volumetric fog history's previous
+  or `<min>,<max>,<seconds>` overrides the controller, recorded as a
+  `dynamicResolutionOverride` event. It also patches the volumetric fog history's previous
   viewport loads, the auto-exposure scene UV load, the SSR history viewport, an SSR history discard after each area change, and loads of the full view rectangle for forward lighting clamps, bloom and DOF radii and the projection jitter divisor; `MetalFXRenderer.mm` gives the fog composite a viewport-mapped vertex
   shader (`viewportFogDescriptor`, whenever the feature is installed) and
   corrects surface grid draws (`SurfaceGridDraw`) and subsurface scattering

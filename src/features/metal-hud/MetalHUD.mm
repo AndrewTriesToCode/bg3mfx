@@ -1,4 +1,5 @@
 #include "common/Feature.h"
+#import "common/EventLog.h"
 #import "features/custom-menu/CustomMenu.h"
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -13,7 +14,6 @@ namespace {
 constexpr uint16_t hudID = 0x7f01;
 NSString *const hudPreference = @"BG3MFXMetalHUD";
 BOOL hudEnabled;
-void (*reportEvent)(NSDictionary *);
 
 void applyLayer(CALayer *layer) {
     if ([layer isKindOfClass:CAMetalLayer.class]) {
@@ -30,7 +30,7 @@ void applyView(NSView *view) {
 }
 void applyHUD() {
     for (NSWindow *window in NSApp.windows) applyView(window.contentView);
-    if (reportEvent) reportEvent(@{@"event":@"metalHUDChanged", @"enabled":@(hudEnabled)});
+    BG3MFX_EVENT(@{@"event":@"metalHUDChanged", @"enabled":@(hudEnabled)});
 }
 void applyHUDOnMain() {
     if (NSThread.isMainThread) applyHUD(); else dispatch_async(dispatch_get_main_queue(), ^{ applyHUD(); });
@@ -59,8 +59,7 @@ void menuBuilt(void *manager) {
             if (BG3MFXMenuItemType(BG3MFXMenuItem(manager, i)) == 3) { BG3MFXMenuMoveLast(manager, i); break; }
     applyHUDOnMain();
 }
-BOOL installMetalHUD(const BG3MFXFeatureContext &context, NSError **) {
-    reportEvent = context.report;
+BOOL installMetalHUD(const BG3MFXFeatureContext &, NSError **) {
     // The launcher always loads the HUD so the checkbox can toggle it; until
     // the player chooses, it follows MTL_HUD_HIDDEN.
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:hudPreference];

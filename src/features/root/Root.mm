@@ -45,12 +45,11 @@ bool visit(std::vector<Entry> &entries, size_t i, std::vector<int> &state, std::
 // supported build, with `nativeReason` saying why.
 std::vector<Entry> run(std::vector<const BG3MFXFeature *> features, const BG3MFXFeatureContext &context,
                        bool native, NSString *nativeReason) {
-    auto report = [&](NSDictionary *event) { if (context.report) context.report(event); };
     std::sort(features.begin(), features.end(), [](auto a, auto b) { return strcmp(a->name, b->name) < 0; });
     std::vector<Entry> entries;
     for (const BG3MFXFeature *feature : features) {
         if (!entries.empty() && strcmp(entries.back().feature->name, feature->name) == 0) {
-            report(@{@"event":@"featureDuplicate", @"feature":@(feature->name)});
+            BG3MFX_EVENT(@{@"event":@"featureDuplicate", @"feature":@(feature->name)});
             continue;
         }
         Entry entry;
@@ -124,18 +123,13 @@ std::vector<Entry> run(std::vector<const BG3MFXFeature *> features, const BG3MFX
     for (size_t i : order) if (entries[i].active) [active addObject:@(entries[i].feature->name)];
     for (const Entry &entry : entries) if (entry.enabled && entry.skipped) {
         skipped[@(entry.feature->name)] = entry.skipped;
-        report(@{@"event":@"featureSkipped", @"feature":@(entry.feature->name), @"reason":entry.skipped});
+        BG3MFX_EVENT(@{@"event":@"featureSkipped", @"feature":@(entry.feature->name), @"reason":entry.skipped});
     }
-    report(@{@"event":@"features", @"active":active, @"skipped":skipped});
+    BG3MFX_EVENT(@{@"event":@"features", @"active":active, @"skipped":skipped});
     return entries;
 }
 
 #ifndef BG3MFX_ROOT_NO_START
-#ifndef BG3MFX_NO_TRACE
-void logEvent(NSDictionary *event) { BG3MFXEventLogWrite(event, true); }
-void traceEvent(NSDictionary *event) { BG3MFXEventLogWrite(event, false); }
-#endif
-
 // Whether this process runs BG3's supported executable, and its slide.
 bool supportedBuild(intptr_t &slide, NSString *__strong &reason, NSDictionary *__strong &identity) {
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) { reason = @"Not running in BG3."; return false; }
@@ -171,28 +165,25 @@ __attribute__((constructor)) void start() {
     @autoreleasepool {
 #ifndef BG3MFX_NO_TRACE
         BG3MFXEventLogOpen();
-        void (*report)(NSDictionary *) = logEvent, (*trace)(NSDictionary *) = traceEvent;
-#else
-        void (*report)(NSDictionary *) = nullptr, (*trace)(NSDictionary *) = nullptr;
 #endif
         intptr_t slide = 0;
         NSString *reason = nil;
         NSDictionary *identity = nil;
         bool native = supportedBuild(slide, reason, identity);
-        if (report && identity) report(@{@"event":@"nativeBuild", @"supported":@(native), @"image":identity[@"image"], @"uuid":identity[@"uuid"]});
+        if (identity) BG3MFX_EVENT(@{@"event":@"nativeBuild", @"supported":@(native), @"image":identity[@"image"], @"uuid":identity[@"uuid"]});
         Dl_info info{};
         unsigned long size = 0;
         const uint8_t *section = dladdr(reinterpret_cast<const void *>(&start), &info) && info.dli_fbase ?
             getsectiondata(static_cast<const mach_header_64 *>(info.dli_fbase), "__DATA", BG3MFX_FEATURE_SECTION, &size) : nullptr;
         auto registered = reinterpret_cast<const BG3MFXFeature *const *>(section);
         std::vector<const BG3MFXFeature *> features(registered, registered + (section ? size / sizeof *registered : 0));
-        BG3MFXFeatureContext context{slide, BG3MFXFeatureEnabled("BG3MFX_ENABLE"), report, trace};
+        BG3MFXFeatureContext context{slide, BG3MFXFeatureEnabled("BG3MFX_ENABLE")};
         std::vector<Entry> entries = run(features, context, native, reason);
         // On another BG3 build, say once that the native features are off.
         bool nativeWanted = std::any_of(entries.begin(), entries.end(), [](const Entry &e) { return e.enabled && e.feature->native; });
         if (!native && [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"] && nativeWanted) {
-            fprintf(stderr, "BG3MFX could not start: %s\n", reason.UTF8String); fflush(stderr);
-            BG3MFXShowNotice(@"BG3MFX could not start", [reason stringByAppendingString:@"\n\nThe game continues without BG3MFX."]);
+            BG3MFXFail([@"BG3MFX could not start: " stringByAppendingString:reason], @"BG3MFX could not start",
+                [reason stringByAppendingString:@"\n\nThe game continues without BG3MFX."]);
         }
     }
 }

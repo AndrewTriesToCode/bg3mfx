@@ -1,5 +1,6 @@
 #include "common/Feature.h"
 #include "common/native/SupportedBuild.h"
+#import "common/EventLog.h"
 #import "features/metalfx/dynamic-resolution/DynamicResolution.h"
 #import "features/metalfx/MetalFX.h"
 #include "common/native/CodePatch.h"
@@ -7,7 +8,6 @@
 #import <QuartzCore/QuartzCore.h>
 #include <libkern/OSCacheControl.h>
 #include <mach/mach_time.h>
-#include <os/log.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -45,16 +45,7 @@ std::atomic<float> minimumScale{0}, maximumScale{0};
 // Read by the SSR valid island as a byte: nonzero makes SSR discard its history.
 std::atomic<uint8_t> ssrDiscard{0};
 static_assert(sizeof ssrDiscard == 1, "the SSR island loads one byte");
-// One line per controller window (category `controller`): the diagnostic
-// runtime, and a quiet-runtime developer build (BG3MFX_RESOLUTION_LOG) for
-// measuring without the diagnostic runtime's CPU cost.
-#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_RESOLUTION_LOG)
-#define BG3MFX_CONTROLLER_LOG 1
-os_log_t controllerLog;
-#endif
 #ifndef BG3MFX_NO_TRACE
-void (*reportEvent)(NSDictionary *);
-os_log_t resolutionLog;
 // BG3MFX_DYNAMIC_RESOLUTION_AREA: a fixed area, or a triangle wave between two.
 bool overrideArea;
 float minimumArea = 1, maximumArea = 1, periodSeconds = 0;
@@ -175,9 +166,7 @@ float thermalLimit(float area, float lowest) {
         ceiling = std::min(1.0f, float(ceiling * ThermalRecovery));
         thermalSteppedAt = now;
     }
-#ifdef BG3MFX_CONTROLLER_LOG
-    if (ceiling != thermalCeiling) os_log(controllerLog, "thermal %ld ceiling %.3f", long(state), ceiling);
-#endif
+    if (ceiling != thermalCeiling) BG3MFX_EVENT(@{@"event":@"dynamicResolutionThermal",@"state":@(long(state)),@"ceiling":@(ceiling)});
     thermalCeiling = ceiling;
     return std::min(area, ceiling);
 }
@@ -208,14 +197,9 @@ float controllerArea(double target) {
         step = std::min(step, std::max(1.0, MissedMargin * missedArea / controlledArea));
     }
     controlledArea = std::min(1.0f, float(controlledArea * step));
-#ifdef BG3MFX_CONTROLLER_LOG
-    os_log(controllerLog, "busy %.3f smoothed %.3f fps %.1f smoothed %.1f target fps %.1f area %.3f",
-        measured, utilization, fps, smoothedFPS, target, controlledArea);
-#endif
 #ifndef BG3MFX_NO_TRACE
-    if (reportEvent)
-        reportEvent(@{@"event":@"dynamicResolutionStep",@"utilization":@(utilization),@"measured":@(measured),@"frames":@(frames),
-            @"seconds":@(elapsed),@"targetFrameRate":@(target),@"area":@(controlledArea),@"intervals":@(takenStats.count),
+    BG3MFX_EVENT(@{@"event":@"dynamicResolutionStep",@"utilization":@(utilization),@"measured":@(measured),@"frames":@(frames),
+            @"seconds":@(elapsed),@"fps":@(fps),@"smoothedFPS":@(smoothedFPS),@"targetFrameRate":@(target),@"area":@(controlledArea),@"intervals":@(takenStats.count),
             @"raw":@(takenStats.raw),@"span":@(takenStats.last - takenStats.first),
             @"lag":@(windowStart - takenStats.last)});
 #endif
@@ -236,12 +220,12 @@ float targetArea(uint8_t *frame) {
     // A quality, mode or window change resizes targets over several frames;
     // stay at full size until it has settled.
     if (eligible != settledEligible || memcmp(sizes, settledSizes, sizeof sizes)) {
-#ifdef BG3MFX_CONTROLLER_LOG
-        os_log(controllerLog, "eligible %d: quality %d limits %.2f-%.2f mode %d temporalFailed %d frameGeneration %d upscaling %d render %dx%d output %dx%d",
-            eligible, settings ? read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) : -1, smallest, largest,
-            BG3MFXSelectedScalingMode(), BG3MFXTemporalFailed(), BG3MFXFrameGenerationEnabled(),
-            settings ? read<uint8_t>(settings, Layout::SettingsUpscaling) : -1, render[0], render[1], output[0], output[1]);
-#endif
+        BG3MFX_EVENT(@{@"event":@"dynamicResolutionEligibility",@"eligible":@(eligible),
+            @"quality":@(settings ? read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) : -1),
+            @"minimumScale":@(smallest),@"maximumScale":@(largest),@"mode":@(BG3MFXSelectedScalingMode()),
+            @"temporalFailed":@(BG3MFXTemporalFailed()),@"frameGeneration":@(BG3MFXFrameGenerationEnabled()),
+            @"upscaling":@(settings ? read<uint8_t>(settings, Layout::SettingsUpscaling) : -1),
+            @"render":@[@(render[0]),@(render[1])],@"output":@[@(output[0]),@(output[1])]});
         settledEligible = eligible;
         memcpy(settledSizes, sizes, sizeof sizes);
         settledFrames = 0;
@@ -295,8 +279,9 @@ void startRecordingHook(uint8_t *frame) {
                     memcpy(viewSize, static_cast<uint8_t *>(views[0]) + BG3MFXBuild::Temporal::Layout::ViewSize, 8);
                     memcpy(viewRect, static_cast<uint8_t *>(views[0]) + Layout::ViewRenderRect, 8);
                 }
-                os_log(resolutionLog, "bg3mfx resolution: area %.3f | render %dx%d viewport %dx%d | views %u, first view size %dx%d render rect %dx%d",
-                    area, render[0], render[1], viewport[0], viewport[1], count, viewSize[0], viewSize[1], viewRect[0], viewRect[1]);
+                BG3MFX_EVENT(@{@"event":@"dynamicResolutionArea",@"area":@(area),@"render":@[@(render[0]),@(render[1])],
+                    @"viewport":@[@(viewport[0]),@(viewport[1])],@"views":@(count),
+                    @"viewSize":@[@(viewSize[0]),@(viewSize[1])],@"viewRect":@[@(viewRect[0]),@(viewRect[1])]});
             }
 #endif
         }
@@ -354,7 +339,7 @@ void BG3MFXDynamicResolutionGPUWork(double start, double end) {
     if (gpuIntervals.size() < 4096) gpuIntervals.emplace_back(start, end);
 }
 
-static BOOL installDynamic(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
+static BOOL installDynamic(intptr_t slide, NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXDynamicResolution" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
@@ -364,9 +349,6 @@ static BOOL installDynamic(intptr_t slide, void (*report)(NSDictionary *), NSErr
         if (!parse(value)) return fail(@"BG3MFX_DYNAMIC_RESOLUTION_AREA must be an area fraction, or min,max,seconds.");
         overrideArea = true;
     }
-    reportEvent = report;
-#else
-    (void)report;
 #endif
     for (unsigned i = 0; i < Sites; ++i) {
         uintptr_t site = sites[i] + slide;
@@ -423,10 +405,6 @@ static BOOL installDynamic(intptr_t slide, void (*report)(NSDictionary *), NSErr
     mach_timebase_info(&timebase);
     ticksToSeconds = (double)timebase.numer / timebase.denom / 1e9;
     startTicks = mach_absolute_time();
-    resolutionLog = os_log_create("com.bg3mfx", "resolution");
-#endif
-#ifdef BG3MFX_CONTROLLER_LOG
-    controllerLog = os_log_create("com.bg3mfx", "controller");
 #endif
     originalStartRecording = reinterpret_cast<void (*)(void *)>(Native::StartRecording + slide);
     calculateViewports = reinterpret_cast<void (*)(void *)>(Native::CalculateViewports + slide);
@@ -480,9 +458,9 @@ static BOOL installDynamic(intptr_t slide, void (*report)(NSDictionary *), NSErr
     installed = true;
 #ifndef BG3MFX_NO_TRACE
     if (overrideArea)
-        os_log(resolutionLog, "bg3mfx resolution: area override %.3f-%.3f, period %.1f s", minimumArea, maximumArea, periodSeconds);
+        BG3MFX_EVENT(@{@"event":@"dynamicResolutionOverride",@"minimumArea":@(minimumArea),@"maximumArea":@(maximumArea),@"periodSeconds":@(periodSeconds)});
 #endif
-    if (report) report(@{@"event":@"dynamicResolutionInstalled"});
+    BG3MFX_EVENT(@{@"event":@"dynamicResolutionInstalled"});
     return YES;
 }
 
@@ -495,7 +473,7 @@ bool dynamicResolutionWanted(const BG3MFXFeatureContext &context) {
     return context.runtimeEnabled && BG3MFXFeatureEnabled("BG3MFX_FEATURE_METALFX");
 }
 BOOL installDynamicResolution(const BG3MFXFeatureContext &context, NSError **error) {
-    return installDynamic(context.slide, context.report, error);
+    return installDynamic(context.slide, error);
 }
 }
 BG3MFX_FEATURE(dynamicResolution, {"dynamic-resolution", nullptr, true, dynamicResolutionWanted, installDynamicResolution, nullptr});

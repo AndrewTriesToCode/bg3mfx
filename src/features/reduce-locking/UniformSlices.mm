@@ -1,5 +1,6 @@
 #include "common/native/SupportedBuild.h"
 #include "common/Feature.h"
+#import "common/EventLog.h"
 #import "features/reduce-locking/UniformSlices.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -47,7 +48,6 @@ struct Slice { const char *renderer; uint64_t generation, next, end; };
 thread_local Slice slice;
 
 #ifndef BG3MFX_NO_TRACE
-void (*reportEvent)(NSDictionary *);
 std::atomic<uint64_t> refills{0}, peakOffset{0};
 void noteRefill() {
     uint64_t last = frameState.lastOffset.load(std::memory_order_relaxed);
@@ -55,9 +55,9 @@ void noteRefill() {
     uint64_t count = ++refills;
     // Peak is the largest offset a finished frame reached, against the
     // buffer's size: the slices' headroom.
-    if (reportEvent && count >= 1024 && !(count & (count - 1))) {
+    if (count >= 1024 && !(count & (count - 1))) {
         @autoreleasepool {
-            reportEvent(@{@"event": @"uniformSlicesUsage", @"slices": @(count), @"peakOffsetBytes": @(peakOffset.load()),
+            BG3MFX_EVENT(@{@"event": @"uniformSlicesUsage", @"slices": @(count), @"peakOffsetBytes": @(peakOffset.load()),
                           @"bufferBytes": @(Native::Layout::BufferBytes), @"sliceBytes": @(sliceBytes)});
         }
     }
@@ -95,7 +95,7 @@ bool zero(uintptr_t address, size_t bytes) {
 uint32_t call(uintptr_t from, uintptr_t to) { return 0x94000000 | (BG3MFXBranch(from, to) & 0x03ffffff); }
 }
 
-BOOL BG3MFXInstallUniformSlices(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
+BOOL BG3MFXInstallUniformSlices(intptr_t slide, NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXUniformSlices" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
@@ -120,7 +120,6 @@ BOOL BG3MFXInstallUniformSlices(intptr_t slide, void (*report)(NSDictionary *), 
         !BG3MFXBranchReaches(setup + 24, Native::SetupResume + slide))
         return fail(@"Uniform slice island is out of range.");
 #ifndef BG3MFX_NO_TRACE
-    reportEvent = report;
 #endif
     auto result = BG3MFXPatchCode({{island, islandBytes}, {bind, 32}, {setup, 28}, {reset, 4}}, [&] {
         // Allocation: ldr x16, #8; br x16; .quad allocate (returns to the site).
@@ -151,14 +150,14 @@ BOOL BG3MFXInstallUniformSlices(intptr_t slide, void (*report)(NSDictionary *), 
         memcpy(reinterpret_cast<void *>(reset), &toReset, 4);
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the uniform allocation sites writable.");
-    if (report) report(@{@"event": @"uniformSlicesInstalled", @"sliceBytes": @(sliceBytes),
+    BG3MFX_EVENT(@{@"event": @"uniformSlicesInstalled", @"sliceBytes": @(sliceBytes),
                          @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
     return YES;
 }
 
 namespace {
 BOOL installReduceLocking(const BG3MFXFeatureContext &context, NSError **error) {
-    return BG3MFXInstallUniformSlices(context.slide, context.report, error);
+    return BG3MFXInstallUniformSlices(context.slide, error);
 }
 }
 BG3MFX_FEATURE(reduceLockingFeature, {"reduce-locking", nullptr, true, nullptr, installReduceLocking, nullptr});

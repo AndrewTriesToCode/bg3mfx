@@ -79,8 +79,8 @@ from the sun then partly shadow themselves.
     quality rows × 1-4 cascades). At the first Load, bg3mfx compiles the
     shader source on BG3's device, specializes it for each row and cascade
     count, and makes 12 clones of BG3's programs with it
-    ([custom-pipeline-bundles](../custom-pipeline-bundles/README.md)). It logs
-    `improved shadows: ready` to os_log category `shadow`, or why BG3's
+    ([custom-pipeline-bundles](../custom-pipeline-bundles/README.md)). The diagnostic
+    runtime records a `shadowClones` event saying they are ready, or why BG3's
     shaders were kept.
   - **Load, Unload and StartRecording overrides**
     ([custom-render-stages](../custom-render-stages/README.md)). Load puts the

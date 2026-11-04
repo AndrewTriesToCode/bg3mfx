@@ -3,8 +3,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 // Diagnostic-runtime frame-rate log, enabled with BG3MFX_FRAME_LOG=1.
-// Every 2 s it writes one line to the system log
-// (subsystem com.bg3mfx, category frames): BG3's rendered rate, the real and
+// Every 2 s it writes a `frameStats` event to the event log: BG3's rendered rate, the real and
 // generated images that reached the display, drops, the presentation method,
 // the gaps between shown images, and the latency from BG3 committing a frame
 // to the real image being shown. Player-runtime calls compile away.

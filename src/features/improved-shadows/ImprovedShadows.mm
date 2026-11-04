@@ -1,9 +1,9 @@
 #include "common/native/SupportedBuild.h"
+#import "common/EventLog.h"
 #import "features/improved-shadows/ImprovedShadows.h"
 #import "features/custom-render-stages/CustomRenderStages.h"
 #import "features/custom-pipeline-bundles/CustomPipelineBundles.h"
 #include "features/improved-shadows/ImprovedShadowsShader.h"
-#include <os/log.h>
 #include <array>
 #include <atomic>
 #include <cstdio>
@@ -60,7 +60,6 @@ Unload originalUnload;
 StartRecording originalStartRecording;
 GetTextureSRV getTextureSRV;
 SetTextureSafe setTextureSafe;
-void (*reportEvent)(NSDictionary *);
 
 // The clones, made by the first Load; never released. `ready` publishes them
 // to StartRecording. `lock` guards the rest, which only Load and Unload use.
@@ -73,10 +72,6 @@ std::array<uint64_t, Programs> clones;
 std::array<uint64_t, Programs> originals;
 int cloned;
 
-os_log_t shadowLog() {
-    static os_log_t log = os_log_create("com.bg3mfx", "shadow");
-    return log;
-}
 template<class T> T read(const void *p, size_t offset) {
     T value; memcpy(&value, static_cast<const char *>(p) + offset, sizeof value); return value;
 }
@@ -97,8 +92,7 @@ bool makeClones() {
     if (clonesTried) return ready.load(std::memory_order_relaxed);
     clonesTried = true;
     auto fail = [](NSString *message) {
-        os_log(shadowLog(), "improved shadows: BG3's shaders kept (%{public}@)", message);
-        if (reportEvent) reportEvent(@{@"event":@"shadowClones", @"ready":@NO, @"error":message ?: @""});
+        BG3MFX_EVENT(@{@"event":@"shadowClones", @"ready":@NO, @"error":message ?: @""});
         return false;
     };
     id<MTLDevice> device = BG3MFXMetalDevice();
@@ -126,8 +120,7 @@ bool makeClones() {
         }
     }
     ready.store(true, std::memory_order_release);
-    os_log(shadowLog(), "improved shadows: ready");
-    if (reportEvent) reportEvent(@{@"event":@"shadowClones", @"ready":@YES});
+    BG3MFX_EVENT(@{@"event":@"shadowClones", @"ready":@YES});
     return true;
 }
 
@@ -140,7 +133,7 @@ bool loadHook(void *stage) {
     if (cloned && own != originals) {
         // Not seen: BG3's cache gave this stage other programs than the
         // stages holding the clones, so Unload couldn't put them back.
-        os_log(shadowLog(), "improved shadows: BG3's shaders kept for a stage (its programs differ)");
+        BG3MFX_EVENT(@{@"event":@"shadowProgramsDiffer"});
         return loaded;
     }
     originals = own;
@@ -180,7 +173,6 @@ void startRecordingHook(void *stage) {
 BOOL BG3MFXInstallImprovedShadows(const BG3MFXFeatureContext &context, NSError **error) {
     getTextureSRV = reinterpret_cast<GetTextureSRV>(Native::GetTextureSRV + context.slide);
     setTextureSafe = reinterpret_cast<SetTextureSafe>(Native::SetTextureSafe + context.slide);
-    reportEvent = context.report;
     // The overrides apply when custom-render-stages activates; until Load makes
     // the clones, StartRecording only forwards.
     static const char *const feature = "improved-shadows";

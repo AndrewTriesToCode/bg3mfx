@@ -13,7 +13,9 @@ std::vector<uint8_t> storage[PackCount];
 std::vector<std::vector<uint8_t>> received;
 std::vector<NSDictionary *> events;
 void record(void *, void *, const Span *span) { received.emplace_back(span->begin, span->end); }
-void report(NSDictionary *event) { events.push_back(event); }
+}
+void BG3MFXEventLogWrite(NSDictionary *event, bool) { events.push_back(event); }
+namespace {
 void check(bool ok, const char *what) {
     if (!ok) { fprintf(stderr, "custom-render-stages smoke failed: %s\n", what); exit(1); }
 }
@@ -44,7 +46,7 @@ int main() {
             storage[i].assign(packInfo[i].bytes, packInfo[i].bytes + packInfo[i].count);
             packs[i] = storage[i].data();
         }
-        original = record; reportEvent = report;
+        original = record;
         int game, player, fullscreen, offscreen;
         const std::initializer_list<int> gameCalls = {First, Shadow, Second, Shadow, Third};
         const std::initializer_list<int> offscreenCalls = {First, EarlyVtResolve, Shadow, Second, Shadow, Third, Additional};
@@ -147,12 +149,12 @@ int main() {
         const Native::StageMethodSlot &deferredSlot = *findSlot(0x0b, 3), &shadowSlot = *findSlot(0x03, 4);
         bool restoredPage = false;
         check(BG3MFXPatchPointer(entryOf(shadowSlot), &unused, &restoredPage), "stand-in entry changed");
-        check(!patchStageMethods(slide, report, nullptr), "unexpected entry rejected");
+        check(!patchStageMethods(slide, nullptr), "unexpected entry rejected");
         check(*entryOf(deferredSlot) == methodOf(deferredSlot) && !deferredOriginal, "nothing patched after a rejected entry");
         check(BG3MFXPatchPointer(entryOf(shadowSlot), methodOf(shadowSlot), &restoredPage), "stand-in entry restored");
 
         events.clear();
-        check(patchStageMethods(slide, report, nullptr), "overrides patched");
+        check(patchStageMethods(slide, nullptr), "overrides patched");
         check(*entryOf(deferredSlot) == &deferredLoad && *entryOf(shadowSlot) == &shadowUnload, "entries replaced");
         check(deferredOriginal == methodOf(deferredSlot) && shadowOriginal == methodOf(shadowSlot), "BG3's methods handed back");
         const Native::StageMethodSlot &submitSlot = *findSlot(0x0b, 5);

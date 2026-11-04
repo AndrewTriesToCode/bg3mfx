@@ -1,3 +1,4 @@
+#import "common/EventLog.h"
 #import "features/duplicate-shadow-fix/DuplicateShadowFix.h"
 #import "features/custom-render-stages/CustomRenderStages.h"
 #include "common/Feature.h"
@@ -12,7 +13,7 @@ template<size_t... N> std::vector<uint8_t> join(const uint8_t (&...packs)[N]) {
 }
 }
 
-BOOL BG3MFXInstallDuplicateShadowFix(void (*report)(NSDictionary *), NSError **error) {
+BOOL BG3MFXInstallDuplicateShadowFix(NSError **error) {
     namespace P = BG3MFXStagePack;
     // BG3 passes the Shadow pack twice, so each view has two
     // CascadedShadowBuffer stages rendering the same cascades into the same
@@ -27,14 +28,14 @@ BOOL BG3MFXInstallDuplicateShadowFix(void (*report)(NSDictionary *), NSError **e
         !BG3MFXSetViewStages(BG3MFXViewKind::Player, feature, window.data(), window.size(), error) ||
         !BG3MFXSetViewStages(BG3MFXViewKind::Offscreen, feature, offscreen.data(), offscreen.size(), error))
         return NO;
-    if (report) report(@{@"event":@"duplicateShadowFixRegistered"});
+    BG3MFX_EVENT(@{@"event":@"duplicateShadowFixRegistered"});
     return YES;
 }
 
 namespace {
 const char *const duplicateShadowFixRequires[] = {"custom-render-stages", nullptr};
-BOOL installDuplicateShadowFix(const BG3MFXFeatureContext &context, NSError **error) {
-    return BG3MFXInstallDuplicateShadowFix(context.report, error);
+BOOL installDuplicateShadowFix(const BG3MFXFeatureContext &, NSError **error) {
+    return BG3MFXInstallDuplicateShadowFix(error);
 }
 }
 BG3MFX_FEATURE(duplicateShadowFix, {"duplicate-shadow-fix", duplicateShadowFixRequires, false, nullptr,

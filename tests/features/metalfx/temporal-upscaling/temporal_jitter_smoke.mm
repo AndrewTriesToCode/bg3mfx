@@ -8,7 +8,7 @@ static int mode=3;
 int BG3MFXSelectedScalingMode(void) { return mode; }
 static float area=1;
 float BG3MFXDynamicResolutionArea(void) { return area; }
-void BG3MFXShowNotice(NSString *, NSString *) {}
+void BG3MFXFail(NSString *, NSString *, NSString *) {}
 extern "C" void BG3MFXTestJitterProjection(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterCamera(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterVelocity(void *,void *,void *,void *);

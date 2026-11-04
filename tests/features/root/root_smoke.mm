@@ -41,10 +41,12 @@ template<int N> BG3MFXFeature feature(const char *name, const char *const *requi
     Fake<N>::name = name;
     return {name, requires, native, wanted, Fake<N>::install, Fake<N>::activate};
 }
-void report(NSDictionary *event) { events.push_back(event); }
+}
+void BG3MFXEventLogWrite(NSDictionary *event, bool) { events.push_back(event); }
+namespace {
 std::vector<Entry> runAll(std::vector<const BG3MFXFeature *> features, bool runtime = true, bool native = true) {
     calls.clear(); events.clear(); seenSlide = -1;
-    BG3MFXFeatureContext context{0x1000, runtime, report, report};
+    BG3MFXFeatureContext context{0x1000, runtime};
     return run(features, context, native, @"Not the supported build.");
 }
 NSDictionary *summary() {

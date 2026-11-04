@@ -26,10 +26,12 @@ void BG3MFXEventLogWrite(NSDictionary *event, bool important) {
     NSMutableDictionary *identified = [event mutableCopy];
     identified[@"pid"] = @(getpid());
     if (important) identified[@"time"] = @(NSDate.timeIntervalSinceReferenceDate);
+    // Serialization throws on a NaN or infinity; a log line must not end the game.
+    if (![NSJSONSerialization isValidJSONObject:identified]) return;
     NSData *data = [NSJSONSerialization dataWithJSONObject:identified options:NSJSONWritingSortedKeys error:nil];
     if (!data) return;
     // Important events carry a timestamp, so each is unique: remembering them
-    // grew the set by one entry per frame with Frame Generation or prepass trim.
+    // grew the set by one entry per frame with Frame Generation.
     if (!important) {
         NSString *key = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         if ([seen containsObject:key]) return;

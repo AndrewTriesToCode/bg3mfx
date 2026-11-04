@@ -1,5 +1,6 @@
 #include "common/native/SupportedBuild.h"
 #include "common/Feature.h"
+#import "common/EventLog.h"
 #import "features/thread-idling/ThreadIdling.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -61,7 +62,6 @@ uint64_t usTicks;
 // CapFrame poll step and margin in ticks.
 uint64_t capPollTicks, capMarginTicks;
 #ifndef BG3MFX_NO_TRACE
-void (*reportEvent)(NSDictionary *);
 // How late CapFrame's deadline sleeps wake, to choose the margin: counts per
 // bucket (<25, <50, <100, <200, <500, >=500 us) and the maximum.
 std::atomic<uint64_t> lateBuckets[6], lateMaxUs{0}, capSleeps{0};
@@ -73,9 +73,9 @@ void noteWake(uint64_t lateTicks) {
     ++lateBuckets[bucket];
     for (uint64_t max = lateMaxUs.load(); us > max && !lateMaxUs.compare_exchange_weak(max, us);) {}
     uint64_t sleeps = ++capSleeps;
-    if (reportEvent && !(sleeps & (sleeps - 1)) && sleeps >= 1024) {
+    if (!(sleeps & (sleeps - 1)) && sleeps >= 1024) {
         @autoreleasepool {
-            reportEvent(@{@"event": @"capFrameWakeLateness", @"sleeps": @(sleeps), @"maxUs": @(lateMaxUs.load()),
+            BG3MFX_EVENT(@{@"event": @"capFrameWakeLateness", @"sleeps": @(sleeps), @"maxUs": @(lateMaxUs.load()),
                           @"under25": @(lateBuckets[0].load()), @"under50": @(lateBuckets[1].load()),
                           @"under100": @(lateBuckets[2].load()), @"under200": @(lateBuckets[3].load()),
                           @"under500": @(lateBuckets[4].load()), @"over500": @(lateBuckets[5].load())});
@@ -129,7 +129,7 @@ uint64_t setting(const char *name, uint64_t fallback, uint64_t maximum) {
 }
 }
 
-BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), NSError **error) {
+BOOL BG3MFXInstallThreadIdling(intptr_t slide, NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXThreadIdling" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
@@ -160,7 +160,6 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), N
     capMarginTicks = capMarginUs * usTicks;
     capPollTicks = capPollUs * usTicks;
 #ifndef BG3MFX_NO_TRACE
-    reportEvent = report;
 #endif
     std::vector<std::pair<uintptr_t, size_t>> ranges = {{idleIsland, idleIslandBytes}, {worker, 4},
         {schedulerWindows[0] + slide, 8}, {schedulerWindows[1] + slide, 8}, {idle, 4}};
@@ -183,7 +182,7 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), N
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the idle loops writable.");
     // Written but not executable again: report it as installed, not skipped.
-    if (report) report(@{@"event": @"threadIdlingInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched),
+    BG3MFX_EVENT(@{@"event": @"threadIdlingInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched),
                          @"workerPollUs": @(workerPollUs), @"schedulerPollUs": @(schedulerPollUs),
                          @"capFramePollUs": @(capPollUs), @"capFrameMarginUs": @(capMarginUs)});
     return YES;
@@ -191,7 +190,7 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, void (*report)(NSDictionary *), N
 
 namespace {
 BOOL installThreadIdling(const BG3MFXFeatureContext &context, NSError **error) {
-    return BG3MFXInstallThreadIdling(context.slide, context.report, error);
+    return BG3MFXInstallThreadIdling(context.slide, error);
 }
 }
 BG3MFX_FEATURE(threadIdlingFeature, {"thread-idling", nullptr, true, nullptr, installThreadIdling, nullptr});

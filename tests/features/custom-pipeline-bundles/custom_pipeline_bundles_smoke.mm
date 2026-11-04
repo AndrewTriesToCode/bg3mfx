@@ -80,7 +80,9 @@ const void *stubCreateRasterizerState(uint32_t cull, uint32_t fill, bool scissor
     return state;
 }
 std::vector<NSDictionary *> events;
-void report(NSDictionary *event) { events.push_back(event); }
+}
+void BG3MFXEventLogWrite(NSDictionary *event, bool) { events.push_back(event); }
+namespace {
 
 // Index `index` with `salt`, and a type in the top bits as BG3 sets them.
 uint64_t handleFor(uint32_t index, uint32_t salt) { return (uint64_t(7) << 54) | (uint64_t(salt) << 32) | index; }
@@ -112,7 +114,7 @@ void testPrograms(id<MTLDevice> metal, id<MTLLibrary> library) {
     void *devicePointer = device;
     memcpy(reinterpret_cast<char *>(data) + Layout::DataDevice, &devicePointer, sizeof devicePointer);
     makePath = stubMakePath; destroyPath = stubDestroyPath; createShader = stubCreateShader;
-    rendererData = &dataPointer; defaultShaderPath = &prefixPointer; reportEvent = report;
+    rendererData = &dataPointer; defaultShaderPath = &prefixPointer;
 
     // No device yet: s_Data is still null.
     check(!create("Base.bshd", nil, cloneFS).valid(), "no device");

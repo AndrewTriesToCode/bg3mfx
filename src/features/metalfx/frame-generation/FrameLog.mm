@@ -1,5 +1,5 @@
 #import "features/metalfx/frame-generation/FrameLog.h"
-#include <os/log.h>
+#import "common/EventLog.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -81,17 +81,20 @@ void report() {
         return std::array<double,3>{mean,values[values.size()*9/10],values.back()};
     };
     auto gpuStat=timing(gpu), queueStat=timing(gpuQueue), tailStat=timing(gpuTail), waitStat=timing(drawableWait);
-    os_log(os_log_create("com.bg3mfx", "frames"),
-        "bg3mfx frames: rendered %.1f/s, shown real %.1f/s, generated %.1f/s, dropped %.0f%%, method %{public}s, gap %.1f ms (p90 %.1f ms), real/gen cadence %.1f/%.1f ms, schedule synced %u/%u refresh %.2f Hz interval %.1f ms split %u min %.1f/%.1f ms, app active %d screen max %d Hz, stand-in wait/work %.1f/%.1f ms overflow %u, latency %.1f ms (p90 %.1f ms), in flight %.1f, BG3 buffers %u, stand-ins %u, native GPU n/avg/p90/max %u/%.2f/%.2f/%.2f ms, GPU queue avg/p90/max %.2f/%.2f/%.2f ms, completion tail avg/p90/max %.2f/%.2f/%.2f ms, drawable wait avg/p90/max %.2f/%.2f/%.2f ms",
-        rendered.exchange(0) / span, real / span, generated / span, presented ? 100.0 * lost / presented : 0.0,
-        counts[method] ? names[method] : "none", average, p90, realGap, generatedGap,
-        syncedSamples.exchange(0), pacingSamples.exchange(0),
-        refresh>0 ? 1.0/refresh : 0, interval*1000, (unsigned)llround(refreshes), generatedMinimum*1000, realMinimum*1000,
-        appActive.load(), screenMaximumFPS.load(), standInWait*1000, work*1000, standInOverflows.exchange(0),
-        latencyAverage, latencyP90, queueAverage, bg3Buffers.load(), standInLimit.load(),
-        (unsigned)gpu.size(),gpuStat[0],gpuStat[1],gpuStat[2],
-        queueStat[0],queueStat[1],queueStat[2],tailStat[0],tailStat[1],tailStat[2],
-        waitStat[0],waitStat[1],waitStat[2]);
+    auto stats=[](const std::array<double,3> &s) { return @{@"meanMs":@(s[0]),@"p90Ms":@(s[1]),@"maxMs":@(s[2])}; };
+    BG3MFX_EVENT(@{@"event":@"frameStats",@"seconds":@(span),
+        @"renderedPerSecond":@(rendered.exchange(0)/span),@"realPerSecond":@(real/span),@"generatedPerSecond":@(generated/span),
+        @"droppedPercent":@(presented ? 100.0*lost/presented : 0.0),@"method":@(counts[method] ? names[method] : "none"),
+        @"gapMs":@(average),@"gapP90Ms":@(p90),@"realCadenceMs":@(realGap),@"generatedCadenceMs":@(generatedGap),
+        @"syncedSamples":@(syncedSamples.exchange(0)),@"pacingSamples":@(pacingSamples.exchange(0)),
+        @"refreshHz":@(refresh>0 ? 1.0/refresh : 0),@"intervalMs":@(interval*1000),@"refreshes":@(llround(refreshes)),
+        @"generatedMinimumMs":@(generatedMinimum*1000),@"realMinimumMs":@(realMinimum*1000),
+        @"appActive":@(appActive.load()),@"screenMaximumHz":@(screenMaximumFPS.load()),
+        @"standInWaitMs":@(standInWait*1000),@"standInWorkMs":@(work*1000),@"standInOverflows":@(standInOverflows.exchange(0)),
+        @"latencyMs":@(latencyAverage),@"latencyP90Ms":@(latencyP90),@"inFlight":@(queueAverage),
+        @"bg3Buffers":@(bg3Buffers.load()),@"standIns":@(standInLimit.load()),
+        @"nativeGPUCount":@(gpu.size()),@"nativeGPU":stats(gpuStat),@"gpuQueue":stats(queueStat),
+        @"completionTail":stats(tailStat),@"drawableWait":stats(waitStat)});
 }
 }
 

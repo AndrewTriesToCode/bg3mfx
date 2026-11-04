@@ -1,4 +1,5 @@
 #include "common/Feature.h"
+#import "common/EventLog.h"
 #import "features/new-character-crash-fix/NewCharacterCrashFix.h"
 #import "features/metal-hooks/MetalHooks.h"
 #import <objc/runtime.h>
@@ -50,7 +51,6 @@ BOOL BG3MFXIsClusterStandIn(id<MTLBuffer> buffer) {
 }
 
 namespace {
-void (*reportEvent)(NSDictionary *);
 void newEncoder(id encoder, BOOL compute) { BG3MFXBindClusterStandIns(encoder, compute); }
 #ifndef BG3MFX_NO_TRACE
 // Diagnostics: what BG3 left at compute indices 1 and 6, kept on the encoder as
@@ -80,12 +80,11 @@ void dispatch(id encoder, NSString *name) {
     bool standIn = tag == standInTag;
     static std::atomic<unsigned> standIns{0}, nils{0};
     unsigned count = standIn ? ++standIns : ++nils;
-    if (reportEvent && (count <= 8 || count % 256 == 0))
-        reportEvent(@{@"event":@"clusterBufferGuard", @"pipeline":name, @"bound":standIn ? @"standIn" : @"nil", @"count":@(count)});
+    if ((count <= 8 || count % 256 == 0))
+        BG3MFX_EVENT(@{@"event":@"clusterBufferGuard", @"pipeline":name, @"bound":standIn ? @"standIn" : @"nil", @"count":@(count)});
 }
 #endif
-BOOL installNewCharacterCrashFix(const BG3MFXFeatureContext &context, NSError **) {
-    reportEvent = context.report;
+BOOL installNewCharacterCrashFix(const BG3MFXFeatureContext &, NSError **) {
 #ifndef BG3MFX_NO_TRACE
     BG3MFXMetalHooksOnComputeBind(computeBind);
     BG3MFXMetalHooksOnDispatch(dispatch);

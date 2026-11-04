@@ -166,9 +166,6 @@ static bool constantsNeeded() { return traceCalls || traceShaderConstants || wat
 static bool constantInputNeeded(NSUInteger index) {
     return index < 32 && (traceCalls || traceShaderConstants || (watchedConstants >> index & 1));
 }
-#ifndef BG3MFX_NO_TRACE
-static void record(NSDictionary *event);
-#endif
 static EncoderStage bindingStage(SEL cmd) {
     static SEL vertex[]={@selector(setVertexBuffer:offset:atIndex:),@selector(setVertexBuffers:offsets:withRange:),
         @selector(setVertexBufferOffset:atIndex:),@selector(setVertexBytes:length:atIndex:)};
@@ -241,7 +238,7 @@ static void flushRedundantCounts() {
     lastFrame=frames;
     uint64_t c[RedundantCounts];
     for (int i=0; i<RedundantCounts; ++i) c[i]=redundantCounts[i].exchange(0);
-    record(@{@"event":@"redundantBinds",@"frame":@(frames),
+    BG3MFX_EVENT(@{@"event":@"redundantBinds",@"frame":@(frames),
         @"textureCallsPerFrame":@(c[TextureCalls]/n),@"textureCallsRedundant":@(c[TextureCallsRedundant]/n),
         @"textureSlotsPerFrame":@(c[TextureSlots]/n),@"textureSlotsRedundant":@(c[TextureSlotsRedundant]/n),
         @"bufferBindsPerFrame":@(c[BufferBinds]/n),@"bufferBindsRedundant":@(c[BufferBindsRedundant]/n),
@@ -318,16 +315,6 @@ static void bindBytes(__unsafe_unretained id self, SEL cmd, const void *bytes, N
     }
 }
 #ifndef BG3MFX_NO_TRACE
-// Features installed by root report through its log directly (all important),
-// and the renderer extension keeps its own list; these are the hooks' own events.
-static void record(NSDictionary *event) {
-    NSString *kind = event[@"event"];
-    BOOL important = [kind hasPrefix:@"waterfall"] || [kind hasPrefix:@"cullTiming"] ||
-        [kind isEqualToString:@"redundantBinds"] || [kind isEqualToString:@"metal4Residency"] || [kind isEqualToString:@"metal4BridgeStall"];
-    BG3MFXEventLogWrite(event, important);
-}
-#endif
-#ifndef BG3MFX_NO_TRACE
 static char waterfallCopiesKey;
 static NSDictionary *waterfallLayout(MTLRenderPipelineDescriptor *desc) {
     if (![desc.vertexFunction.name containsString:@"Water_Fall_Foam_STI_"]) return nil;
@@ -392,7 +379,7 @@ static void captureWaterfall(id encoder, NSDictionary *draw) {
     NSDictionary *info=@{@"pipeline":pipelineState,@"mode":@(encoderMode(encoder)),@"draw":drawInfo,@"bindings":snapshots,
         @"limitation":@"Bounded buffer capture; noise texture is not captured. Private buffers copied after this encoder."};
     [[NSJSONSerialization dataWithJSONObject:info options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[root stringByAppendingPathComponent:[stem stringByAppendingString:@".json"]] atomically:YES];
-    record(@{@"event":@"waterfallDrawCaptured",@"path":[root stringByAppendingPathComponent:[stem stringByAppendingString:@".json"]],@"mode":@(encoderMode(encoder))});
+    BG3MFX_EVENT(@{@"event":@"waterfallDrawCaptured",@"path":[root stringByAppendingPathComponent:[stem stringByAppendingString:@".json"]],@"mode":@(encoderMode(encoder))});
 }
 static void finishWaterfallCopies(id<MTLCommandBuffer> commandBuffer, NSArray *copies) {
     if (!commandBuffer || !copies.count) return;
@@ -466,11 +453,11 @@ NSDictionary *metalhooks::texture(id<MTLTexture> t) {
 }
 static void label(id self, SEL cmd, NSString *value) {
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,value);
-    if (value.length) record(@{@"event": @"label", @"class": NSStringFromClass(object_getClass(self)), @"value": value});
+    if (value.length) BG3MFX_TRACE_EVENT(@{@"event": @"label", @"class": NSStringFromClass(object_getClass(self)), @"value": value});
 }
 static void group(id self, SEL cmd, NSString *value) {
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,value);
-    if (value.length) record(@{@"event": @"group", @"value": value});
+    if (value.length) BG3MFX_TRACE_EVENT(@{@"event": @"group", @"value": value});
 }
 static void rememberTexture(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLTexture> t, NSUInteger index) {
     (void)cmd; // Only diagnostic builds include the selector in event records.
@@ -492,7 +479,7 @@ static void rememberTexture(__unsafe_unretained id self, SEL cmd, __unsafe_unret
             noteAssociation(self,AssocBindings);
         }
         if (t) bindings[slot] = texture(t); else [bindings removeObjectForKey:slot];
-        if (t) record(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": pipelineDescription(self) ?: @{}, @"index": @(index), @"texture": texture(t)});
+        if (t) BG3MFX_TRACE_EVENT(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": pipelineDescription(self) ?: @{}, @"index": @(index), @"texture": texture(t)});
     }
 }
 static void bindTexture(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLTexture> t, NSUInteger index) {
@@ -525,7 +512,7 @@ static void finishEncoder(id self, SEL cmd, BG3MFXEncoderState *encoderRecord, i
     (void)commandBuffer;
 #endif
     if (encoderRecord) encoderRecord->buffer = nil;
-    if (traceCalls) record(@{@"event": @"encoderEnd", @"pipeline": pipelineDescription(self) ?: @{},
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"encoderEnd", @"pipeline": pipelineDescription(self) ?: @{},
              @"bindings": objc_getAssociatedObject(self, &bindingsKey) ?: @{},
              @"attachments": objc_getAssociatedObject(self, &attachmentsKey) ?: @{}});
     if (traceConstants) {
@@ -556,7 +543,7 @@ static void finishEncoder(id self, SEL cmd, BG3MFXEncoderState *encoderRecord, i
                     @"storage": buffer ? @(buffer.storageMode) : @(-1),
                     @"buffer": buffer ? [NSString stringWithFormat:@"%p",(__bridge void *)buffer] : @""};
             }];
-            record(@{@"event": @"shaderConstants", @"pipeline": state, @"sample": @(sample), @"bindings": snapshots});
+            BG3MFX_TRACE_EVENT(@{@"event": @"shaderConstants", @"pipeline": state, @"sample": @(sample), @"bindings": snapshots});
         }
         // Release buffer references as soon as this encoder ends.
         if (encoderRecord) { for (auto &stage:encoderRecord->constants) for (auto &binding:stage) binding={}; encoderRecord->bytes=nil; }
@@ -596,7 +583,7 @@ static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained i
         s->kind=info ? info->kind : 0;
         s->slowDraw=slow;
     }
-    if (traceCalls) record(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": description});
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": NSStringFromSelector(cmd), @"encoder": [self label] ?: @"", @"pipeline": description});
 }
 // Camera shader constants and their reflection (BG3MFX_TRACE_CONSTANTS=1),
 // and whatever the renderer extension reflects.
@@ -634,7 +621,7 @@ static void recordReflection(MTLRenderPipelineDescriptor *desc, MTLRenderPipelin
 #pragma clang diagnostic pop
     { std::lock_guard<std::recursive_mutex> lock(guard());
       shaderBufferSizes[desc.fragmentFunction.name ?: @""] = sizes; }
-    record(@{@"event": @"shaderReflection", @"fragment": desc.fragmentFunction.name ?: @"", @"buffers": buffers, @"textures": textures});
+    BG3MFX_TRACE_EVENT(@{@"event": @"shaderReflection", @"fragment": desc.fragmentFunction.name ?: @"", @"buffers": buffers, @"textures": textures});
 }
 // Classifies a render pipeline once, at creation (see BG3MFXPipelineInfo).
 static void renderPipelineCreated(id self, MTLRenderPipelineDescriptor *desc, id state, MTLRenderPipelineReflection *reflection) {
@@ -654,7 +641,7 @@ static void renderPipelineCreated(id self, MTLRenderPipelineDescriptor *desc, id
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         pipelineGeneration.fetch_add(1, std::memory_order_release);
     }
-    if (traceCalls) record(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"renderPipeline", @"pipeline": description, @"success": @(state != nil)});
 }
 static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NSError **error) {
     if (renderer.prepareRenderPipeline) desc = renderer.prepareRenderPipeline(self, desc);
@@ -666,7 +653,7 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
         state = ((id(*)(id,SEL,id,MTLPipelineOption,MTLRenderPipelineReflection **,NSError **))original(self,optionsSelector))
             (self,optionsSelector,desc,MTLPipelineOptionBindingInfo|MTLPipelineOptionBufferTypeInfo,&reflection,&reflectionError);
         if (state) recordReflection(desc,reflection);
-        else record(@{@"event": @"shaderReflectionFailed", @"fragment": desc.fragmentFunction.name ?: @"", @"error": reflectionError.description ?: @""});
+        else BG3MFX_TRACE_EVENT(@{@"event": @"shaderReflectionFailed", @"fragment": desc.fragmentFunction.name ?: @"", @"error": reflectionError.description ?: @""});
         if (!state) state = ((id(*)(id,SEL,id,NSError **))original(self,cmd))(self,cmd,desc,error);
     } else state = ((id(*)(id,SEL,id,NSError **))original(self,cmd))(self,cmd,desc,error);
     renderPipelineCreated(self, desc, state, reflection);
@@ -699,7 +686,7 @@ static id computePipeline(id self, SEL cmd, id<MTLFunction> function, NSError **
         objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         pipelineGeneration.fetch_add(1, std::memory_order_release);
     }
-    if (traceCalls) record(@{@"event": @"computePipeline", @"pipeline": description, @"success": @(state != nil)});
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"computePipeline", @"pipeline": description, @"success": @(state != nil)});
     return state;
 }
 NSData *metalhooks::constantBytes(id encoder, EncoderStage stage, NSUInteger index, NSUInteger count) {
@@ -823,7 +810,7 @@ static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
         NSString *name = state[@"compute"] ?: @"";
         if ([name isEqualToString:@"FSR"] || [name isEqualToString:@"FSR_RCAS"] ||
             [name isEqualToString:@"BG3MFXDispatchSmoke"]) {
-            record(@{@"event": @"dispatchInputs", @"method": NSStringFromSelector(cmd), @"pipeline": state,
+            BG3MFX_TRACE_EVENT(@{@"event": @"dispatchInputs", @"method": NSStringFromSelector(cmd), @"pipeline": state,
                 @"grid": @[@(grid.width),@(grid.height),@(grid.depth)],
                 @"threadsPerGroup": @[@(threads.width),@(threads.height),@(threads.depth)],
                 @"bindings": objc_getAssociatedObject(self, &bindingsKey) ?: @{}});
@@ -934,7 +921,7 @@ static void refreshComputeHook(id buffer) {
     found->second = method_getImplementation(method);
     originalsGeneration.fetch_add(1, std::memory_order_release);
     class_replaceMethod(cls,selector,(IMP)computeEncoderType,method_getTypeEncoding(method));
-    if (traceCalls) record(@{@"event": @"computeHookRefreshed", @"class": NSStringFromClass(cls)});
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"computeHookRefreshed", @"class": NSStringFromClass(cls)});
 }
 static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     refreshComputeHook(self);
@@ -945,7 +932,7 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     Method computeMethod = class_getInstanceMethod(object_getClass(self),sel_registerName("computeCommandEncoderWithDispatchType:"));
     Dl_info computeImage = {};
     if (computeMethod) dladdr((const void *)method_getImplementation(computeMethod), &computeImage);
-    record(@{@"event": @"commandBufferHooks", @"class": NSStringFromClass(object_getClass(self)),
+    BG3MFX_TRACE_EVENT(@{@"event": @"commandBufferHooks", @"class": NSStringFromClass(object_getClass(self)),
         @"computeImplementationImage": computeImage.dli_fname ? [NSString stringWithUTF8String:computeImage.dli_fname] : @"",
         @"computeHookRegistered": @(computeRegistered),
         @"computeHookActive": @(computeMethod && method_getImplementation(computeMethod) == (IMP)computeEncoderType)});
@@ -964,7 +951,7 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     NSDictionary *attachments = @{@"color": colors, @"depth": texture(desc.depthAttachment.texture)};
     if (encoder) objc_setAssociatedObject(encoder, &attachmentsKey, attachments, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     noteAssociation(encoder,AssocAttachments);
-        record(@{@"event": @"renderPass", @"color": colors, @"depth": attachments[@"depth"]});
+        BG3MFX_TRACE_EVENT(@{@"event": @"renderPass", @"color": colors, @"depth": attachments[@"depth"]});
     }
     if (runtimeEnabled && encoder) {
         if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) { state->buffer=self; state->colorTarget=desc.colorAttachments[0].texture; }
@@ -974,7 +961,7 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
 }
 static id computeEncoder(id self, SEL cmd) {
     id encoder = ((id(*)(id,SEL))original(self,cmd))(self,cmd);
-    if (traceCalls) record(@{@"event": @"computeEncoderCreated", @"method": NSStringFromSelector(cmd), @"class": NSStringFromClass([encoder class])});
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"computeEncoderCreated", @"method": NSStringFromSelector(cmd), @"class": NSStringFromClass([encoder class])});
     instrumentEncoder(encoder);
     notifyNewEncoder(encoder,YES);
     if (runtimeEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) state->buffer=self;
@@ -995,7 +982,7 @@ static id computeEncoderType(id self, SEL cmd, MTLDispatchType type) {
     activeBuffer = (__bridge void *)self;
     id encoder = ((id(*)(id,SEL,MTLDispatchType))forward)(self,cmd,type);
     activeBuffer = previous;
-    if (traceCalls) record(@{@"event": @"computeEncoderCreated", @"method": NSStringFromSelector(cmd), @"dispatchType": @(type), @"class": NSStringFromClass([encoder class])});
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"computeEncoderCreated", @"method": NSStringFromSelector(cmd), @"dispatchType": @(type), @"class": NSStringFromClass([encoder class])});
     instrumentEncoder(encoder);
     notifyNewEncoder(encoder,YES);
     if (runtimeEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) state->buffer=self;
@@ -1006,7 +993,7 @@ void metalhooks::countPresent(id drawable, SEL cmd) {
     (void)drawable; (void)cmd;
     std::lock_guard<std::recursive_mutex> lock(guard()); ++frames;
     if (frames == 1 || frames == 120 || frames % 3600 == 0)
-        if (traceCalls) record(@{@"event": @"present", @"method": NSStringFromSelector(cmd), @"frames": @(frames), @"texture": texture([drawable texture])});
+        if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"present", @"method": NSStringFromSelector(cmd), @"frames": @(frames), @"texture": texture([drawable texture])});
 }
 static void present(id self, SEL cmd, id drawable) {
     PresentAction action = renderer.present ? renderer.present(self,cmd,drawable) : PresentCounted;
@@ -1034,7 +1021,7 @@ static id commandBuffer(id self, SEL cmd) {
     if (runtimeEnabled && cmd == sel_registerName("commandBufferWithUnretainedReferences")) actual = sel_registerName("commandBuffer");
     id buffer = ((id(*)(id,SEL))original(self,actual))(self,actual);
     if (renderer.commandBufferCreated) renderer.commandBufferCreated(buffer);
-    if (traceCalls) record(@{@"event": @"commandBuffer", @"method": NSStringFromSelector(cmd), @"actualMethod": NSStringFromSelector(actual),
+    if (traceCalls) BG3MFX_TRACE_EVENT(@{@"event": @"commandBuffer", @"method": NSStringFromSelector(cmd), @"actualMethod": NSStringFromSelector(actual),
              @"retainedReferences": @([buffer retainedReferences])});
     hook(buffer,"renderCommandEncoderWithDescriptor:",(IMP)renderEncoder);
     hook(buffer,"computeCommandEncoder",(IMP)computeEncoder);
@@ -1093,7 +1080,7 @@ static BOOL activateMetalHooks(const BG3MFXFeatureContext &, NSError **) {
 #ifndef BG3MFX_NO_TRACE
         // Growth at a steady size means a set still holds textures BG3 replaced.
         BG3MFXResidencyHook = [](NSString *label, NSUInteger allocations, uint64_t bytes, NSUInteger added, BOOL replaced) {
-            record(@{@"event":@"metal4Residency",@"label":label ?: @"",@"allocations":@(allocations),
+            BG3MFX_EVENT(@{@"event":@"metal4Residency",@"label":label ?: @"",@"allocations":@(allocations),
                 @"megabytes":@(bytes/1048576.0),@"added":@(added),@"replaced":@(replaced)});
         };
         // Which texture enters or leaves a set: a BG3 target or a bg3mfx stand-in.
@@ -1108,17 +1095,17 @@ static BOOL activateMetalHooks(const BG3MFXFeatureContext &, NSError **) {
                 NSMutableDictionary *d=[describe(entry[@"allocation"]) mutableCopy]; d[@"index"]=entry[@"index"]; [a addObject:d];
             }
             for (id<MTLAllocation> allocation in dropped) [r addObject:describe(allocation)];
-            record(@{@"event":@"metal4ResidencyDetail",@"label":label ?: @"",@"added":a,@"dropped":r});
+            BG3MFX_TRACE_EVENT(@{@"event":@"metal4ResidencyDetail",@"label":label ?: @"",@"added":a,@"dropped":r});
         };
         // A Metal 4 queue abandons an event wait after 4 s; show which side waited.
         BG3MFXBridgeStallHook = [](NSString *label, NSDictionary *stalled, NSArray<NSDictionary *> *recent) {
-            record(@{@"event":@"metal4BridgeStall",@"label":label ?: @"",@"now":@(CACurrentMediaTime()),
+            BG3MFX_EVENT(@{@"event":@"metal4BridgeStall",@"label":label ?: @"",@"now":@(CACurrentMediaTime()),
                 @"stalled":stalled,@"recent":recent});
         };
         NSMutableDictionary *startup = [@{@"event": @"start", @"mode": runtimeEnabled ? @"metalfx-menu" : @"diagnostic", @"device": device.name ?: @"unavailable",
                  @"spatial": @([MTLFXSpatialScalerDescriptor supportsDevice:device]),
                  @"temporal": @([MTLFXTemporalScalerDescriptor supportsDevice:device])} mutableCopy];
-        record(startup);
+        BG3MFX_EVENT(startup);
 #endif
         hook(device,"newCommandQueue",(IMP)newQueue);
         // Metal 4 bridges defer their submission to the commit hook only while

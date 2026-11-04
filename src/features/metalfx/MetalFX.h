@@ -26,7 +26,7 @@ int BG3MFXDynamicMinimumFrameRate(void);
 BOOL BG3MFXDynamicThermalGuard(void);
 // MetalFXOptions.mm: registers the options with custom-menu (from the
 // feature's install) and restores the saved choices (from its activation).
-void BG3MFXInstallMetalFXOptions(void (*report)(NSDictionary *), intptr_t slide);
+void BG3MFXInstallMetalFXOptions(intptr_t slide);
 void BG3MFXRestoreMetalFXChoices(void);
 // The options changed the Upscaling Type or Frame Generation: retry a failed
 // upscaler after a type change, and reset Frame Generation and Temporal history.

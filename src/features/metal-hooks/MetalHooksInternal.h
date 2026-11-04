@@ -13,12 +13,7 @@
 // at which the hooks call the extension. Features other than metalfx use the
 // public hook points in MetalHooks.h.
 
-#ifdef BG3MFX_NO_TRACE
-// Compile away the arguments too: a no-op function would still construct the
-// dictionaries, texture descriptions and strings on every intercepted call.
-// Diagnostic builds define a record() in each file that uses it.
-#define record(...) ((void)0)
-#endif
+#import "common/EventLog.h"
 
 namespace metalhooks {
 #ifdef BG3MFX_NO_TRACE

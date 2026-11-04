@@ -40,7 +40,7 @@ int main() {
         check(shadows(nativeWindow) == 2 && shadows(nativeOffscreen) == 2, "BG3 adds two shadow stages");
 
         NSError *error = nil;
-        check(BG3MFXInstallDuplicateShadowFix(nullptr, &error), "registration");
+        check(BG3MFXInstallDuplicateShadowFix(&error), "registration");
         for (BG3MFXViewKind kind : {BG3MFXViewKind::Game, BG3MFXViewKind::Player}) {
             std::vector<uint8_t> codes = stages(kind, window);
             check(received.size() == 1 && shadows(codes) == 1, "one shadow stage in window views");

@@ -19,12 +19,6 @@
 struct BG3MFXFeatureContext {
     intptr_t slide;              // the game executable's slide; 0 outside BG3 or on another build
     bool runtimeEnabled;         // BG3MFX_ENABLE=1
-    // The diagnostic event log, null in the quiet runtime. `report` is for
-    // rare events, each timestamped and always written; `trace` for frequent
-    // ones (per frame or per call), written once per distinct content and
-    // only until the log holds 20,000 lines.
-    void (*report)(NSDictionary *event);
-    void (*trace)(NSDictionary *event);
 };
 
 struct BG3MFXFeature {

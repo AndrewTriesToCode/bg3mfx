@@ -47,7 +47,7 @@ $(BIN_DIR)/metal4-bridge-smoke: tests/common/metal4_bridge_smoke.mm src/common/g
 	$(CXX) $(CXXFLAGS) $< src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -o $@
 
 $(BIN_DIR)/temporal-jitter-smoke: tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S src/features/metalfx/temporal-upscaling/TemporalJitter.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S src/features/metalfx/dynamic-resolution/DynamicResolution.h src/common/native/CodePatch.mm src/common/native/CodePatch.h src/features/metalfx/MetalFX.h src/common/native/SupportedBuild.h src/common/Feature.h src/common/Notice.h | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S -framework Foundation -o $@
+	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S -framework Foundation -o $@
 
 $(BIN_DIR)/metalfx-smoke: tests/common/metalfx_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm src/common/gpu/MetalFXPipeline.h src/common/gpu/GPUResources.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) tests/common/metalfx_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -o $@
@@ -136,12 +136,6 @@ $(BIN_DIR)/libBG3MetalFX.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DI
 	codesign --force --sign - $@
 
 # Same quiet feature path, with standalone fixture exports unavailable to players.
-# Developer build: the quiet runtime plus dynamic resolution's controller log
-# (os_log category `controller`), for measuring without the diagnostic runtime.
-$(BIN_DIR)/libBG3MetalFXResolutionLog.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 -DBG3MFX_RESOLUTION_LOG=1 -dynamiclib $(RUNTIME_SOURCES) $(FRAMEWORKS) -o $@
-	codesign --force --sign - $@
-
 $(BIN_DIR)/libBG3MetalFXTest.dylib: $(RUNTIME_SOURCES) $(RUNTIME_HEADERS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 -DBG3MFX_STANDALONE_TEST_HOOKS=1 -dynamiclib $(RUNTIME_SOURCES) $(FRAMEWORKS) -o $@
 	codesign --force --sign - $@
@@ -224,7 +218,7 @@ clean-evidence:
 	python3 tools/build/cleanup.py evidence "$(BIN_DIR)" "$(EVIDENCE_DIR)"
 
 $(BIN_DIR)/frame-interpolation-smoke: tests/features/metalfx/frame-generation/frame_interpolation_smoke.mm src/features/metalfx/frame-generation/FrameInterpolation.mm src/features/metalfx/frame-generation/FrameInterpolation.h src/features/metalfx/frame-generation/FrameLog.mm src/features/metalfx/frame-generation/FrameLog.h src/common/gpu/GPUResources.mm src/common/gpu/GPUResources.h | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< src/features/metalfx/frame-generation/FrameInterpolation.mm src/features/metalfx/frame-generation/FrameLog.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -Isrc -o $@
+	$(CXX) $(CXXFLAGS) $< src/features/metalfx/frame-generation/FrameInterpolation.mm src/features/metalfx/frame-generation/FrameLog.mm src/common/EventLog.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -Isrc -o $@
 
 $(BIN_DIR)/frame-generation-hook-smoke: tests/features/metalfx/frame-generation/frame_generation_hook_smoke.mm | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< $(FRAMEWORKS) -o $@
@@ -233,7 +227,7 @@ $(BIN_DIR)/improved-shadows-smoke: tests/features/improved-shadows/improved_shad
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
 
 $(BIN_DIR)/native-shadows-smoke: tests/features/improved-shadows/native_shadows_smoke.mm src/features/improved-shadows/ImprovedShadows.mm src/features/improved-shadows/ImprovedShadows.h src/features/improved-shadows/ImprovedShadowsShader.h src/features/custom-pipeline-bundles/CustomPipelineBundles.h src/features/custom-pipeline-bundles/PipelineRecord.h src/features/custom-render-stages/CustomRenderStages.h src/common/Feature.h src/common/native/SupportedBuild.h | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
+	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 $< -framework Foundation -framework Metal -o $@
 
 # Developer probe, not part of make test: timings depend on the machine and load.
 $(BIN_DIR)/hook-overhead: tools/probes/hook_overhead.mm | $(BIN_DIR)
@@ -258,7 +252,7 @@ $(BIN_DIR)/custom-pipeline-bundles-smoke: tests/features/custom-pipeline-bundles
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
 
 $(BIN_DIR)/duplicate-shadow-fix-smoke: tests/features/duplicate-shadow-fix/duplicate_shadow_fix_smoke.mm src/features/duplicate-shadow-fix/DuplicateShadowFix.mm src/features/duplicate-shadow-fix/DuplicateShadowFix.h src/features/custom-render-stages/CustomRenderStages.mm src/features/custom-render-stages/CustomRenderStages.h src/common/Feature.h src/common/native/CodePatch.mm src/common/native/SupportedBuild.h | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< -framework Foundation -o $@
+	$(CXX) $(CXXFLAGS) -DBG3MFX_NO_TRACE=1 $< -framework Foundation -o $@
 
 $(BIN_DIR)/supported-build-smoke: tests/common/supported_build_smoke.cpp src/common/native/SupportedBuild.h | $(BIN_DIR)
 	$(CXX) $(CPPFLAGS) -std=c++17 -O2 -Wall -Wextra $< -o $@

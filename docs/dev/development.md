@@ -48,6 +48,16 @@ python3 tools/launch/bg3mfx.py launch-trace
 # Or pass --output /absolute/path/to/new-trace.jsonl
 ```
 
+The diagnostic runtime has one log: the JSONL event log, at `BG3MFX_TRACE` or
+`$TMPDIR/bg3mfx-trace.jsonl`. Code writes to it with `BG3MFX_EVENT` (rare,
+timestamped, always written) or `BG3MFX_TRACE_EVENT` (frequent, once per distinct
+content, up to 20,000 lines), both in `src/common/EventLog.h`. In the quiet
+runtime they compile to nothing. Writing an event serializes it on the calling
+thread, so compare frame rates on the quiet runtime. Failures go through
+`BG3MFXFail` in `src/common/Notice.h`: a `failure` event in the diagnostic runtime,
+the system log (`com.bg3mfx`, category `failure`) in the quiet one, and the
+player's dialog in both; with `BG3MFX_TEST_ERRORS_STDERR=1`, stderr and no dialog.
+
 A diagnostic session records only what the enabled features report, plus any
 opt-in probes. Set these before the launch command to add more:
 
@@ -84,13 +94,12 @@ Keep live scene navigation under user control.
 See the [baseline capture procedure](baseline-captures.md) for collecting
 GPU traces, CPU samples, Metal HUD logs, and power estimates.
 
-Add `BG3MFX_FRAME_LOG=1` to the diagnostic runtime to log BG3's actual
-rendered rate, the real and generated images that reached the display, drops,
+Add `BG3MFX_FRAME_LOG=1` to the diagnostic runtime to record a `frameStats` event
+every 2 s with BG3's actual rendered rate, the real and generated images that reached the display, drops,
 the presentation method, the gaps between shown images, and Frame Generation's
 sampled refresh rate, source interval, scheduled minimum durations, app active
 state, screen maximum refresh rate, stand-in wait/work time, and overflow-slot
-use every 2 s:
-`log stream --predicate 'subsystem == "com.bg3mfx"'`. With Frame Generation on,
+use. Follow it with `tail -f <trace> | grep frameStats`. With Frame Generation on,
 the Metal HUD's "rendered" figure is unreliable (a trace showed about 19
 rendered fps while the HUD showed about 10); use this log instead. The real and
 generated cadence fields report the measured interval between successive
