@@ -36,15 +36,6 @@ struct BG3MFXDrawReplacement {
                  __unsafe_unretained id<MTLTexture> fragment1, const BG3MFXEncoderCalls &calls, void (^draw)(void));
 };
 BOOL BG3MFXMetalHooksReplaceDraws(BG3MFXDrawReplacement replacement);
-#ifndef BG3MFX_NO_TRACE
-// Diagnostic runtime only. Each compute buffer bind (`buffer` is nil for an
-// explicit nil, and kCFNull for setBytes), and each compute dispatch with its
-// pipeline's function name. metal-hooks keeps that name only with
-// BG3MFX_TRACE_RENDER_CALLS=1 (and for the renderer extension's: with metalfx,
-// FSR, FSR_RCAS and CAS); otherwise it is nil. Registering either hooks compute binds.
-BOOL BG3MFXMetalHooksOnComputeBind(void (*observer)(id encoder, NSUInteger index, id buffer));
-BOOL BG3MFXMetalHooksOnDispatch(void (*observer)(id encoder, NSString *pipeline));
-#endif
 // Redundant bind filtering: drop fragment texture and pipeline binds that
 // repeat the encoder's current ones (BindFilter.h). It is inline in the
 // hottest hooks, where a call per bind would cost more than it saves;

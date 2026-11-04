@@ -1,4 +1,3 @@
-#import "common/EventLog.h"
 #import "features/duplicate-shadow-fix/DuplicateShadowFix.h"
 #import "features/custom-render-stages/CustomRenderStages.h"
 #include "common/Feature.h"
@@ -28,7 +27,6 @@ BOOL BG3MFXInstallDuplicateShadowFix(NSError **error) {
         !BG3MFXSetViewStages(BG3MFXViewKind::Player, feature, window.data(), window.size(), error) ||
         !BG3MFXSetViewStages(BG3MFXViewKind::Offscreen, feature, offscreen.data(), offscreen.size(), error))
         return NO;
-    BG3MFX_EVENT(@{@"event":@"duplicateShadowFixRegistered"});
     return YES;
 }
 

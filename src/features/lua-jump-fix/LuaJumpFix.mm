@@ -1,6 +1,5 @@
 #include "common/native/SupportedBuild.h"
 #include "common/Feature.h"
-#import "common/EventLog.h"
 #import "features/lua-jump-fix/LuaJumpFix.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -62,8 +61,7 @@ BOOL BG3MFXInstallLuaJumpFix(intptr_t slide, NSError **error) {
         memcpy(reinterpret_cast<void *>(protectCall), &call, 4);
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make Lua error handling writable.");
-    // Written but not executable again: report it as installed, not skipped.
-    BG3MFX_EVENT(@{@"event": @"luaJumpFixInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
+    // Written but not executable again still counts as installed, not skipped.
     return YES;
 }
 

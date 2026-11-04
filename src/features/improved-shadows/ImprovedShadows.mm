@@ -1,5 +1,5 @@
 #include "common/native/SupportedBuild.h"
-#import "common/EventLog.h"
+#import "common/Notice.h"
 #import "features/improved-shadows/ImprovedShadows.h"
 #import "features/custom-render-stages/CustomRenderStages.h"
 #import "features/custom-pipeline-bundles/CustomPipelineBundles.h"
@@ -92,7 +92,7 @@ bool makeClones() {
     if (clonesTried) return ready.load(std::memory_order_relaxed);
     clonesTried = true;
     auto fail = [](NSString *message) {
-        BG3MFX_EVENT(@{@"event":@"shadowClones", @"ready":@NO, @"error":message ?: @""});
+        BG3MFXFail([@"Improved Shadows kept BG3's shaders: " stringByAppendingString:message ?: @"unknown error"], nil, nil);
         return false;
     };
     id<MTLDevice> device = BG3MFXMetalDevice();
@@ -120,7 +120,6 @@ bool makeClones() {
         }
     }
     ready.store(true, std::memory_order_release);
-    BG3MFX_EVENT(@{@"event":@"shadowClones", @"ready":@YES});
     return true;
 }
 
@@ -133,7 +132,6 @@ bool loadHook(void *stage) {
     if (cloned && own != originals) {
         // Not seen: BG3's cache gave this stage other programs than the
         // stages holding the clones, so Unload couldn't put them back.
-        BG3MFX_EVENT(@{@"event":@"shadowProgramsDiffer"});
         return loaded;
     }
     originals = own;

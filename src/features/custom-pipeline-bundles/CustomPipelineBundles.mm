@@ -1,5 +1,4 @@
 #include "common/native/SupportedBuild.h"
-#import "common/EventLog.h"
 #import "features/custom-pipeline-bundles/CustomPipelineBundles.h"
 #include "common/native/CodePatch.h"
 #include "common/Feature.h"
@@ -222,8 +221,6 @@ BG3MFXProgramID BG3MFXCreateProgram(const char *baseBshd, const BG3MFXProgramSta
             return fail([NSString stringWithFormat:@"%s has no %s stage to replace.", baseBshd, stage.name]);
     for (const Stage &stage : stages)
         if (stage.function) replaceStage(entry, stage.offset, stage.function);
-    BG3MFX_EVENT(@{@"event":@"programCreated", @"base":@(baseBshd), @"handle":@(handle),
-            @"vertex":replace.vertex.name ?: @"", @"fragment":replace.fragment.name ?: @""});
     return BG3MFXProgramID{handle};
 }
 
@@ -262,11 +259,6 @@ bool BG3MFXDescribeDepthState(BG3MFXDepthStateID state, BG3MFXDepthStateDesc *de
     return true;
 }
 
-size_t BG3MFXDescribedDepthStates(void) {
-    std::lock_guard<std::mutex> hold(describeLock);
-    return depthStates.size();
-}
-
 BG3MFXDepthStateID BG3MFXGetOrCreateDepthState(const BG3MFXDepthStateDesc &d, NSError **error) {
     auto fail = [&](NSString *message) {
         if (error) *error = makeError(3, message);
@@ -286,7 +278,6 @@ BG3MFXDepthStateID BG3MFXGetOrCreateDepthState(const BG3MFXDepthStateDesc &d, NS
     if (handle == BG3MFXInvalidHandle) return fail(@"BG3 could not make the depth-stencil state.");
     recordDepthState(handle, d);
     createdDepthStates[settings] = handle;
-    BG3MFX_EVENT(@{@"event":@"depthStateCreated", @"handle":@(handle)});
     return {handle};
 }
 
@@ -327,7 +318,6 @@ BG3MFXBlendStateID BG3MFXGetOrCreateBlendState(const BG3MFXBlendStateDesc &d, NS
     const uint64_t handle = createBlendState(device, d.srcRGB, d.dstRGB, d.rgbOp, d.writeMask, d.srcAlpha, d.dstAlpha, d.alphaOp);
     if (handle == BG3MFXInvalidHandle) return fail(@"BG3 could not make the blend state.");
     createdBlendStates[settings] = handle;
-    BG3MFX_EVENT(@{@"event":@"blendStateCreated", @"handle":@(handle)});
     return {handle};
 }
 
@@ -408,7 +398,6 @@ BOOL installCustomPipelineBundles(const BG3MFXFeatureContext &context, NSError *
     destroyPath = reinterpret_cast<DestroyPath>(Native::DestroyPath + slide);
     rendererData = reinterpret_cast<void *const *>(Native::RendererData + slide);
     defaultShaderPath = reinterpret_cast<void *const *>(Native::DefaultShaderPath + slide);
-    BG3MFX_EVENT(@{@"event":@"customPipelineBundlesInstalled"});
     return YES;
 }
 }

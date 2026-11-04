@@ -13,5 +13,3 @@ inline constexpr NSUInteger BG3MFXClusterInfoIndex = 1, BG3MFXClusterInfoWriteIn
 
 // Binds the stand-in on an encoder BG3 just created.
 void BG3MFXBindClusterStandIns(id encoder, BOOL compute);
-// Whether `buffer` is the stand-in (diagnostics: BG3 left the slot unbound).
-BOOL BG3MFXIsClusterStandIn(id<MTLBuffer> buffer);

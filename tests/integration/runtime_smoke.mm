@@ -37,9 +37,10 @@ int main(int argc, const char **argv) {
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
         id<MTLCommandQueue> queue = [device newCommandQueue];
         id<MTLCommandBuffer> buffer = [queue commandBufferWithUnretainedReferences];
-        const char *probe = getenv("BG3MFX_SCENE_PROBE");
-        BOOL probeEnabled = probe && strcmp(probe,"1") == 0;
-        if (buffer.retainedReferences != probeEnabled) return 8;
+        // With BG3MFX_ENABLE=1 encoder state relies on retained references.
+        const char *enable = getenv("BG3MFX_ENABLE");
+        BOOL enabled = enable && strcmp(enable,"1") == 0;
+        if (buffer.retainedReferences != enabled) return 8;
         id<MTLComputeCommandEncoder> encoder = [buffer computeCommandEncoder];
         encoder.label = @"BG3MFX smoke test";
         id<MTLComputePipelineState> compute = [device newComputePipelineStateWithFunction:[library newFunctionWithName:@"BG3MFXDispatchSmoke"] error:&error];

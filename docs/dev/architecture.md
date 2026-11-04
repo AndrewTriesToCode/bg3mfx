@@ -74,8 +74,7 @@ the FSR dispatch, after that pass has ended, so at a fallback dispatch
 `MetalFXRenderer.mm` first runs its own compute kernel with the same normalization from the
 skipped draw's source into its target inside BG3's compute encoder, then
 restores BG3's FSR pipeline and textures. BG3's draw cannot run there: a render
-pass cannot open inside the active compute encoder. `BG3MFX_SKIP_FSR_TONEMAP=0`
-keeps the draw and the store.
+pass cannot open inside the active compute encoder.
 
 `MetalFXRenderer.mm` captures HDR scene color, device depth, motion, camera constants, and
 BG3's original jitter at the TAA stage. It copies current color into the skipped
@@ -144,8 +143,7 @@ recognized color passes and tone mapping then carry them to `CombineUI`. Jitter
 comes from BG3's constants, so the native eight-phase sequence is described as
 is. Frames that reach `CombineUI` without these inputs (menus, loading screens,
 native-FSR fallback frames) are presented unpaired, and pairing resumes with the
-next frame that has them. With `BG3MFX_TRACE_TEMPORAL_CHAIN=1`, the diagnostic
-runtime records the recent pass chain in each `frameGenerationNoScene` event.
+next frame that has them.
 A live trace (October 13) showed Off + Frame Generation losing the scene at
 CAS, which reads the tone-mapped RGB10A2 scene and writes the one `CombineUI`
 composes; with the CAS forward, Off + Frame Generation works live.
@@ -221,9 +219,8 @@ encoders and about 20,000 draws went from about 1.9 ms (round 2) to about
 0.9 ms. Measured live on
 the quiet runtime before round 3, with the game in the foreground (samples
 taken while BG3 is in the background measure its background frame throttle,
-`GameClock::CapFrame`, instead): about 16-17% of the render thread. Diagnostic builds still inspect every draw,
-so use the quiet runtime (with `MTL_HUD_LOG_ENABLED=1` and `sample`) for
-performance comparisons.
+`GameClock::CapFrame`, instead): about 16-17% of the render thread. Use
+`MTL_HUD_LOG_ENABLED=1` and `sample` for performance comparisons.
 
 ## GPU resource reuse
 
@@ -267,7 +264,7 @@ the submission that last used each member of its residency set and rebuilds the
 set without members idle for 16 submissions; pooled textures rotate well within
 that. `metal4-bridge-smoke` replaces its inputs at the same size and checks that
 the old ones are freed (the earlier set kept them until it reached 64
-allocations). The diagnostic runtime logs each set change as `metal4Residency`.
+allocations).
 
 The Metal 4 queue waits on an event that BG3's command buffer signals before
 the FX work. If that buffer fails before signaling, the queue would wait
@@ -291,11 +288,11 @@ retained copy can serve as the previous color. Inputs that do not qualify are
 converted into pooled copies. Live, the saving is within HUD noise (about 1 fps
 at 4K); it is kept because it removes passes and memory, not for frame rate.
 
-## Failure and diagnostics
+## Failure
 
 No failure closes BG3: the player may have unsaved progress. Each turns off
 what failed and shows one notice on the main run loop (`BG3MFXFail` in
-`common/Notice.mm`); with `BG3MFX_TEST_ERRORS_STDERR=1` the message goes only to stderr.
+`common/Notice.mm`); in the test build, `BG3MFX_TEST_ERRORS_STDERR=1` sends the message to stderr instead of a dialog.
 
 - A MetalFX Spatial or Temporal initialization, resource, sequencing,
   encoding, or GPU-completion failure turns that upscaler off. BG3's TAA and
@@ -312,11 +309,10 @@ what failed and shows one notice on the main run loop (`BG3MFXFail` in
   If the native integration cannot be installed at startup, BG3 runs without
   MetalFX or the other optimizations.
 
-`libBG3MetalFX.dylib` is the quiet development runtime. `libBG3MetalFXTrace.dylib`
-adds JSONL traces, shader reflection, and opt-in captures. Diagnostics are not
-part of the rendering feature contract and are compiled out of the quiet build.
-Both builds retain the interception and lifetime work required to integrate with
-BG3. `tools/launch/bg3mfx.py` supports only inspection and launch-time injection; it
+`libBG3MetalFX.dylib` is the one runtime, with no diagnostics; `libBG3MetalFXTest.dylib`
+adds exports for the standalone tests. Temporary diagnostics may be added while
+developing a feature and are removed before it is committed.
+`tools/launch/bg3mfx.py` supports only inspection and launch-time injection; it
 does not alter the app bundle.
 
 ## Repository layout
@@ -324,8 +320,8 @@ does not alter the app bundle.
 - `src/features/<feature>/`: feature implementations and a README describing
   behavior, integration, measured results, and validation limits.
   `src/features/root/` installs the others.
-- `src/common/`: the feature interface (`Feature.h`), the diagnostic event log
-  and player notices.
+- `src/common/`: the feature interface (`Feature.h`) and failure reporting
+  (`Notice.h`).
 - `src/common/gpu/`: reusable MetalFX encoding and GPU resource ownership.
 - `src/common/native/`: shared guarded code patching and the canonical supported-build manifest.
 - `src/features/metal-hooks/`: the metal-hooks feature (Metal interception).
@@ -343,7 +339,7 @@ does not alter the app bundle.
   launch, licensed-reference downloads, release maintenance, and scoped cleanup.
 - `build/bin/`: disposable compiled launchers, libraries, tests, and probes.
 - `build/evidence/<date>-<experiment>/`: retained captures, traces, and pixel-test
-  images. New diagnostic traces and temporal quality runs use dated folders.
+  images. Temporal quality runs use dated folders.
 - `build/analysis/baseline/`: retained unmodded-game baseline evidence.
 - Other `build/` paths (`build/profiling/`, downloaded references) are local
   only; `make clean` never removes them. Never place game assets in tracked folders.
@@ -351,7 +347,7 @@ does not alter the app bundle.
 
 Use source-root include paths (for example `common/gpu/GPUResources.h`) with
 `-Isrc`. Both runtime variants share the Makefile's source and header lists;
-`make install` still installs only the player launcher and quiet runtime.
+`make install` still installs only the player launcher and runtime.
 
 ## Supported native build
 
@@ -381,8 +377,7 @@ installs them in dependency order. Every feature installs before any
 activates, so a provider (custom-render-stages) patches BG3 only once its
 dependents have registered with it. A feature that patches the executable
 installs only on the supported build, and a skipped feature skips its
-dependents (`featureSkipped`, then a `features` summary in the diagnostic
-trace). The player launcher sets every player-facing feature; a player
+dependents, each reporting why through `BG3MFXFail`. The player launcher sets every player-facing feature; a player
 can set one to 0 to turn it off. `tools/launch/bg3mfx.py` sets only the
 features named with `--feature`, so a live test exercises one at a time.
 `BG3MFX_FEATURE_METALFX` covers MetalFX Spatial, Temporal (with its jitter
@@ -429,8 +424,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   every process (also outside BG3, for the hook regressions); it hooks Metal
   at activation, after the menu and the native patches. Features that require
   it register with its hook points (`MetalHooks.h`) from their install: a
-  new-encoder observer, a render-pass observer, one draw replacement, and in
-  the diagnostic runtime compute bind and dispatch observers. Each point holds up to four observers in a fixed array,
+  new-encoder observer, a render-pass observer and one draw replacement. Each point holds up to four observers in a fixed array,
   read without locks; with none registered the cost is one count check.
 - `src/common/native/CodePatch.*`: shared in-memory code patching (header-padding branch
   islands, branch range checks, all-or-nothing page protection) and read-only
@@ -446,8 +440,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   a stage its construction looks up, and Game or Player lists without the
   stages `App::InitFrameStages` inserts around. Enabled by the features that
   require it; dependents register from their install, and it patches App's
-  vtable at activation only once a list is registered, or with
-  `BG3MFX_TRACE_STAGE_LIST=1` in the diagnostic runtime, which records each pack call (`stageListCall`). See
+  vtable at activation only once a list is registered. See
   [views and their stage lists](baseline/README.md#views-and-their-stage-lists).
   It also lets features override a stage class's `Load`, `Unload`, `Submit` or
   `StartRecording` (`BG3MFXOverrideStageMethod`) by replacing the entry in that
@@ -471,8 +464,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   already bound in the encoder are not forwarded to the driver. The rules
   are metal-hooks' (`src/features/metal-hooks/BindFilter.h`), inline in its
   bind hooks; the feature turns them on with
-  `BG3MFXMetalHooksFilterRedundantBinds`. The diagnostic
-  runtime counts BG3's redundant binds with `BG3MFX_TRACE_REDUNDANT=1`.
+  `BG3MFXMetalHooksFilterRedundantBinds`.
 - `src/features/duplicate-shadow-fix/DuplicateShadowFix.*`: Duplicate Shadow
   Fix (`BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=1`, requires
   custom-render-stages). It registers bg3mfx's own stage lists with
@@ -512,8 +504,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   metal-hooks' new-encoder hook point it binds a zero-filled,
   untracked stand-in at compute buffer indices 1 and 6 and fragment index 1 on
   each new encoder, so a clustered-lighting pass that BG3 dispatches without
-  `ClusterInfoBuffer` reads no lights instead of faulting the GPU. Diagnostic
-  builds record `clusterBufferGuard` when one of those passes reads the stand-in.
+  `ClusterInfoBuffer` reads no lights instead of faulting the GPU.
 - `src/features/lua-jump-fix/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
   avoiding two system calls per protected call (`BG3MFX_FEATURE_LUA_JUMP_FIX=1`).
 - `src/features/ssao-blur-fix/SSAOBlurFix.*`: SSAO's horizontal blur pass
@@ -531,9 +522,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   spans the device's MetalFX Temporal input content scale range. The TAA
   capture accepts the reduced viewport, a dynamic-resolution scaler upscales
   just that region, and `MetalFXRenderer.mm`'s commit hook reports BG3's command-buffer
-  GPU intervals to the controller. Diagnostic runtime: `BG3MFX_DYNAMIC_RESOLUTION_AREA=<area>`
-  or `<min>,<max>,<seconds>` overrides the controller, recorded as a
-  `dynamicResolutionOverride` event. It also patches the volumetric fog history's previous
+  GPU intervals to the controller. It also patches the volumetric fog history's previous
   viewport loads, the auto-exposure scene UV load, the SSR history viewport, an SSR history discard after each area change, and loads of the full view rectangle for forward lighting clamps, bloom and DOF radii and the projection jitter divisor; `MetalFXRenderer.mm` gives the fog composite a viewport-mapped vertex
   shader (`viewportFogDescriptor`, whenever the feature is installed) and
   corrects surface grid draws (`SurfaceGridDraw`) and subsurface scattering
@@ -542,8 +531,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
   pacing probe `0x800`, thread idling `0x9c0`, uniform slices `0xa00`, custom pipeline bundles `0xad8` (offsets from
   `0x100004000`). Each install checks its range is still zero.
-- `src/features/metal-hooks/MetalHooks.mm`: Metal hooks and diagnostic
-  instrumentation; `src/features/metalfx/MetalFXRenderer.mm`: exact texture
+- `src/features/metal-hooks/MetalHooks.mm`: Metal hooks; `src/features/metalfx/MetalFXRenderer.mm`: exact texture
   association and pass replacement.
 - `src/features/metalfx/spatial-upscaling/SpatialUpscaler.*` and `src/features/metalfx/temporal-upscaling/TemporalUpscaler.*`: BG3-specific inputs,
   conversions, and destinations for each scaler.

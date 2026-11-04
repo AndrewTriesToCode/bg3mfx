@@ -1,6 +1,5 @@
 #include "common/Feature.h"
 #include "common/native/SupportedBuild.h"
-#import "common/EventLog.h"
 #import "common/Notice.h"
 #include "common/native/CodePatch.h"
 #import "features/metalfx/MetalFX.h"
@@ -81,10 +80,6 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
                 c.own=true;
             }
         }
-#ifndef BG3MFX_NO_TRACE
-        BG3MFX_TRACE_EVENT(@{@"event":@"nativeTemporalJitter",@"view":@((uintptr_t)view),
-            @"frame":@(index),@"phases":@(c.phases),@"sample":@[@(halton(index%c.phases+1,2)-0.5f),@(halton(index%c.phases+1,3)-0.5f)]});
-#endif
         // Native views are recreated on transitions; bound CPU bookkeeping.
         if (choices().size()>64) { Choice saved=c; choices().clear(); choices()[view]=saved; }
     }
@@ -144,12 +139,11 @@ static BOOL installJitter(intptr_t slide, NSError **error) {
     });
     if (result==BG3MFXCodePatchResult::NotWritable) return fail(@"Could not install native jitter sampling hooks.");
     if (result==BG3MFXCodePatchResult::NotRestored) return fail(@"Could not restore native jitter code protection.");
-    BG3MFX_TRACE_EVENT(@{@"event":@"temporalJitterInstalled",@"phases":@[@14,@18,@24,@32]});
     return YES;
 }
 
 // The temporal-upscaling feature: Temporal's native jitter, which metalfx
-// requires. The jitter reports each view's sample every frame.
+// requires.
 namespace {
 BOOL installTemporalUpscaling(const BG3MFXFeatureContext &context, NSError **error) {
     if (installJitter(context.slide, error)) return YES;

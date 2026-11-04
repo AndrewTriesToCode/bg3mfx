@@ -15,10 +15,7 @@ and bump, so the other sites still see BG3's protocol, and the hook on
 Apple Silicon BG3 binds the shared uniform buffer directly (no commit-time
 copy), so slices only need the per-frame reset.
 
-- `BG3MFX_UNIFORM_SLICE_BYTES` (default 16384; a multiple of 16 from 256 to
-  1 MB): the slice size.
-- The diagnostic runtime reports `uniformSlicesUsage`: slices taken and the
-  largest offset a frame reached, against the 21 MiB buffer.
+- Each slice is 16 KiB.
 
 The implementation is in
 [`UniformSlices.mm`](../../../src/features/reduce-locking/UniformSlices.mm),
@@ -40,7 +37,7 @@ With Dynamic Worker Prioritization off, System Traces put 91% of lock samples in
 the two patched functions; slices removed 98% of lock samples, the `WT/High`
 workers fell from 1.02 to 0.61 cores, and the render thread's waiting on jobs
 from 9.6% to 2.7% of its time. The remaining lock time is spread over many
-other sites. No rendering errors in play with the diagnostic runtime (about
+other sites. No rendering errors in play (about
 33,000 slices); the largest frame used 0.47 MB of the 21 MiB buffer.
 Uncapped (CPU-bound) frame rate is not yet measured. See
 [performance analysis](../../../docs/dev/performance.md).

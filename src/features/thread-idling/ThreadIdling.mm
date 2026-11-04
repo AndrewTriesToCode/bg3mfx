@@ -1,6 +1,5 @@
 #include "common/native/SupportedBuild.h"
 #include "common/Feature.h"
-#import "common/EventLog.h"
 #import "features/thread-idling/ThreadIdling.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -21,10 +20,7 @@
 //   cap) fills each wait by running queued worker jobs and yield-spinning; the
 //   server's tick needs about 9 ms of its 33 ms.
 // Workers and the scheduler now sleep at once: in an uncapped CPU-bound sweep,
-// 50 us worker or 101 us scheduler polls cost CPU without measurable fps. The
-// poll, CapFrame step and margin are tunable for measurement
-// (BG3MFX_WORKER_POLL_US, BG3MFX_SCHEDULER_POLL_US, BG3MFX_CAPFRAME_POLL_US,
-// BG3MFX_CAPFRAME_MARGIN_US).
+// 50 us worker or 101 us scheduler polls cost CPU without measurable fps.
 namespace Native = BG3MFXBuild::ThreadIdling;
 
 namespace {
@@ -61,28 +57,6 @@ const size_t idleIslandOffset = BG3MFXBuild::Islands::ThreadIdle.offset, idleIsl
 uint64_t usTicks;
 // CapFrame poll step and margin in ticks.
 uint64_t capPollTicks, capMarginTicks;
-#ifndef BG3MFX_NO_TRACE
-// How late CapFrame's deadline sleeps wake, to choose the margin: counts per
-// bucket (<25, <50, <100, <200, <500, >=500 us) and the maximum.
-std::atomic<uint64_t> lateBuckets[6], lateMaxUs{0}, capSleeps{0};
-void noteWake(uint64_t lateTicks) {
-    uint64_t us = lateTicks / usTicks;
-    const uint64_t limits[5] = {25, 50, 100, 200, 500};
-    unsigned bucket = 0;
-    while (bucket < 5 && us >= limits[bucket]) ++bucket;
-    ++lateBuckets[bucket];
-    for (uint64_t max = lateMaxUs.load(); us > max && !lateMaxUs.compare_exchange_weak(max, us);) {}
-    uint64_t sleeps = ++capSleeps;
-    if (!(sleeps & (sleeps - 1)) && sleeps >= 1024) {
-        @autoreleasepool {
-            BG3MFX_EVENT(@{@"event": @"capFrameWakeLateness", @"sleeps": @(sleeps), @"maxUs": @(lateMaxUs.load()),
-                          @"under25": @(lateBuckets[0].load()), @"under50": @(lateBuckets[1].load()),
-                          @"under100": @(lateBuckets[2].load()), @"under200": @(lateBuckets[3].load()),
-                          @"under500": @(lateBuckets[4].load()), @"over500": @(lateBuckets[5].load())});
-        }
-    }
-}
-#endif
 
 // Called in place of CapFrame's idle yield with the clock and its wait target.
 void capIdle(const char *clock, int64_t targetUs) {
@@ -107,9 +81,6 @@ void capIdle(const char *clock, int64_t targetUs) {
         return;
     }
     mach_wait_until(wake);
-#ifndef BG3MFX_NO_TRACE
-    noteWake(mach_absolute_time() - wake);
-#endif
 }
 
 bool zero(uintptr_t address, size_t bytes) {
@@ -118,15 +89,6 @@ bool zero(uintptr_t address, size_t bytes) {
     return true;
 }
 
-// A whole-number setting in us, or the fallback when unset or out of range.
-uint64_t setting(const char *name, uint64_t fallback, uint64_t maximum) {
-    const char *value = getenv(name);
-    if (!value || !*value) return fallback;
-    char *end = nullptr;
-    unsigned long long parsed = strtoull(value, &end, 10);
-    if (*end || parsed > maximum) return fallback;
-    return parsed;
-}
 }
 
 BOOL BG3MFXInstallThreadIdling(intptr_t slide, NSError **error) {
@@ -134,13 +96,9 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, NSError **error) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXThreadIdling" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
     };
-    // The worker budget is a 16-bit immediate; the scheduler window is in ns
-    // and is kept under 1 ms; the CapFrame margin is kept under 1 s.
-    const uint64_t workerPollUs = setting("BG3MFX_WORKER_POLL_US", 0, 0xffff);
-    const uint64_t schedulerPollUs = setting("BG3MFX_SCHEDULER_POLL_US", 0, 1000);
-    const uint64_t capMarginUs = setting("BG3MFX_CAPFRAME_MARGIN_US", 200, 1000000);
+    constexpr uint64_t workerPollUs = 0, schedulerPollUs = 0, capMarginUs = 200;
     // A step must leave CapFrame inside its 1 ms job-check window or past it.
-    const uint64_t capPollUs = setting("BG3MFX_CAPFRAME_POLL_US", 250, 1000);
+    constexpr uint64_t capPollUs = 250;
     // Root has already checked the executable UUID; also check every
     // instruction replaced or branched to.
     uintptr_t worker = workerBudget + slide, idle = capIdleYield + slide;
@@ -159,8 +117,6 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, NSError **error) {
     usTicks = 1000ull * timebase.denom / timebase.numer;
     capMarginTicks = capMarginUs * usTicks;
     capPollTicks = capPollUs * usTicks;
-#ifndef BG3MFX_NO_TRACE
-#endif
     std::vector<std::pair<uintptr_t, size_t>> ranges = {{idleIsland, idleIslandBytes}, {worker, 4},
         {schedulerWindows[0] + slide, 8}, {schedulerWindows[1] + slide, 8}, {idle, 4}};
     auto result = BG3MFXPatchCode(ranges, [&] {
@@ -181,10 +137,7 @@ BOOL BG3MFXInstallThreadIdling(intptr_t slide, NSError **error) {
         memcpy(reinterpret_cast<void *>(idle), &toIdle, 4);
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the idle loops writable.");
-    // Written but not executable again: report it as installed, not skipped.
-    BG3MFX_EVENT(@{@"event": @"threadIdlingInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched),
-                         @"workerPollUs": @(workerPollUs), @"schedulerPollUs": @(schedulerPollUs),
-                         @"capFramePollUs": @(capPollUs), @"capFrameMarginUs": @(capMarginUs)});
+    // Written but not executable again still counts as installed, not skipped.
     return YES;
 }
 

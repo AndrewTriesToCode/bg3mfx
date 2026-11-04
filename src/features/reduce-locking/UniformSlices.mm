@@ -1,6 +1,5 @@
 #include "common/native/SupportedBuild.h"
 #include "common/Feature.h"
-#import "common/EventLog.h"
 #import "features/reduce-locking/UniformSlices.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -43,26 +42,10 @@ struct alignas(64) FrameState {
 } frameState;
 static_assert(sizeof(std::atomic<uint64_t>) == 8 && offsetof(FrameState, lastOffset) == 8, "BeginFrame island layout");
 
-uint64_t sliceBytes = 16384;
+constexpr uint64_t sliceBytes = 16384;
 struct Slice { const char *renderer; uint64_t generation, next, end; };
 thread_local Slice slice;
 
-#ifndef BG3MFX_NO_TRACE
-std::atomic<uint64_t> refills{0}, peakOffset{0};
-void noteRefill() {
-    uint64_t last = frameState.lastOffset.load(std::memory_order_relaxed);
-    for (uint64_t peak = peakOffset.load(); last > peak && !peakOffset.compare_exchange_weak(peak, last);) {}
-    uint64_t count = ++refills;
-    // Peak is the largest offset a finished frame reached, against the
-    // buffer's size: the slices' headroom.
-    if (count >= 1024 && !(count & (count - 1))) {
-        @autoreleasepool {
-            BG3MFX_EVENT(@{@"event": @"uniformSlicesUsage", @"slices": @(count), @"peakOffsetBytes": @(peakOffset.load()),
-                          @"bufferBytes": @(Native::Layout::BufferBytes), @"sliceBytes": @(sliceBytes)});
-        }
-    }
-}
-#endif
 
 // Called from both sites with the renderer and the allocation's size; returns
 // its offset, 16-byte aligned like BG3's.
@@ -78,9 +61,6 @@ uint64_t allocate(const char *renderer, uint64_t size) {
         *offset = at + bytes;
         os_unfair_lock_unlock(lock);
         slice = {renderer, generation, at, at + bytes};
-#ifndef BG3MFX_NO_TRACE
-        noteRefill();
-#endif
     }
     slice.next = at + size;
     return at;
@@ -100,12 +80,6 @@ BOOL BG3MFXInstallUniformSlices(intptr_t slide, NSError **error) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXUniformSlices" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
     };
-    // A slice size for measurement, in bytes: a multiple of 16 up to 1 MB.
-    if (const char *value = getenv("BG3MFX_UNIFORM_SLICE_BYTES")) {
-        char *end = nullptr;
-        unsigned long long parsed = strtoull(value, &end, 10);
-        if (*value && !*end && parsed >= 256 && parsed <= (1u << 20) && !(parsed % 16)) sliceBytes = parsed;
-    }
     // Root has already checked the executable UUID; also check every
     // instruction replaced.
     uintptr_t bind = Native::BindAlloc + slide, setup = Native::SetupAlloc + slide, reset = Native::FrameReset + slide;
@@ -119,8 +93,6 @@ BOOL BG3MFXInstallUniformSlices(intptr_t slide, NSError **error) {
         !BG3MFXBranchReaches(reset, resetIsland) || !BG3MFXBranchReaches(bind + 28, Native::BindResume + slide) ||
         !BG3MFXBranchReaches(setup + 24, Native::SetupResume + slide))
         return fail(@"Uniform slice island is out of range.");
-#ifndef BG3MFX_NO_TRACE
-#endif
     auto result = BG3MFXPatchCode({{island, islandBytes}, {bind, 32}, {setup, 28}, {reset, 4}}, [&] {
         // Allocation: ldr x16, #8; br x16; .quad allocate (returns to the site).
         uint32_t allocCode[4] = {0x58000050, 0xd61f0200, 0, 0};
@@ -150,8 +122,6 @@ BOOL BG3MFXInstallUniformSlices(intptr_t slide, NSError **error) {
         memcpy(reinterpret_cast<void *>(reset), &toReset, 4);
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the uniform allocation sites writable.");
-    BG3MFX_EVENT(@{@"event": @"uniformSlicesInstalled", @"sliceBytes": @(sliceBytes),
-                         @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
     return YES;
 }
 

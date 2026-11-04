@@ -9,7 +9,7 @@
 
 namespace {
 std::vector<std::string> calls;
-std::vector<NSDictionary *> events;
+std::vector<std::string> failures;
 std::vector<std::string> failInstall, failActivate;
 intptr_t seenSlide = -1;
 void check(bool ok, const char *what) {
@@ -42,16 +42,23 @@ template<int N> BG3MFXFeature feature(const char *name, const char *const *requi
     return {name, requires, native, wanted, Fake<N>::install, Fake<N>::activate};
 }
 }
-void BG3MFXEventLogWrite(NSDictionary *event, bool) { events.push_back(event); }
+void BG3MFXFail(NSString *message, NSString *, NSString *) { failures.push_back(message.UTF8String); }
 namespace {
 std::vector<Entry> runAll(std::vector<const BG3MFXFeature *> features, bool runtime = true, bool native = true) {
-    calls.clear(); events.clear(); seenSlide = -1;
+    calls.clear(); failures.clear(); seenSlide = -1;
     BG3MFXFeatureContext context{0x1000, runtime};
     return run(features, context, native, @"Not the supported build.");
 }
-NSDictionary *summary() {
-    for (NSDictionary *event : events) if ([event[@"event"] isEqualToString:@"features"]) return event;
+NSString *skipped(const std::vector<Entry> &entries, const char *name) {
+    for (const Entry &entry : entries) if (!strcmp(entry.feature->name, name)) return entry.skipped;
     return nil;
+}
+bool active(const std::vector<Entry> &entries, const char *name) {
+    for (const Entry &entry : entries) if (!strcmp(entry.feature->name, name)) return entry.active;
+    return false;
+}
+bool anyActive(const std::vector<Entry> &entries) {
+    return std::any_of(entries.begin(), entries.end(), [](const Entry &entry) { return entry.active; });
 }
 void flags(std::initializer_list<const char *> names) {
     for (const char *name : {"BG3MFX_FEATURE_PROVIDER", "BG3MFX_FEATURE_CONSUMER", "BG3MFX_FEATURE_ALPHA",
@@ -91,11 +98,11 @@ int main() {
         // Enabling a feature enables what it requires, installed first; every
         // install comes before any activation. The registration order doesn't matter.
         flags({"BG3MFX_FEATURE_CONSUMER"});
-        runAll({&consumer, &provider});
+        auto entries = runAll({&consumer, &provider});
         check((calls == std::vector<std::string>{"install provider", "install consumer", "activate provider", "activate consumer"}),
               "dependency order, installs before activations");
         check(seenSlide == 0x1000, "context slide");
-        check([summary()[@"active"] isEqualToArray:(@[@"provider", @"consumer"])], "summary lists active features");
+        check(active(entries, "provider") && active(entries, "consumer"), "both features active");
         // Requirements of requirements, and independent features by name.
         flags({"BG3MFX_FEATURE_ALPHA"}); setenv("BG3MFX_FEATURE_TOP", "1", 1);
         runAll({&top, &alpha, &consumer, &provider});
@@ -106,9 +113,10 @@ int main() {
 
         // An explicit 0 keeps a requirement off and skips its dependents.
         flags({"BG3MFX_FEATURE_CONSUMER"}); setenv("BG3MFX_FEATURE_PROVIDER", "0", 1);
-        runAll({&provider, &consumer});
-        check(calls.empty() && [summary()[@"skipped"][@"consumer"] isEqualToString:@"Requires provider, which is turned off."],
+        entries = runAll({&provider, &consumer});
+        check(calls.empty() && [skipped(entries, "consumer") isEqualToString:@"Requires provider, which is turned off."],
               "a requirement turned off");
+        check(failures == std::vector<std::string>{"Feature consumer was skipped: Requires provider, which is turned off."}, "a skip is reported");
 
         // `wanted` enables without a flag, with or without the runtime.
         flags({});
@@ -118,41 +126,40 @@ int main() {
         // A native feature needs the supported build, and so do its dependents;
         // other features still install, with a zero slide.
         flags({"BG3MFX_FEATURE_ALPHA"}); setenv("BG3MFX_FEATURE_ON_NATIVE", "1", 1);
-        runAll({&alpha, &nativePatch, &onNative}, true, false);
+        entries = runAll({&alpha, &nativePatch, &onNative}, true, false);
         unsetenv("BG3MFX_FEATURE_ON_NATIVE");
         check((calls == std::vector<std::string>{"install alpha", "activate alpha"}), "native features skipped off the supported build");
         check(seenSlide == 0, "no slide off the supported build");
-        check([summary()[@"skipped"][@"native-patch"] isEqualToString:@"Not the supported build."] &&
-              [summary()[@"skipped"][@"on-native"] hasPrefix:@"Requires native-patch"], "native skip reasons");
+        check([skipped(entries, "native-patch") isEqualToString:@"Not the supported build."] &&
+              [skipped(entries, "on-native") hasPrefix:@"Requires native-patch"], "native skip reasons");
 
         // A failed install skips its dependents; a failed activation leaves
         // its dependents installed but not activated.
         flags({"BG3MFX_FEATURE_CONSUMER"});
         failInstall = {"provider"};
-        runAll({&provider, &consumer});
+        entries = runAll({&provider, &consumer});
         check((calls == std::vector<std::string>{"install provider"}), "failed install skips dependents");
-        check([summary()[@"skipped"][@"provider"] isEqualToString:@"install failed"], "install failure reason");
+        check([skipped(entries, "provider") isEqualToString:@"install failed"], "install failure reason");
         failInstall = {}; failActivate = {"provider"};
-        runAll({&provider, &consumer});
+        entries = runAll({&provider, &consumer});
         check((calls == std::vector<std::string>{"install provider", "install consumer", "activate provider"}), "failed activation");
-        check([summary()[@"active"] count] == 0 && [summary()[@"skipped"][@"consumer"] hasPrefix:@"Requires provider"], "nothing active");
+        check(!anyActive(entries) && [skipped(entries, "consumer") hasPrefix:@"Requires provider"], "nothing active");
         failActivate = {};
 
         // Cycles and unknown requirements are skipped; the rest still installs.
         flags({"BG3MFX_FEATURE_LOOP_A", "BG3MFX_FEATURE_ORPHAN", "BG3MFX_FEATURE_ALPHA"});
-        runAll({&loopA, &loopB, &orphan, &alpha});
+        entries = runAll({&loopA, &loopB, &orphan, &alpha});
         check((calls == std::vector<std::string>{"install alpha", "activate alpha"}), "cycle and unknown requirement skipped");
-        check([summary()[@"skipped"][@"loop-a"] isEqualToString:@"Its requirements form a cycle."] &&
-              [summary()[@"skipped"][@"loop-b"] isEqualToString:@"Its requirements form a cycle."] &&
-              [summary()[@"skipped"][@"orphan"] hasPrefix:@"Requires missing"], "cycle and unknown reasons");
+        check([skipped(entries, "loop-a") isEqualToString:@"Its requirements form a cycle."] &&
+              [skipped(entries, "loop-b") isEqualToString:@"Its requirements form a cycle."] &&
+              [skipped(entries, "orphan") hasPrefix:@"Requires missing"], "cycle and unknown reasons");
 
         // A second registration under a taken name is ignored.
         flags({"BG3MFX_FEATURE_PROVIDER"});
         const BG3MFXFeature again = feature<10>("provider", nullptr);
         runAll({&provider, &again});
         check(calls.size() == 2, "one install per name");
-        check(std::any_of(events.begin(), events.end(), [](NSDictionary *e) { return [e[@"event"] isEqualToString:@"featureDuplicate"]; }),
-              "duplicate reported");
+        check(failures == std::vector<std::string>{"Feature provider is registered twice; the second is ignored."}, "duplicate reported");
 
         check(flag("custom-render-stages") == "BG3MFX_FEATURE_CUSTOM_RENDER_STAGES", "flag names");
         puts("Root: flags with the runtime, wanted features, requirements first and enabled with their dependents, "

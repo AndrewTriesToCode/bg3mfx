@@ -49,8 +49,8 @@ Image quality, not speed: the AO gets the horizontal half of its blur. The
 cost is one more load per blur bind, recorded twice per frame.
 
 Validated in the game on October 31, 2026 (diagnostic runtime, displayed,
-3456×2160): the fix installed, and the constant snapshots
-(`BG3MFX_TRACE_CONSTANTS=1`) showed each frame's first blur pass binding
+3456×2160): the fix installed, and constant snapshots from a
+since-removed trace showed each frame's first blur pass binding
 (1/3456, 0) and its second (0, 1/2160), each in its own ring slot, where
 both had been (0, 1/2160). The image looked normal. No before/after image
 comparison was made.

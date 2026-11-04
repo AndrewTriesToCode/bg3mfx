@@ -13,20 +13,10 @@
 // at which the hooks call the extension. Features other than metalfx use the
 // public hook points in MetalHooks.h.
 
-#import "common/EventLog.h"
 
 namespace metalhooks {
-#ifdef BG3MFX_NO_TRACE
-inline constexpr bool diagnostics = false;
-inline constexpr bool traceCalls = false, traceShaderConstants = false;
-#else
-inline constexpr bool diagnostics = true;
-// BG3MFX_TRACE_RENDER_CALLS=1 (or a capture that reads the recorded bindings)
-// and BG3MFX_TRACE_CONSTANTS=1.
-extern bool traceCalls, traceShaderConstants;
-#endif
 // BG3MFX_ENABLE=1; the draw, buffer and dispatch hooks are installed with it.
-extern BOOL runtimeEnabled, traceConstants;
+extern BOOL runtimeEnabled;
 
 // Dyld may run the constructor before the C++ initializers: function-local
 // statics are initialized before the first hook or log call.
@@ -52,7 +42,7 @@ struct DrawCall {
 // read and clear only those. The renderer extension's bits start at
 // AssocRenderer.
 enum EncoderAssociation : uint16_t {
-    AssocBindings = 1, AssocAttachments = 2, AssocWaterfall = 4, AssocRenderer = 0x100, AssocAll = 0xffff,
+    AssocRenderer = 0x100, AssocAll = 0xffff,
 };
 }
 
@@ -67,7 +57,7 @@ enum EncoderAssociation : uint16_t {
     metalhooks::ConstantBinding constants[3][metalhooks::EncoderSlots];
     __unsafe_unretained id<MTLTexture> textures[metalhooks::EncoderSlots];
     __unsafe_unretained id pipeline;
-    __strong NSDictionary *description;  // call tracing may create one per pipeline set
+    __strong NSDictionary *description;  // the bound pipeline's, when the renderer extension reads it
     // The bound pipeline's class from the renderer extension (0: none).
     uint8_t kind;
     // Draws go to the renderer extension: kind is set, or the extension asked
@@ -86,14 +76,6 @@ enum EncoderAssociation : uint16_t {
     bool hasViewport, hasScissor;
     MTLViewport viewport;
     MTLScissorRect scissor;
-#ifndef BG3MFX_NO_TRACE
-    // Diagnostics (BG3MFX_TRACE_REDUNDANT=1): every binding BG3 has made in
-    // this encoder, to count binds that repeat what is already bound.
-    __unsafe_unretained id seenTexture[64];
-    __unsafe_unretained id seenBuffer[2][32];
-    NSUInteger seenOffset[2][32];
-    __unsafe_unretained id seenPipeline, seenDepth;
-#endif
     // The renderer extension's per-encoder flags.
     // Dynamic resolution: a surface grid or subsurface blur pipeline is bound
     // while the viewport is reduced.
@@ -136,7 +118,7 @@ struct HookThreadCache {
 };
 extern thread_local HookThreadCache hookCache;
 extern std::atomic<unsigned> encoderGeneration, originalsGeneration;
-extern char encoderStateKey, bindingsKey, attachmentsKey;
+extern char encoderStateKey;
 
 // Returns a plain pointer: ARC would otherwise retain and release the state
 // around every hooked call. The encoder keeps its state alive.
@@ -186,14 +168,11 @@ NSDictionary *boundTextures(id encoder);
 // The first `count` bytes of a recorded constant binding, if readable.
 NSData *constantBytes(id encoder, EncoderStage stage, NSUInteger index, NSUInteger count);
 // A texture's description for event records.
-NSDictionary *texture(id<MTLTexture> t);
-// Counts a BG3 frame presented (to a real drawable or a stand-in).
-void countPresent(id drawable, SEL cmd);
 
 // The renderer extension: metalfx's renderer, registered from its install.
 // Each entry is optional.
 enum DispatchAction { DispatchNative, DispatchSuppressed, DispatchDropped };
-enum PresentAction { PresentCounted, PresentUncounted, PresentHandled };
+enum PresentAction { PresentForward, PresentHandled };
 using FinishEncoder = void (*)(id encoder, SEL cmd, BG3MFXEncoderState *state, id<MTLCommandBuffer> buffer);
 struct RendererExtension {
     // Constant slots (bit per index below 32) whose bindings encoder state records.
@@ -214,7 +193,7 @@ struct RendererExtension {
     // Whether to create it with reflection (passed to renderPipelineCreated).
     bool (*wantsReflection)(MTLRenderPipelineDescriptor *desc);
     // Classifies a new render pipeline: kind, rendererFlags, and a description
-    // when the hooks gave it none.
+    // when the extension will read it.
     void (*renderPipelineCreated)(MTLRenderPipelineDescriptor *desc, id state, MTLRenderPipelineReflection *reflection,
                                   BG3MFXPipelineInfo *info);
     // Compute functions whose pipelines keep their name.
@@ -222,8 +201,7 @@ struct RendererExtension {
     // A pipeline is about to be bound (state still holds the previous one).
     // Returns whether its draws go to draw().
     bool (*pipelineBound)(id encoder, BG3MFXEncoderState *state, BG3MFXPipelineInfo *info, NSDictionary *description);
-    // A draw on a slow-draw pipeline (or any draw while tracing calls);
-    // forward issues it.
+    // A draw on a slow-draw pipeline; forward issues it.
     void (*draw)(id encoder, BG3MFXEncoderState *state, const DrawCall &call, void (^forward)(void));
     DispatchAction (*dispatch)(id encoder, SEL cmd, NSString *pipeline);
     PresentAction (*present)(id buffer, SEL cmd, id drawable);

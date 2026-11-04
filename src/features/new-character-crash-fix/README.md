@@ -30,14 +30,11 @@ don't serialize on it. Through metal-hooks' new-encoder hook point, it binds
 the stand-in on every new encoder BG3 creates: compute indices 1 and 6, and
 fragment index 1. A bind from BG3 replaces it, so the stand-in is only read
 where BG3 left the slot empty, and those passes see a frame with no local
-lights. Diagnostic builds also observe compute buffer binds and dispatches and
-record `clusterBufferGuard` events. Each event names a cluster pass that
-dispatched with the stand-in still bound, or with an explicit nil bind. Pass
-names need `BG3MFX_TRACE_RENDER_CALLS=1`.
+lights.
 
 [`new_character_crash_fix_smoke.mm`](../../../tests/features/new-character-crash-fix/new_character_crash_fix_smoke.mm)
 is a synthetic, offscreen check (`make test`). An unbound `ClusterAssignment`
-pass reads the zero stand-in, and the diagnostic runtime reports it.
+pass reads the zero stand-in.
 
 Live on October 19, at the settings that hung, the first entry into character
 creation in one run reproduced the trigger. `ClusterAssignment` and the

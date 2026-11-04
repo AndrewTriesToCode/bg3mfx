@@ -1,6 +1,5 @@
 #import "features/metalfx/frame-generation/FrameInterpolation.h"
 #import "common/gpu/GPUResources.h"
-#import "features/metalfx/frame-generation/FrameLog.h"
 #import <MetalFX/MetalFX.h>
 #include <cmath>
 #include <thread>
@@ -233,16 +232,13 @@ static thread_local bool presenterReleasedHere=false;
 // request: BG3's double-buffered vsync allows two, otherwise three.
 @interface BG3MFXSlotGate : NSObject
 - (BOOL)acquireWithPreferredLimit:(NSUInteger)preferred maximumLimit:(NSUInteger)maximum
-                            grace:(double)grace timeout:(double)seconds overflowed:(BOOL *)overflowed;
+                            grace:(double)grace timeout:(double)seconds;
 - (void)releaseSlot;
-- (NSUInteger)inFlight;
 @end
 @implementation BG3MFXSlotGate { NSCondition *_condition; NSUInteger _inFlight; }
-- (NSUInteger)inFlight { [_condition lock]; NSUInteger count=_inFlight; [_condition unlock]; return count; }
 - (instancetype)init { if ((self=[super init])) _condition=[NSCondition new]; return self; }
 - (BOOL)acquireWithPreferredLimit:(NSUInteger)preferred maximumLimit:(NSUInteger)maximum
-                            grace:(double)grace timeout:(double)seconds overflowed:(BOOL *)overflowed {
-    if (overflowed) *overflowed=NO;
+                            grace:(double)grace timeout:(double)seconds {
     NSDate *graceDeadline=[NSDate dateWithTimeIntervalSinceNow:grace];
     NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:seconds];
     [_condition lock];
@@ -254,13 +250,12 @@ static thread_local bool presenterReleasedHere=false;
     }
     if (_inFlight<preferred) { ++_inFlight; [_condition unlock]; return YES; }
     if (_inFlight<maximum) {
-        ++_inFlight; if (overflowed) *overflowed=YES;
-        [_condition unlock]; return YES;
+        ++_inFlight; [_condition unlock]; return YES;
     }
     while (_inFlight>=maximum) {
         if (![_condition waitUntilDate:deadline]) { [_condition unlock]; return NO; }
     }
-    ++_inFlight; if (overflowed && _inFlight>preferred) *overflowed=YES;
+    ++_inFlight;
     [_condition unlock]; return YES;
 }
 - (void)releaseSlot { [_condition lock]; if (_inFlight) --_inFlight; [_condition broadcast]; [_condition unlock]; }
@@ -288,10 +283,6 @@ struct PresentTask {
     double cadence;            // BG3's actual interval between frames
     NSArray *handlers;
     __weak BG3MFXStandInDrawable *standIn;
-#ifndef BG3MFX_NO_TRACE
-    CFTimeInterval submitted;  // BG3's commit of this frame, for the frame log
-    unsigned queued;           // stand-ins in flight plus frames waiting here
-#endif
 };
 
 @implementation BG3MFXFramePresenter {
@@ -306,11 +297,6 @@ struct PresentTask {
     // Paced presentation prefers one stand-in and borrows one overflow slot
     // only when its short wait expires, keeping latency low without stalling BG3.
     std::atomic<bool> _preferSingleStandIn;
-    // Diagnostics, in seconds; reset by takeTimingSummary.
-#ifndef BG3MFX_NO_TRACE
-    std::atomic<double> _idleTime, _drawableTime, _standInTime;
-    std::atomic<unsigned> _timedTasks, _immediateTasks;
-#endif
     std::mutex _mutex;
     std::condition_variable _wake;
     std::deque<PresentTask> _tasks;
@@ -368,16 +354,9 @@ struct PresentTask {
     CFTimeInterval start=CACurrentMediaTime();
     NSUInteger preferred=_preferSingleStandIn ? 1 : std::min<NSUInteger>(std::max<NSUInteger>(limit,2),3);
     NSUInteger maximum=_preferSingleStandIn ? 2 : std::min<NSUInteger>(preferred+1,3);
-    BG3MFXFrameLogBuffering((unsigned)limit,(unsigned)maximum);
-    BOOL overflowed=NO;
-    BOOL acquired=[_slots acquireWithPreferredLimit:preferred maximumLimit:maximum grace:0.002 timeout:1
-        overflowed:&overflowed];
-    if (acquired && overflowed) BG3MFXFrameLogStandInOverflow();
+    BOOL acquired=[_slots acquireWithPreferredLimit:preferred maximumLimit:maximum grace:0.002 timeout:1];
     double waited=CACurrentMediaTime()-start;
     _standInWait=_standInWait+waited;
-#ifndef BG3MFX_NO_TRACE
-    _standInTime=_standInTime+waited;
-#endif
     if (!acquired) return nil;
     BG3MFXTexturePool *pool=[self poolLike:nil standIn:YES width:w height:h format:_pixelFormat];
     id<MTLTexture> texture=[pool acquire];
@@ -405,31 +384,16 @@ struct PresentTask {
     // BG3's work time excludes time blocked on a stand-in we still held: it
     // shows whether BG3 could render faster than it does.
     double waited=_standInWait.exchange(0), cadence=interval;
-    BG3MFXFrameLogBackpressure(waited,cadence);
     if (interval>0) interval=fmax(interval-waited,1.0/240);
     uint64_t value=0;
     if (buffer) { value=++_eventValue; [buffer encodeSignalEvent:_event value:value]; }
     BG3MFXTexturePool *generatedPool;
     { std::lock_guard<std::mutex> lock(_mutex); generatedPool=_generated; }
     PresentTask task{standIn.texture,generated,[standIn pool],generatedPool,standIn.layer,value,interval,cadence,handlers,standIn
-#ifndef BG3MFX_NO_TRACE
-        ,CACurrentMediaTime(),(unsigned)[_slots inFlight]
-#endif
     };
     std::lock_guard<std::mutex> lock(_mutex);
-#ifndef BG3MFX_NO_TRACE
-    task.queued+=(unsigned)_tasks.size();
-#endif
     _tasks.push_back(std::move(task)); _wake.notify_all();
 }
-#ifndef BG3MFX_NO_TRACE
-- (NSDictionary *)takeTimingSummary {
-    unsigned tasks=_timedTasks.exchange(0);
-    auto ms=[&](std::atomic<double> &total){ double value=total.exchange(0); return @(tasks ? value*1000/tasks : 0); };
-    return @{@"tasks":@(tasks),@"vsyncOffTasks":@(_immediateTasks.exchange(0)),
-        @"idleMs":ms(_idleTime),@"drawableWaitMs":ms(_drawableTime),@"bg3StandInWaitMs":ms(_standInTime)};
-}
-#endif
 - (void)encodeCopy:(id<MTLTexture>)src to:(id<CAMetalDrawable>)drawable into:(id<MTLCommandBuffer>)cb {
     auto pass=[MTLRenderPassDescriptor new];
     pass.colorAttachments[0].texture=drawable.texture; pass.colorAttachments[0].loadAction=MTLLoadActionDontCare;
@@ -494,21 +458,9 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     unsigned refreshCheck=0;
     for (;;) { if (presenterReleasedHere) return; @autoreleasepool {
         PresentTask task;
-#ifndef BG3MFX_NO_TRACE
-        CFTimeInterval idleStart=CACurrentMediaTime();
-#endif
         { std::unique_lock<std::mutex> lock(_mutex); _wake.wait(lock,[&]{return _stop || !_tasks.empty();});
           if (_tasks.empty() && _stop) break; task=std::move(_tasks.front()); _tasks.pop_front(); }
-#ifndef BG3MFX_NO_TRACE
-        _idleTime=_idleTime+(CACurrentMediaTime()-idleStart); ++_timedTasks;
-        // Times one blocking step into the given diagnostic total.
-        auto timed=[](std::atomic<double> &total, auto &&step) {
-            CFTimeInterval begin=CACurrentMediaTime(); auto result=step(); total=total+(CACurrentMediaTime()-begin); return result; };
-#endif
         void (^failure)(NSError *)=self.failureHandler;
-#ifndef BG3MFX_NO_TRACE
-        void (^diagnostic)(BOOL,CFTimeInterval,CFTimeInterval,double)=self.presentedHandler;
-#endif
         if (task.cadence>0) {
             double sample=fmin(fmax(task.cadence,1.0/240),0.1);
             smoothedCadence=smoothedCadence>0 ? smoothedCadence*0.75+sample*0.25 : sample;
@@ -518,9 +470,7 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         if (refreshCheck++%30==0) {
             CAMetalLayer *layer=task.layer;
             dispatch_async(dispatch_get_main_queue(),^{
-                BOOL active=NSApp.isActive;
                 NSInteger fps=fgScreenForLayer(layer).maximumFramesPerSecond;
-                BG3MFXFrameLogDisplayState(active,fps);
                 if (fps>0) refresh->store(1.0/fps);
             });
         }
@@ -532,8 +482,7 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         // between the two (live, windowed: composited below about 55 fps,
         // alternating near 60 fps at 120 Hz). One stand-in with plain presents
         // held BG3 at about 40 fps: it waited on the presenter's spacing.
-        BG3MFXPresentMethod method=synced ? BG3MFXPresentSynced : BG3MFXPresentSpaced;
-        bool spaced=method==BG3MFXPresentSpaced;
+        bool spaced=!synced;
         // Whole refreshes per frame (at least two), split between the generated
         // and the real image; each minimum just under its count of refreshes.
         // Rounded down with a margin, so a pair never takes a whole frame: BG3
@@ -541,30 +490,17 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         int refreshes=std::max(2,(int)floor(interval/frameRefresh-0.05));
         double generatedMinimum=(refreshes/2)*frameRefresh-0.0005;
         double realMinimum=(refreshes-refreshes/2)*frameRefresh-0.0005;
-        BG3MFXFrameLogPacing(synced,frameRefresh,interval,(unsigned)refreshes,generatedMinimum,realMinimum);
         _preferSingleStandIn=!spaced;
-        BG3MFXFrameLogMethod(method);
-#ifndef BG3MFX_NO_TRACE
-        if (!synced) ++_immediateTasks;
-#endif
         dispatch_semaphore_t generatedReady=spaced ? dispatch_semaphore_create(0) : nil;
         dispatch_semaphore_t realReady=spaced ? dispatch_semaphore_create(0) : nil;
         id<CAMetalDrawable> generatedDrawable=nil;
         if (task.generated) {
-#ifndef BG3MFX_NO_TRACE
-            generatedDrawable=timed(_drawableTime,[&]{ return [task.layer nextDrawable]; });
-#else
             generatedDrawable=[task.layer nextDrawable];
-#endif
             if (generatedDrawable) {
                 auto cb=[_queue commandBuffer];
                 if (task.value) [cb encodeWaitForEvent:_event value:task.value];
                 [self encodeCopy:task.generated to:generatedDrawable into:cb];
                 [task.generatedPool relinquish:task.generated afterCommandBuffer:cb];
-#ifndef BG3MFX_NO_TRACE
-                [generatedDrawable addPresentedHandler:^(id<MTLDrawable> d){
-                    BG3MFXFrameLogShown(YES,d.presentedTime); if (diagnostic) diagnostic(YES,d.presentedTime,0,interval); }];
-#endif
                 [cb addCompletedHandler:^(id<MTLCommandBuffer> b){
                     if (generatedReady) dispatch_semaphore_signal(generatedReady); if (b.error && failure) failure(b.error); }];
                 if (!spaced) [cb presentDrawable:generatedDrawable afterMinimumDuration:generatedMinimum];
@@ -573,23 +509,13 @@ static void waitUntilMediaTime(CFTimeInterval target) {
                 // BG3 may hold the remaining drawables briefly (for example while
                 // leaving Frame Generation): skip the generated image, keep going.
                 [task.generatedPool relinquish:task.generated];
-#ifndef BG3MFX_NO_TRACE
-                BG3MFXFrameLogShown(YES,-1); if (diagnostic) diagnostic(YES,-1,0,interval);
-#endif
             }
         }
         dispatch_time_t limit=dispatch_time(DISPATCH_TIME_NOW,(int64_t)((interval+0.2)*NSEC_PER_SEC));
-#ifndef BG3MFX_NO_TRACE
-        id<CAMetalDrawable> drawable=timed(_drawableTime,[&]{ return [task.layer nextDrawable]; });
-#else
         id<CAMetalDrawable> drawable=[task.layer nextDrawable];
-#endif
         if (!drawable) {
             // Dropping one frame is recoverable; never end the game for it.
             [task.realPool relinquish:task.real]; [_slots releaseSlot];
-#ifndef BG3MFX_NO_TRACE
-            BG3MFXFrameLogShown(NO,-1); if (diagnostic) diagnostic(NO,-1,0,interval);
-#endif
             if (spaced && generatedDrawable && !dispatch_semaphore_wait(generatedReady,limit)) [generatedDrawable present];
             continue;
         }
@@ -601,14 +527,7 @@ static void waitUntilMediaTime(CFTimeInterval target) {
             [pool relinquish:real]; [slots releaseSlot]; if (realReady) dispatch_semaphore_signal(realReady);
             if (b.error && failure) failure(b.error); }];
         NSArray *handlers=task.handlers; __weak BG3MFXStandInDrawable *standIn=task.standIn;
-#ifndef BG3MFX_NO_TRACE
-        CFTimeInterval submitted=task.submitted; unsigned queued=task.queued;
-#endif
         [drawable addPresentedHandler:^(id<MTLDrawable> d){
-#ifndef BG3MFX_NO_TRACE
-            BG3MFXFrameLogShown(NO,d.presentedTime);
-            if (d.presentedTime>0) BG3MFXFrameLogLatency(d.presentedTime-submitted,queued); if (diagnostic) diagnostic(NO,d.presentedTime,0,interval);
-#endif
             BG3MFXStandInDrawable *owner=standIn; owner.presentedTime=d.presentedTime;
             for (MTLDrawablePresentedHandler h in handlers) h(owner ?: d);
         }];
@@ -629,7 +548,7 @@ static void waitUntilMediaTime(CFTimeInterval target) {
                 [drawable present];
             }
         }
-#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
+#ifdef BG3MFX_STANDALONE_TEST_HOOKS
         if (generatedDrawable) _presentedPairs++;
 #endif
     }}

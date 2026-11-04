@@ -1,5 +1,5 @@
 #include "common/native/SupportedBuild.h"
-#import "common/EventLog.h"
+#import "common/Notice.h"
 #import "features/metalfx/MetalFX.h"
 #import "features/custom-menu/CustomMenu.h"
 #import "features/metalfx/dynamic-resolution/DynamicResolution.h"
@@ -42,10 +42,10 @@ constexpr uint16_t frameGenerationID = 0x7f02;
 // Upscaler Target Minimum FPS (the Max Frame Rate slider's range).
 struct DynamicSlider {
     uint16_t id; NSString *preference; int lowest, highest;
-    std::atomic<int> value; const char *event;
+    std::atomic<int> value;
 };
 DynamicSlider dynamicSliders[] = {
-    {0x7f03, @"BG3MFXDynamicMinimumFrameRate", 10, 240, {60}, "dynamicMinimumFrameRateChanged"},
+    {0x7f03, @"BG3MFXDynamicMinimumFrameRate", 10, 240, {60}},
 };
 DynamicSlider &dynamicMinimum = dynamicSliders[0];
 // The Dynamic Upscaler Thermal Guard checkbox, below the sliders and enabled
@@ -107,13 +107,11 @@ void updateDependentControls(void *manager, int mode) {
     if (requiresTAA && taa >= 0 && current != taa) {
         if (![defaults objectForKey:savedAntiAliasingPreference]) [defaults setInteger:current forKey:savedAntiAliasingPreference];
         BG3MFXMenuSelectCombo(aa, taa);
-        BG3MFX_EVENT(@{@"event":@"antiAliasingForced", @"previous":@(current), @"taa":@(taa)});
     } else if (!requiresTAA && [defaults objectForKey:savedAntiAliasingPreference]) {
         int saved = (int)[defaults integerForKey:savedAntiAliasingPreference];
         [defaults removeObjectForKey:savedAntiAliasingPreference];
         if (saved != current && [values containsObject:@(saved)]) {
             BG3MFXMenuSelectCombo(aa, saved);
-            BG3MFX_EVENT(@{@"event":@"antiAliasingRestored", @"value":@(saved)});
         }
     }
     if (requiresTAA && taa < 0) BG3MFXMenuProblem(@"No TAA Anti-Aliasing option found");
@@ -126,7 +124,6 @@ void frameGenerationChanged(void *, const void *item) {
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:frameGenerationPreference];
     // BG3 can quit right after a change; keep the next launch consistent.
     [NSUserDefaults.standardUserDefaults synchronize];
-    BG3MFX_EVENT(@{@"event":@"frameGenerationChanged", @"enabled":@(enabled)});
     BG3MFXMetalFXSelectionChanged(false);
     if (void *manager = BG3MFXMenuManager()) updateDependentControls(manager, selectedScalingMode.load());
 }
@@ -136,7 +133,6 @@ void thermalGuardChanged(void *, const void *item) {
     thermalGuardChecked.store(enabled);
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:thermalGuardPreference];
     [NSUserDefaults.standardUserDefaults synchronize];
-    BG3MFX_EVENT(@{@"event":@"dynamicThermalGuardChanged", @"enabled":@(enabled)});
 }
 void dynamicSliderChanged(void *, const void *item) {
     if (!item) return;
@@ -146,7 +142,6 @@ void dynamicSliderChanged(void *, const void *item) {
         slider.value.store(value);
         [NSUserDefaults.standardUserDefaults setInteger:value forKey:slider.preference];
         [NSUserDefaults.standardUserDefaults synchronize];
-        BG3MFX_EVENT(@{@"event":@(slider.event), @"value":@(value)});
     }
 }
 // Dynamic is an Upscaling Quality of MetalFX Temporal only. BG3 renders any
@@ -176,7 +171,6 @@ void offerDynamicQuality(void *manager, int mode) {
     // An open menu shows the list it was given: send the items-changed
     // notification RefreshUIUpscaleMode sends after rebuilding it.
     BG3MFXMenuComboItemsChanged(quality);
-    BG3MFX_EVENT(@{@"event":@"metalFXDynamicQuality", @"added":@(BG3MFXMenuComboValues(quality).count == offeredQualityCount)});
 }
 void restoreCustomQuality(void *manager, int mode, int value, bool refresh) {
     // Applying native type 1 always chooses Balanced. Reapply the requested
@@ -191,7 +185,6 @@ void restoreCustomQuality(void *manager, int mode, int value, bool refresh) {
     void *quality = BG3MFXMenuFind(manager, 3, upscaleQualityID);
     if (quality && BG3MFXMenuComboValues(quality).count == (dynamicOffered(mode) ? offeredQualityCount : 4u)) {
         BG3MFXMenuShowComboSelection(quality, value);
-        BG3MFX_EVENT(@{@"event":@"metalFXQualityRestored", @"value":@(value)});
         return;
     }
     at<void (*)(void *)>(Native::RefreshQuality)(manager);
@@ -206,7 +199,6 @@ void qualityChanged(void *storage, const void *item) {
     if (metalFXValue(mode) && restoreSharpness(manager, sharpness)) publishSettings(manager);
     if (metalFXValue(mode) && ((value >= 0 && value <= 3) || (BG3MFXDynamicQualityValue(value) && dynamicOffered(mode)))) {
         [NSUserDefaults.standardUserDefaults setInteger:value forKey:qualityPreference];
-        BG3MFX_EVENT(@{@"event":@"metalFXQualityChanged", @"value":@(value), @"nativeQuality":@(field<uint8_t>(manager, Layout::NativeQuality))});
     }
     updateDependentControls(manager, mode);
 }
@@ -226,7 +218,6 @@ void applyCombo(void *manager, const void *item, BG3MFXMenuApply next) {
     restoreSharpness(manager, sharpness);
     BG3MFXMenuSetComboSelection(mutableItem, value);
     updateDependentControls(manager, value);
-    BG3MFX_EVENT(@{@"event":@"metalFXUpscalingApplied", @"value":@(value), @"nativeType":@(field<uint8_t>(manager, Layout::NativeUpscalingType))});
 }
 void upscaleChanged(void *storage, const void *item) {
     void *mutableItem = const_cast<void *>(item);
@@ -238,7 +229,7 @@ void upscaleChanged(void *storage, const void *item) {
     int value = BG3MFXMenuComboSelection(item);
     if (!manager || value < 0 || value > 3) {
         originalUpscaleCall(storage, item);
-        BG3MFX_EVENT(@{@"event":@"metalFXUpscalingSelectionError", @"value":@(value)});
+        BG3MFXFail([NSString stringWithFormat:@"The Upscaling Type menu reported an unknown value (%d).", value], nil, nil);
         return;
     }
     // BG3's settings system only understands Off (0) and FSR (1). For the
@@ -264,8 +255,6 @@ void upscaleChanged(void *storage, const void *item) {
     // BG3 can quit immediately after a selection; flush the separate mode so
     // the next process cannot revive a previously saved MetalFX selection.
     [NSUserDefaults.standardUserDefaults synchronize];
-    BG3MFX_EVENT(@{@"event":@"upscalingModeChanged", @"value":@(value),
-            @"nativeType":@(field<uint8_t>(manager, Layout::NativeUpscalingType)), @"changed":@(previous != value)});
     BG3MFXMetalFXSelectionChanged(previous != value);
 }
 
@@ -389,9 +378,6 @@ void menuBuilt(void *manager) {
         addDynamicControls(manager);
         updateDependentControls(manager, selectedScalingMode.load());
     }
-    BG3MFX_EVENT(@{@"event":@"metalFXOptionsAdded", @"frameGenerationOption":@(frameGeneration),
-            @"dynamicQualityOption":@(BG3MFXDynamicResolutionInstalled()), @"frameGeneration":@(frameGenerationChecked.load()),
-            @"selectedScalingMode":@(selectedScalingMode.load())});
 }
 }
 
@@ -435,7 +421,6 @@ void BG3MFXRestoreMetalFXChoices(void) {
         if (id saved = [defaults objectForKey:slider.preference])
             slider.value.store(std::clamp([saved intValue], slider.lowest, slider.highest));
     frameGenerationChecked.store([defaults boolForKey:frameGenerationPreference]);
-    BG3MFX_EVENT(@{@"event":@"metalFXStartupMode", @"value":@(startupMode), @"frameGeneration":@(frameGenerationChecked.load())});
 }
 
 int BG3MFXSelectedScalingMode(void) { return selectedScalingMode.load(); }
@@ -465,7 +450,6 @@ void BG3MFXPublishStartupDynamicQuality(void) {
         at<void (*)(void *, int)>(Native::SetQuality)(storage, quality);
         field<float>(storage, BG3MFXBuild::Temporal::Layout::SettingsSharpness) = sharpness;
         publishSettings(manager);
-        BG3MFX_EVENT(@{@"event":@"metalFXQualityPublishedAtStartup", @"value":@(quality)});
     });
 }
 
@@ -483,7 +467,7 @@ BOOL BG3MFXFallBackToFSR(void) {
 
 // Standalone GPU regression harnesses have no BG3 settings manager. Never
 // permit them to override a real game's menu selection.
-#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
+#ifdef BG3MFX_STANDALONE_TEST_HOOKS
 extern "C" BOOL BG3MFXSetStandaloneScalingMode(int mode) {
     if (BG3MFXMenuActive() || [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"] || mode < 0 || mode > 3) return NO;
     selectedScalingMode.store(mode);

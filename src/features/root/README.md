@@ -10,26 +10,24 @@ build on, registers itself with `BG3MFX_FEATURE` (`src/common/Feature.h`).
 
 Before BG3's `main`, root:
 
-1. opens the diagnostic event log (diagnostic runtime only);
-2. checks once that the process is BG3's supported ARM64 executable (its
+1. checks once that the process is BG3's supported ARM64 executable (its
    Mach-O UUID in `SupportedBuild.h`) and finds its slide;
-3. reads the registrations from the runtime image's `__DATA,bg3mfx_features`
+2. reads the registrations from the runtime image's `__DATA,bg3mfx_features`
    section;
-4. enables a feature when `BG3MFX_FEATURE_<NAME>=1` is set while
+3. enables a feature when `BG3MFX_FEATURE_<NAME>=1` is set while
    `BG3MFX_ENABLE=1` (the name in upper case, `-` as `_`), when the feature's
    own `wanted` check asks for it, or when an enabled feature requires it. An
    explicit `BG3MFX_FEATURE_<NAME>=0` keeps a feature off even then, and the
    features that require it are skipped: the player launcher sets every flag
    to 1, so a player's 0 must win;
-5. installs the enabled features, each after everything it requires, ties
+4. installs the enabled features, each after everything it requires, ties
    in name order;
-6. activates them in the same order, once every feature has installed.
+5. activates them in the same order, once every feature has installed.
 
 A feature that patches the executable (`native`) installs only on the
 supported build. A feature whose requirement did not install or activate is
 skipped, as are features with an unknown requirement or in a requirement
-cycle. Each skip is reported as `featureSkipped`, then a `features` event lists
-the active and skipped features. On an unsupported BG3 build with a native
+cycle. Each skip is reported through `BG3MFXFail`. On an unsupported BG3 build with a native
 feature enabled, root shows one notice; the game continues without bg3mfx's
 features.
 

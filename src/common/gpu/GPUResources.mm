@@ -4,36 +4,12 @@
 #include <mutex>
 #include <unordered_map>
 
-#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
+#ifdef BG3MFX_STANDALONE_TEST_HOOKS
 static std::atomic<NSUInteger> poolAllocations{0};
 extern "C" NSUInteger BG3MFXTexturePoolAllocations(void) { return poolAllocations.load(); }
 #endif
 extern "C" void (*BG3MFXGPUWorkHook)(double, double) = nullptr;
 extern "C" BOOL (*BG3MFXMetal4CommitHooked)(id<MTLCommandBuffer>) = nullptr;
-#ifndef BG3MFX_NO_TRACE
-extern "C" void (*BG3MFXGPUTimingHook)(NSString *, double) = nullptr;
-extern "C" void (*BG3MFXResidencyHook)(NSString *, NSUInteger, uint64_t, NSUInteger, BOOL) = nullptr;
-extern "C" void (*BG3MFXBridgeStallHook)(NSString *, NSDictionary *, NSArray<NSDictionary *> *) = nullptr;
-extern "C" void (*BG3MFXResidencyDetailHook)(NSString *, NSArray<NSDictionary *> *, NSArray<id<MTLAllocation>> *) = nullptr;
-#import <QuartzCore/QuartzCore.h>
-#include <deque>
-#include <memory>
-#include <pthread.h>
-
-// One bridge submission's timeline, filled in by handlers on Metal's threads.
-struct BG3MFXBridgeTimeline {
-    uint64_t sequence=0, ready=0, thread=0;
-    const void *buffer=nullptr, *queue=nullptr;
-    double encoded=0, scheduled=0, completed=0, feedback=0, gpuStart=0, gpuEnd=0;
-    long status=-1; NSString *error;
-    NSDictionary *dictionary() const {
-        return @{@"sequence":@(sequence),@"ready":@(ready),@"thread":@(thread),
-            @"buffer":@((uintptr_t)buffer),@"queue":@((uintptr_t)queue),@"encoded":@(encoded),
-            @"scheduled":@(scheduled),@"completed":@(completed),@"status":@(status),@"feedback":@(feedback),
-            @"gpuStart":@(gpuStart),@"gpuEnd":@(gpuEnd),@"error":error ?: @""};
-    }
-};
-#endif
 
 static NSError *resourceError(NSString *reason) {
     return [NSError errorWithDomain:@"BG3MFXGPUResources" code:1 userInfo:@{NSLocalizedDescriptionKey:reason}];
@@ -63,7 +39,7 @@ static NSError *resourceError(NSString *reason) {
         texture=[_device newTextureWithDescriptor:_descriptor];
         if (!texture) return nil;
         [_all addObject:texture];
-#if !defined(BG3MFX_NO_TRACE) || defined(BG3MFX_STANDALONE_TEST_HOOKS)
+#ifdef BG3MFX_STANDALONE_TEST_HOOKS
         ++poolAllocations;
 #endif
     }
@@ -134,12 +110,6 @@ extern "C" void BG3MFXMetal4BridgeCommitted(id<MTLCommandBuffer> buffer) {
     // _residency (keyed by identity; the set keeps every key alive).
     uint64_t _submissions;
     std::unordered_map<const void *, uint64_t> _lastUse;
-#ifndef BG3MFX_NO_TRACE
-    // Recent submission timelines, guarded by _timelineMutex.
-    std::mutex _timelineMutex;
-    std::deque<std::shared_ptr<BG3MFXBridgeTimeline>> _timelines;
-    double _lastStallReport;
-#endif
 }
 // A member unused this many submissions is dropped when the set is rebuilt.
 // Pools rotate their textures within a few submissions; a BG3 render target
@@ -156,11 +126,6 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
 - (id<MTLResidencySet>)residencyFor:(NSArray<id<MTLAllocation>> *)allocations error:(NSError **)error {
     id<MTLResidencySet> residency;
     NSUInteger added=0; BOOL replaced=NO;
-#ifndef BG3MFX_NO_TRACE
-    // Which inputs (by index) were added and which members a rebuild dropped.
-    NSMutableArray<NSDictionary *> *addedDetail=BG3MFXResidencyDetailHook ? [NSMutableArray array] : nil;
-    NSMutableArray<id<MTLAllocation>> *droppedDetail=BG3MFXResidencyDetailHook ? [NSMutableArray array] : nil;
-#endif
     { std::lock_guard<std::mutex> lock(_mutex);
       uint64_t now=++_submissions;
       // The set retains its members, so BG3 textures it no longer uses would
@@ -182,72 +147,20 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
               replaced=YES;
               for (id<MTLAllocation> allocation in _residency.allAllocations) {
                   auto use=_lastUse.find((__bridge const void *)allocation);
-                  if (use==_lastUse.end() || now-use->second>ResidencyIdleSubmissions) {
-#ifndef BG3MFX_NO_TRACE
-                      [droppedDetail addObject:allocation];
-#endif
-                      continue;
-                  }
+                  if (use==_lastUse.end() || now-use->second>ResidencyIdleSubmissions) continue;
                   [next addAllocation:allocation]; kept.insert(*use);
               }
           }
           _residency=next; _lastUse.swap(kept);
       }
-      for (NSUInteger index=0; index<allocations.count; ++index) {
-          id<MTLAllocation> allocation=allocations[index];
-          if (![_residency containsAllocation:allocation]) {
-              [_residency addAllocation:allocation]; ++added;
-#ifndef BG3MFX_NO_TRACE
-              [addedDetail addObject:@{@"index":@(index),@"allocation":allocation}];
-#endif
-          }
+      for (id<MTLAllocation> allocation in allocations) {
+          if (![_residency containsAllocation:allocation]) { [_residency addAllocation:allocation]; ++added; }
           _lastUse[(__bridge const void *)allocation]=now;
       }
       if (added || replaced) [_residency commit];
       residency=_residency; }
-#ifndef BG3MFX_NO_TRACE
-    // Outside the bridge lock: the hook records through the tracer's guard.
-    if (added || replaced) if (auto hook=BG3MFXResidencyHook)
-        hook(_label,residency.allocationCount,residency.allocatedSize,added,replaced);
-    if (added || replaced) if (auto hook=BG3MFXResidencyDetailHook) hook(_label,addedDetail,droppedDetail);
-#else
-    (void)replaced;
-#endif
     return residency;
 }
-#ifndef BG3MFX_NO_TRACE
-static constexpr size_t TimelineHistory = 48;
-static constexpr double StallSeconds = 0.5, StallReportDelay = 5;
-- (std::shared_ptr<BG3MFXBridgeTimeline>)beginTimelineFor:(id<MTLCommandBuffer>)buffer ready:(uint64_t)ready {
-    auto timeline=std::make_shared<BG3MFXBridgeTimeline>();
-    timeline->ready=ready; timeline->encoded=CACurrentMediaTime();
-    timeline->buffer=(__bridge const void *)buffer; timeline->queue=(__bridge const void *)buffer.commandQueue;
-    pthread_threadid_np(nullptr,&timeline->thread);
-    std::lock_guard<std::mutex> lock(_timelineMutex);
-    timeline->sequence=_timelines.empty() ? 1 : _timelines.back()->sequence+1;
-    _timelines.push_back(timeline);
-    if (_timelines.size()>TimelineHistory) _timelines.pop_front();
-    return timeline;
-}
-// Reports a stalled or failed submission once the neighbouring timelines have
-// had time to finish, so the report shows which side of the handshake waited.
-- (void)checkTimeline:(std::shared_ptr<BG3MFXBridgeTimeline>)timeline {
-    if (!BG3MFXBridgeStallHook) return;
-    bool stalled=timeline->feedback-timeline->encoded>StallSeconds || timeline->error.length;
-    if (!stalled) return;
-    { std::lock_guard<std::mutex> lock(_timelineMutex);
-      if (timeline->feedback-_lastStallReport<StallReportDelay) return;
-      _lastStallReport=timeline->feedback; }
-    BG3MFXMetal4Bridge *bridge=self; NSString *label=_label;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(StallReportDelay*NSEC_PER_SEC)),
-        dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
-        NSMutableArray *recent=[NSMutableArray array];
-        { std::lock_guard<std::mutex> lock(bridge->_timelineMutex);
-          for (auto &entry:bridge->_timelines) [recent addObject:entry->dictionary()]; }
-        if (auto hook=BG3MFXBridgeStallHook) hook(label,timeline->dictionary(),recent);
-    });
-}
-#endif
 - (void)releaseResidency {
     std::lock_guard<std::mutex> lock(_mutex);
     _residency = nil; _lastUse.clear();
@@ -291,24 +204,10 @@ static constexpr double StallSeconds = 0.5, StallReportDelay = 5;
     NSMutableArray *flight=[NSMutableArray arrayWithArray:retained];
     [flight addObjectsFromArray:allocations]; [flight addObject:residency];
     BG3MFXMetal4Bridge *bridge=self; void (^report)(NSError *)=[failure copy];
-#ifndef BG3MFX_NO_TRACE
-    NSString *label=_label;
-    auto timeline=[self beginTimelineFor:buffer ready:ready];
-    [buffer addScheduledHandler:^(id<MTLCommandBuffer>) { timeline->scheduled=CACurrentMediaTime(); }];
-    [buffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-        timeline->status=completed.status; timeline->completed=CACurrentMediaTime();
-    }];
-#endif
     auto options=[MTL4CommitOptions new];
     [options addFeedbackHandler:^(id<MTL4CommitFeedback> feedback) {
         if (feedback.error && report) report(feedback.error);
         if (auto hook=BG3MFXGPUWorkHook) hook(feedback.GPUStartTime,feedback.GPUEndTime);
-#ifndef BG3MFX_NO_TRACE
-        if (auto hook=BG3MFXGPUTimingHook) hook(label,feedback.GPUEndTime-feedback.GPUStartTime);
-        timeline->feedback=CACurrentMediaTime(); timeline->gpuStart=feedback.GPUStartTime; timeline->gpuEnd=feedback.GPUEndTime;
-        timeline->error=feedback.error.description;
-        [bridge checkTimeline:timeline];
-#endif
         [flight removeAllObjects];
         [slot.allocator reset];
         std::lock_guard<std::mutex> lock(bridge->_mutex); [bridge->_free addObject:slot];

@@ -1,6 +1,5 @@
 #include "common/native/SupportedBuild.h"
 #include "common/Feature.h"
-#import "common/EventLog.h"
 #import "features/ssao-blur-fix/SSAOBlurFix.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -43,8 +42,7 @@ BOOL BG3MFXInstallSSAOBlurFix(intptr_t slide, NSError **error) {
         memcpy(reinterpret_cast<void *>(bind), words, sizeof words);
     });
     if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make the SSAO blur binding writable.");
-    // Written but not executable again: report it as installed, not skipped.
-    BG3MFX_EVENT(@{@"event": @"ssaoBlurFixInstalled", @"protectionRestored": @(result == BG3MFXCodePatchResult::Patched)});
+    // Written but not executable again still counts as installed, not skipped.
     return YES;
 }
 

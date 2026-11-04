@@ -1,5 +1,4 @@
 #include "common/native/SupportedBuild.h"
-#import "common/EventLog.h"
 #import "features/custom-menu/CustomMenu.h"
 #import "features/custom-menu/RenderViewFocus.h"
 #include "common/Feature.h"
@@ -58,20 +57,14 @@ template<size_t I> void applyLevel(void *manager, const void *item) {
 void menuInit(void *manager) {
     originalInit(manager);
     optionsBuilt = true;
-    size_t count = BG3MFXMenuItemCount(manager);
     if (!field<void **>(manager, Layout::Items) || field<uint32_t>(manager, Layout::ItemCount) > 256) {
         BG3MFXMenuProblem(@"Unexpected option list");
         return;
     }
     // BG3 also builds options without the Video controls; wait for those.
-    if (!BG3MFXMenuFind(manager, 3, 99)) {
-        BG3MFX_EVENT(@{@"event":@"customMenuDeferred", @"reason":@"Upscaling Type control is not in this options pass",
-                @"videoOptionCount":@(count)});
-        return;
-    }
+    if (!BG3MFXMenuFind(manager, 3, 99)) return;
     optionsManager = manager;
     for (size_t i = 0; i < builtCount; ++i) built[i](manager);
-    BG3MFX_EVENT(@{@"event":@"customMenuBuilt", @"videoOptionCount":@(BG3MFXMenuItemCount(manager))});
 }
 
 void errorOut(NSError **error, NSString *message) {
@@ -80,8 +73,7 @@ void errorOut(NSError **error, NSString *message) {
 // The focus fix, then the features register their options.
 BOOL installCustomMenu(const BG3MFXFeatureContext &context, NSError **) {
     slide = context.slide;
-    bool focus = BG3MFXInstallRenderViewFocus();
-    BG3MFX_EVENT(@{@"event":@"customMenuFocusRepairHook", @"installed":@(focus)});
+    BG3MFXInstallRenderViewFocus();
     return YES;
 }
 // After every feature's install: patch the Video options manager's callbacks.
@@ -102,7 +94,6 @@ BOOL activateCustomMenu(const BG3MFXFeatureContext &, NSError **error) {
     table[Layout::ApplyComboSlot] = reinterpret_cast<void *>(applyLevel<0>);
     vm_protect(mach_task_self(), page, vm_page_size, FALSE, VM_PROT_READ);
     active = true;
-    BG3MFX_EVENT(@{@"event":@"customMenuInstalled", @"built":@(builtCount), @"applyWrappers":@(wrapperCount)});
     return YES;
 }
 }
@@ -125,9 +116,7 @@ BOOL BG3MFXMenuMakeText(BG3MFXMenuText &result, const char *identifier, const ch
     result.constructed = true;
     at<void (*)(TextHandle *)>(Native::DestroyHandle)(&output);
     View resolved = at<View (*)(const Text *, uint32_t, uint32_t)>(Native::ResolveText)(&text(result), 0, 0);
-    BOOL matches = resolved.size == strlen(literal) && resolved.data && memcmp(resolved.data, literal, resolved.size) == 0;
-    BG3MFX_EVENT(@{@"event":@"customMenuText", @"identifier":@(identifier), @"matches":@(matches)});
-    return matches;
+    return resolved.size == strlen(literal) && resolved.data && memcmp(resolved.data, literal, resolved.size) == 0;
 }
 void BG3MFXMenuDestroyText(BG3MFXMenuText &t) {
     if (!t.constructed) return;
@@ -147,7 +136,6 @@ bool BG3MFXMenuActive(void) { return active; }
 void BG3MFXMenuProblem(NSString *reason) {
     static std::atomic<bool> shown{false};
     if (![reason isKindOfClass:NSString.class] || reason.length == 0) reason = @"The Video options could not be extended.";
-    BG3MFX_EVENT(@{@"event":@"customMenuError", @"error":reason});
     BG3MFXFail([@"bg3mfx menu integration: " stringByAppendingString:reason],
         shown.exchange(true) ? nil : @"bg3mfx options may be unavailable",
         [reason stringByAppendingString:@"\n\nThe game continues with its own video options."]);

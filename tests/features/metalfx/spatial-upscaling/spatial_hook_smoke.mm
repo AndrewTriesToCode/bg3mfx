@@ -152,7 +152,6 @@ int main(int argc, char **argv) {
             // Frames that fall back to native FSR (a new size that has not
             // settled) must still get the compressed colour, the second one
             // after a dropped store.
-            bool skipped = !(getenv("BG3MFX_SKIP_FSR_TONEMAP") && strcmp(getenv("BG3MFX_SKIP_FSR_TONEMAP"),"0") == 0);
             auto storesDropped = (NSUInteger(*)(void))dlsym(runtime,"BG3MFXStandaloneFSRTonemapStoresDropped");
             if (!storesDropped) return 36;
             auto readBack = [&](id<MTLTexture> source, id<MTLBuffer> into) -> bool {
@@ -179,11 +178,7 @@ int main(int argc, char **argv) {
                 fprintf(stderr,"%s: %lu FSR_Tonemap stores dropped, expected %lu\n",when,(unsigned long)storesDropped(),(unsigned long)expected);
                 return false;
             };
-            if (skipped) { if (!expectDropped(2,"After three MetalFX frames")) return 31; }
-            else {
-                if (!readBack(tonemapped,pixels)) return 30;
-                if (!check(pixels,256,compressed,"FSR_Tonemap output with the skip disabled") || !expectDropped(0,"Skip disabled")) return 31;
-            }
+            if (!expectDropped(2,"After three MetalFX frames")) return 31;
             const NSUInteger size = 320;
             id<MTLTexture> sInput=texture(device,size), sTAA=texture(device,size), sBloom=texture(device,size);
             id<MTLTexture> sGraded=texture(device,size), sTonemapped=texture(device,size);
@@ -214,9 +209,8 @@ int main(int argc, char **argv) {
                 if (!readBack(sScaled,fallback)) return 34;
                 if (!check(fallback,size*2,compressed,frame ? "Native FSR input after a dropped store" : "Native FSR fallback input")) return 35;
             }
-            if (!expectDropped(skipped ? 3 : 0,"After two fallback frames")) return 37;
-            printf("FSR_Tonemap %s on MetalFX frames; native FSR fallback frames got the compressed colour.\n",
-                skipped ? "was skipped and stored nothing" : "ran (skip disabled)");
+            if (!expectDropped(3,"After two fallback frames")) return 37;
+            puts("FSR_Tonemap was skipped and stored nothing on MetalFX frames; native FSR fallback frames got the compressed colour.");
             return 0;
         }
         if ([mode isEqualToString:@"resize"]) {

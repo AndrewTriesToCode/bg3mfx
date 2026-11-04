@@ -10,8 +10,7 @@ on the real frame. BG3's drawable path is paired with a worker that presents
 generated and rendered images.
 
 Interpolation and presentation live in
-[`FrameInterpolation.mm`](../../../../src/features/metalfx/frame-generation/FrameInterpolation.mm)
-and [`FrameLog.mm`](../../../../src/features/metalfx/frame-generation/FrameLog.mm), with
+[`FrameInterpolation.mm`](../../../../src/features/metalfx/frame-generation/FrameInterpolation.mm), with
 scene tracking and menu integration in
 [`MetalFXRenderer.mm`](../MetalFXRenderer.mm) and
 [`MetalFXOptions.mm`](../MetalFXOptions.mm). Shared MetalFX

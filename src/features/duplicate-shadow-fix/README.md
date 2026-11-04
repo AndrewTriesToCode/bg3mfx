@@ -46,8 +46,7 @@ feature.
 [`DuplicateShadowFix.mm`](DuplicateShadowFix.mm) builds the lists from
 `BG3MFXStagePack` and registers them with `BG3MFXSetViewStages`, which checks
 them against the stage types BG3 builds and their lookup order;
-custom-render-stages installs them at its activation. The diagnostic trace
-records `duplicateShadowFixRegistered`.
+custom-render-stages installs them at its activation.
 [`duplicate_shadow_fix_smoke.mm`](../../../tests/features/duplicate-shadow-fix/duplicate_shadow_fix_smoke.mm)
 checks the lists each view receives against BG3's (synthetic, CPU only).
 

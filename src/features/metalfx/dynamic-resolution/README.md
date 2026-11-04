@@ -128,24 +128,14 @@ Thermal Guard adds a ceiling on the area, from `NSProcessInfo`'s
   3456×2160, target 30) the Mac reached fair about 3 minutes into play and
   stayed there even at the floor (0.111), apart from 40 s at nominal, so with
   sustained load Thermal Guard usually runs near the floor.
-- The diagnostic event log records each ceiling change (`dynamicResolutionThermal`).
 
 Live, 2026-10-22, quiet runtime, 60 Hz with VSync: a scene that ran 52–54 fps at
 native (GPU fully busy) held 60 fps at area 0.72 with the earlier
 busy-only rule (target 94%).
 
-## Diagnostics
-
-The diagnostic runtime records each controller window
-(`dynamicResolutionStep`), area change (`dynamicResolutionArea`), eligibility
-change (`dynamicResolutionEligibility`) and thermal ceiling change
-(`dynamicResolutionThermal`) in the event log.
-`BG3MFX_DYNAMIC_RESOLUTION_AREA` replaces the controller with a fixed area
-(`0.5`) or a triangle wave (`min,max,seconds`), with any Temporal quality.
-
 ## Improvement
 
-Displayed results so far are from the diagnostic probe at a fixed area 0.5 or
+Displayed results so far are from a since-removed probe at a fixed area 0.5 or
 an oscillating area (see validation). The controller and the quiet-runtime
 Dynamic presets are not yet measured live. The expected gain is GPU time roughly
 in proportion to the rendered area in render-resolution passes, at the cost of

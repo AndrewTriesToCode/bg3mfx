@@ -1,5 +1,4 @@
 #import "common/Feature.h"
-#import "common/EventLog.h"
 #import "common/Notice.h"
 #include "common/native/SupportedBuild.h"
 #include <dlfcn.h>
@@ -49,7 +48,7 @@ std::vector<Entry> run(std::vector<const BG3MFXFeature *> features, const BG3MFX
     std::vector<Entry> entries;
     for (const BG3MFXFeature *feature : features) {
         if (!entries.empty() && strcmp(entries.back().feature->name, feature->name) == 0) {
-            BG3MFX_EVENT(@{@"event":@"featureDuplicate", @"feature":@(feature->name)});
+            BG3MFXFail([NSString stringWithFormat:@"Feature %s is registered twice; the second is ignored.", feature->name], nil, nil);
             continue;
         }
         Entry entry;
@@ -118,20 +117,14 @@ std::vector<Entry> run(std::vector<const BG3MFXFeature *> features, const BG3MFX
         if (!entry.feature->activate || entry.feature->activate(featureContext, &error)) entry.active = true;
         else entry.skipped = error.localizedDescription ?: @"Its activation failed.";
     }
-    NSMutableArray *active = [NSMutableArray array];
-    NSMutableDictionary *skipped = [NSMutableDictionary dictionary];
-    for (size_t i : order) if (entries[i].active) [active addObject:@(entries[i].feature->name)];
-    for (const Entry &entry : entries) if (entry.enabled && entry.skipped) {
-        skipped[@(entry.feature->name)] = entry.skipped;
-        BG3MFX_EVENT(@{@"event":@"featureSkipped", @"feature":@(entry.feature->name), @"reason":entry.skipped});
-    }
-    BG3MFX_EVENT(@{@"event":@"features", @"active":active, @"skipped":skipped});
+    for (const Entry &entry : entries) if (entry.enabled && entry.skipped)
+        BG3MFXFail([NSString stringWithFormat:@"Feature %s was skipped: %@", entry.feature->name, entry.skipped], nil, nil);
     return entries;
 }
 
 #ifndef BG3MFX_ROOT_NO_START
 // Whether this process runs BG3's supported executable, and its slide.
-bool supportedBuild(intptr_t &slide, NSString *__strong &reason, NSDictionary *__strong &identity) {
+bool supportedBuild(intptr_t &slide, NSString *__strong &reason) {
     if (![NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) { reason = @"Not running in BG3."; return false; }
     for (uint32_t i = 0; i < _dyld_image_count(); ++i) {
         const mach_header *candidate = _dyld_get_image_header(i);
@@ -144,7 +137,6 @@ bool supportedBuild(intptr_t &slide, NSString *__strong &reason, NSDictionary *_
                 unsigned char expected[16];
                 [[[NSUUID alloc] initWithUUIDString:@BG3MFX_SUPPORTED_ARM64_UUID] getUUIDBytes:expected];
                 const unsigned char *uuid = reinterpret_cast<const uuid_command *>(command)->uuid;
-                identity = @{@"image":@(_dyld_get_image_name(i)), @"uuid":[[NSUUID alloc] initWithUUIDBytes:uuid].UUIDString};
                 if (memcmp(uuid, expected, 16) != 0) break;
                 slide = _dyld_get_image_vmaddr_slide(i);
                 return true;
@@ -163,14 +155,9 @@ bool supportedBuild(intptr_t &slide, NSString *__strong &reason, NSDictionary *_
 // Makefile links this file last.
 __attribute__((constructor)) void start() {
     @autoreleasepool {
-#ifndef BG3MFX_NO_TRACE
-        BG3MFXEventLogOpen();
-#endif
         intptr_t slide = 0;
         NSString *reason = nil;
-        NSDictionary *identity = nil;
-        bool native = supportedBuild(slide, reason, identity);
-        if (identity) BG3MFX_EVENT(@{@"event":@"nativeBuild", @"supported":@(native), @"image":identity[@"image"], @"uuid":identity[@"uuid"]});
+        bool native = supportedBuild(slide, reason);
         Dl_info info{};
         unsigned long size = 0;
         const uint8_t *section = dladdr(reinterpret_cast<const void *>(&start), &info) && info.dli_fbase ?

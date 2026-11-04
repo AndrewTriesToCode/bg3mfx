@@ -67,8 +67,6 @@ bool BG3MFXDescribeDepthState(BG3MFXDepthStateID state, BG3MFXDepthStateDesc *de
 // A depth-stencil state made by BG3's GPUDevice::CreateDepthState. The same
 // settings give the same handle.
 BG3MFXDepthStateID BG3MFXGetOrCreateDepthState(const BG3MFXDepthStateDesc &desc, NSError **error);
-// How many depth-stencil states have been described (diagnostics).
-size_t BG3MFXDescribedDepthStates(void);
 
 // Blend states, with BG3's values. Factors: 0 zero, 1 one, 2 source color,
 // 3 one minus source color, 4 destination color, 5 one minus destination

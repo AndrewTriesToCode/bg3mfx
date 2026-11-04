@@ -10,8 +10,7 @@ outside BG3 so the hook regressions can run it.
 
 At activation, after every feature has installed, it swizzles the Metal
 device, command queue, command buffer and encoder methods BG3 uses, keeps the
-originals, and tracks each encoder's bound pipeline, textures and
-depth-stencil state. Features that require it register from their install
+originals, and tracks each encoder's bound pipeline and textures. Features that require it register from their install
 ([`MetalHooks.h`](MetalHooks.h)); the registrations are read without locks
 afterwards:
 
@@ -19,8 +18,7 @@ afterwards:
 - one draw replacement, which takes the non-indexed draws of the render
   pipelines it claims (metalfx's renderer);
 - redundant bind filtering ([`BindFilter.h`](BindFilter.h)), metal-hooks' own
-  rules inline in its bind hooks, switched on by render-thread-optimizations;
-- in the diagnostic runtime, compute bind and dispatch observers.
+  rules inline in its bind hooks, switched on by render-thread-optimizations.
 
 metalfx-renderer extends it through the private
 [`MetalHooksInternal.h`](MetalHooksInternal.h). metal-hooks includes no
@@ -28,9 +26,7 @@ feature's header.
 
 ## Implementation
 
-[`MetalHooks.mm`](MetalHooks.mm) holds the hooks and, in the diagnostic
-runtime, the render-call trace, constant and redundant-bind probes and the
-waterfall capture.
+[`MetalHooks.mm`](MetalHooks.mm) holds the hooks.
 
 ## Improvement
 

@@ -23,6 +23,7 @@ uint64_t nextClone = 0x500;
 size_t failAt;
 }
 id<MTLDevice> BG3MFXMetalDevice(void) { return metal; }
+void BG3MFXFail(NSString *, NSString *, NSString *) {}
 BG3MFXProgramID BG3MFXCreateProgram(const char *base, const BG3MFXProgramStages &replace, NSError **error) {
     bases.push_back(base);
     fragments.push_back(replace.fragment);

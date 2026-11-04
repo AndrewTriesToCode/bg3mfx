@@ -1,4 +1,3 @@
-#import "common/EventLog.h"
 #import "features/custom-menu/RenderViewFocus.h"
 #import <AppKit/AppKit.h>
 #include <objc/runtime.h>
@@ -50,10 +49,7 @@ void setContentViewWithFocusRepair(NSWindow *window, SEL selector, NSView *view)
     bool eligible = NSThread.isMainThread && NSApp.isActive && window.isKeyWindow &&
         !window.attachedSheet && !modalWindow &&
         (window.firstResponder == window || window.firstResponder == nil);
-    bool restored = eligible && [window makeFirstResponder:restoreView];
-    BG3MFX_EVENT(@{@"event":@"renderViewFocusRepair", @"attempted":@(eligible),
-        @"restored":@(restored), @"keyWindow":@(window.isKeyWindow),
-        @"active":@(NSApp.isActive)});
+    if (eligible) [window makeFirstResponder:restoreView];
 }
 bool installRepair() {
     Class windowClass = NSClassFromString(@"LSWindow");

@@ -198,8 +198,7 @@ method; only `~StageGroup` unloads and deletes stages. (Read)
 ### Views and their stage lists
 
 bg3mfx can replace a view kind's packs with its own list
-(`src/features/custom-render-stages/CustomRenderStages.h`). With `BG3MFX_TRACE_STAGE_LIST=1`, the
-diagnostic runtime records every pack call described here.
+(`src/features/custom-render-stages/CustomRenderStages.h`).
 
 Which packs a view gets is hard-coded as branches in
 `BaseApp::InitFrameStages(RenderView*)`, based on three checks:

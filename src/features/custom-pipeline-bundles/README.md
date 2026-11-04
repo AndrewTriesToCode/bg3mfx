@@ -80,9 +80,7 @@ they don't use; the argument lists there are the ones the code takes.
 
 The two entry hooks move each function's first instruction to a 24-byte
 island at header padding +0xd08 and +0xd20, at install, before BG3's renderer
-makes its own pieces. The diagnostic runtime reports
-`customPipelineBundlesInstalled`, `programCreated`, `depthStateCreated` and
-`blendStateCreated`.
+makes its own pieces.
 
 Whether BG3 releases a program's functions when it destroys the program
 (`GPUDevice::DestroyShader` defers the work) is not yet read; the ownership

@@ -111,11 +111,6 @@ static void failure(NSError **error, NSString *message) {
             _minimumContentHeight = (NSUInteger)std::ceil(outputHeight / maximum);
         }
         BOOL metal4 = [MTLFXTemporalScalerDescriptor supportsMetal4FX:device];
-#ifndef BG3MFX_NO_TRACE
-        // Diagnostic A/B baseline only; the quiet runtime always chooses by capability.
-        const char *api=getenv("BG3MFX_TEMPORAL_API");
-        if (api && !strcmp(api,"metal3")) metal4=NO;
-#endif
         if (metal4) {
             NSError *compilerError=nil;
             id<MTL4Compiler> compiler=[device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:&compilerError];

@@ -79,9 +79,8 @@ from the sun then partly shadow themselves.
     quality rows × 1-4 cascades). At the first Load, bg3mfx compiles the
     shader source on BG3's device, specializes it for each row and cascade
     count, and makes 12 clones of BG3's programs with it
-    ([custom-pipeline-bundles](../custom-pipeline-bundles/README.md)). The diagnostic
-    runtime records a `shadowClones` event saying they are ready, or why BG3's
-    shaders were kept.
+    ([custom-pipeline-bundles](../custom-pipeline-bundles/README.md)). If that
+    fails, it reports why through `BG3MFXFail` and keeps BG3's shaders.
   - **Load, Unload and StartRecording overrides**
     ([custom-render-stages](../custom-render-stages/README.md)). Load puts the
     clones in each stage's table, in place of BG3's. BG3's Load takes its

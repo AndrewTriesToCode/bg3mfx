@@ -18,9 +18,6 @@ class LaunchTests(unittest.TestCase):
         executable = Path("/test/BG3.app/Contents/MacOS/BG3")
         runtime = Path(bg3mfx.__file__).resolve().parents[2] / "build/bin/libBG3MetalFX.dylib"
         with patch.dict(os.environ, {
-            "BG3MFX_TRACE": "/test/should-not-open.jsonl",
-            "BG3MFX_TRACE_CONSTANTS": "1",
-            "BG3MFX_SCENE_PROBE": "1",
             "BG3MFX_FEATURE_IMPROVED_SHADOWS": "1",
         }, clear=True), \
                 patch.object(bg3mfx, "bundle", return_value=(Path("/test/BG3.app"), {}, executable)), \
@@ -40,7 +37,6 @@ class LaunchTests(unittest.TestCase):
             # Only the requested features, never ones inherited from the shell.
             enabled = {key for key, value in env.items() if key.startswith("BG3MFX_FEATURE_") and value == "1"}
             self.assertEqual(enabled, {bg3mfx.feature_variable(name) for name in features})
-            self.assertFalse({"BG3MFX_TRACE", "BG3MFX_TRACE_CONSTANTS", "BG3MFX_SCENE_PROBE"} & env.keys())
             return run
 
     def test_stderr_filter_is_narrow_streaming_and_preserves_exit_status(self):
@@ -134,12 +130,6 @@ class LaunchTests(unittest.TestCase):
         self.assertIn(b"BG3MFX FULL live\nBG3MFX HALF live\n", forwarded)
         self.assertIn(b"early\n", forwarded)
         self.assertIn(b"late\xff\n", forwarded)
-
-    def test_default_trace_path_is_dated_diagnostic_evidence(self):
-        output = bg3mfx.default_trace_output()
-        self.assertEqual(output.parts[-3:-1], ("evidence", output.parent.name))
-        self.assertRegex(output.parent.name, r"^\d{4}-\d{2}-\d{2}-diagnostic$")
-        self.assertRegex(output.name, r"^trace-\d{6}-\d{6}\.jsonl$")
 
     def test_quiet_launch_enables_hud_and_launcher_bypass_without_features(self):
         self.run_launch()

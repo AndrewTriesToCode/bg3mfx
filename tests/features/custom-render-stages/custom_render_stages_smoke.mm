@@ -11,10 +11,8 @@ namespace {
 // BG3's packs at stand-in addresses, as the shim finds them after install.
 std::vector<uint8_t> storage[PackCount];
 std::vector<std::vector<uint8_t>> received;
-std::vector<NSDictionary *> events;
 void record(void *, void *, const Span *span) { received.emplace_back(span->begin, span->end); }
 }
-void BG3MFXEventLogWrite(NSDictionary *event, bool) { events.push_back(event); }
 namespace {
 void check(bool ok, const char *what) {
     if (!ok) { fprintf(stderr, "custom-render-stages smoke failed: %s\n", what); exit(1); }
@@ -86,12 +84,11 @@ int main() {
 
         // A span that is not one of the packs is forwarded unchanged, once reported.
         const uint8_t other[] = {0x02};
-        received.clear(); events.clear();
+        received.clear();
         { Span open = pack(First); dispatch(nullptr, &game, BG3MFXViewKind::Game, &open); }
         { Span span{other, other + 1}; dispatch(nullptr, &game, BG3MFXViewKind::Game, &span); }
         { Span span = pack(Third); dispatch(nullptr, &game, BG3MFXViewKind::Game, &span); }
         check(received.size() == 2 && received[0] == single && received[1] == std::vector<uint8_t>{0x02}, "unknown span forwarded");
-        check(events.size() == 1 && [events[0][@"event"] isEqualToString:@"stageListUnknownSpan"], "unknown span reported");
 
         // Classification reads BaseApp's two views and the frame's offscreen flag.
         alignas(8) uint8_t app[0x98] = {}, view[0x10] = {}, frame[0x40] = {}, defaultView[0x10] = {}, fullView[0x10] = {};
@@ -153,14 +150,11 @@ int main() {
         check(*entryOf(deferredSlot) == methodOf(deferredSlot) && !deferredOriginal, "nothing patched after a rejected entry");
         check(BG3MFXPatchPointer(entryOf(shadowSlot), methodOf(shadowSlot), &restoredPage), "stand-in entry restored");
 
-        events.clear();
         check(patchStageMethods(slide, nullptr), "overrides patched");
         check(*entryOf(deferredSlot) == &deferredLoad && *entryOf(shadowSlot) == &shadowUnload, "entries replaced");
         check(deferredOriginal == methodOf(deferredSlot) && shadowOriginal == methodOf(shadowSlot), "BG3's methods handed back");
         const Native::StageMethodSlot &submitSlot = *findSlot(0x0b, 5);
         check(*entryOf(submitSlot) == methodOf(submitSlot), "other entries untouched");
-        check(events.size() == 1 && [events[0][@"event"] isEqualToString:@"stageMethodsInstalled"] &&
-            [events[0][@"overrides"] count] == 2 && [events[0][@"protectionRestored"] boolValue], "overrides reported");
         address = reinterpret_cast<vm_address_t>(vtables); size = 0; infoCount = VM_REGION_BASIC_INFO_COUNT_64;
         check(vm_region_64(mach_task_self(), &address, &size, VM_REGION_BASIC_INFO_64, reinterpret_cast<vm_region_info_t>(&info), &infoCount, &object) == KERN_SUCCESS &&
             info.protection == VM_PROT_READ, "vtables read-only again");

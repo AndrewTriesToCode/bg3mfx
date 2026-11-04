@@ -1,5 +1,4 @@
 #include "common/Feature.h"
-#import "common/EventLog.h"
 #import "features/custom-menu/CustomMenu.h"
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -30,7 +29,6 @@ void applyView(NSView *view) {
 }
 void applyHUD() {
     for (NSWindow *window in NSApp.windows) applyView(window.contentView);
-    BG3MFX_EVENT(@{@"event":@"metalHUDChanged", @"enabled":@(hudEnabled)});
 }
 void applyHUDOnMain() {
     if (NSThread.isMainThread) applyHUD(); else dispatch_async(dispatch_get_main_queue(), ^{ applyHUD(); });

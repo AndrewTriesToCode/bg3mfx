@@ -41,8 +41,6 @@ int main(void) {
             motionFormat:MTLPixelFormatRG16Float outputFormat:MTLPixelFormatRGBA8Unorm error:&error];
         if (!pipeline) { fprintf(stderr,"%s\n",error.description.UTF8String); return 2; }
         BOOL expected4=[MTLFXTemporalScalerDescriptor supportsMetal4FX:device];
-        const char *api=getenv("BG3MFX_TEMPORAL_API");
-        if(api && !strcmp(api,"metal3")) expected4=NO;
         if(pipeline.usesMetal4!=expected4) return 20;
         printf("Temporal selected %s.\n",pipeline.usesMetal4 ? "Metal4" : "Metal3");
         id<MTLTexture> color = input(device,MTLPixelFormatRGBA8Unorm,256,256);

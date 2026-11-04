@@ -115,16 +115,6 @@ struct Scenario { const char *name; const char *description; std::function<void(
 int main(int argc, char **argv) { @autoreleasepool {
     device = MTLCreateSystemDefaultDevice();
     if (!device) return 1;
-    // Each submission over half a second (or with a feedback error): when its
-    // Metal 4 work ran relative to the stand-in buffer, and any queue error.
-    BG3MFXBridgeStallHook = [](NSString *label, NSDictionary *stalled, NSArray<NSDictionary *> *) {
-        double encoded = [stalled[@"encoded"] doubleValue];
-        auto at = [&](NSString *key) { double v = [stalled[key] doubleValue]; return v > 0 ? v - encoded : -1; };
-        printf("  stall report %s #%s: BG3 buffer scheduled +%.3f s, completed +%.3f s, Metal 4 feedback +%.3f s, GPU %.4f s%s%s\n",
-            label.UTF8String, [stalled[@"sequence"] description].UTF8String, at(@"scheduled"), at(@"completed"), at(@"feedback"),
-            [stalled[@"gpuEnd"] doubleValue] - [stalled[@"gpuStart"] doubleValue],
-            [stalled[@"error"] length] ? ", error: " : "", [stalled[@"error"] UTF8String]);
-    };
     std::vector<Scenario> scenarios = {
         {"baseline", "one bridge, four frames committed in encode order", [] {
             id<MTLCommandQueue> q = [device newCommandQueue];

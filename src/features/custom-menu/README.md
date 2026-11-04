@@ -10,7 +10,7 @@ keeps BG3's Video options responsive after a fullscreen change (below).
 
 Features add their options to Options → Video through custom-menu. Without a
 feature that requires it, the Video options are BG3's own. If BG3's option
-list is not what custom-menu expects, it reports `customMenuError` and shows
+list is not what custom-menu expects, it reports the problem and shows
 "bg3mfx options may be unavailable" once. BG3's own options keep working.
 
 ### Fullscreen focus repair
@@ -36,16 +36,14 @@ focus back.
 ApplyCombo vtable slots at its activation. That runs after every install and
 before BG3 builds a menu. It checks both slots first. Init calls BG3's own,
 then validates the option list. It runs the callbacks only for the Video pass,
-which it recognizes by the Upscaling Type combo (type 3, id 99); other passes
-are recorded as `customMenuDeferred`.
+which it recognizes by the Upscaling Type combo (type 3, id 99).
 
 [`RenderViewFocus.mm`](RenderViewFocus.mm), installed with custom-menu, is the
 focus repair. It wraps `LSWindow`'s `setContentView:`. When the render view
 that had focus is removed and the same view is set back, it makes that view
 first responder again. It does this only for the active key window with no
 sheet or modal window open. If a different view is set, it stops tracking the
-old one without keeping it alive. The diagnostic runtime records
-`renderViewFocusRepair`.
+old one without keeping it alive.
 
 ## Improvement
 
