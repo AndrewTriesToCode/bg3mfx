@@ -28,5 +28,4 @@ depth-prepass trim (since removed) enabled, changed 83.1 to 84.0 fps at about 10
 CPU samples showed render-thread driver time down about 25% per frame and
 texture binds down 72%. The scene remained mostly GPU-limited, so the FPS
 change is small and within scene noise; CPU-heavier scenes may benefit more,
-but that gain has not been measured. See [current validation](../../../docs/dev/validation/README.md)
-and [performance analysis](../../../docs/dev/performance.md).
+but that gain has not been measured.

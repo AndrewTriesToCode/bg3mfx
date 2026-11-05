@@ -28,7 +28,7 @@ Keep Steam running, quit BG3, and run:
 python3 tools/launch/bg3mfx.py launch
 ```
 
-This injects the quiet library from `build/bin/`, skips the Larian launcher with
+This injects the runtime library from `build/bin/`, skips the Larian launcher with
 `-NoLauncher 1`, enables the Metal HUD, and leaves the app bundle unchanged.
 It enables no features unless you name them, so a live test exercises one at a
 time: `--feature thread-idling`, repeatable, with any of `metal-hud`,
@@ -76,8 +76,6 @@ open --env MTL_HUD_ENABLED=1 \
 
 This launches the Steam-installed bundle without injecting the bg3mfx runtime.
 Keep live scene navigation under user control.
-See the [baseline capture procedure](baseline-captures.md) for collecting
-GPU traces, CPU samples, Metal HUD logs, and power estimates.
 
 With Frame Generation on, the Metal HUD's "rendered" figure is unreliable (a
 trace showed about 19 rendered fps while the HUD showed about 10), so count
@@ -106,9 +104,7 @@ build/bin/bg3mfx --dry-run`.
 ## Developer notes
 
 - [Architecture and behavior contracts](architecture.md)
-- [Current validation status and next checks](validation/README.md)
-- [macOS renderer reference](reference/mac-renderer.md)
-- [Windows DLSS research](reference/windows-dlss.md)
+- [BG3's default renderer](baseline/README.md)
 
 ## Build files and retained evidence
 

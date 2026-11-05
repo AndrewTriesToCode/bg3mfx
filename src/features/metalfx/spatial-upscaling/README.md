@@ -22,5 +22,4 @@ integration is in [`MetalFXOptions.mm`](../MetalFXOptions.mm).
 No per-feature frame-rate or GPU-time gain is measured. The user confirmed
 good colors, saved settings, and improved performance versus Off, without a
 recorded matched numerical comparison. Synthetic and main-menu checks passed.
-See [architecture](../../../../docs/dev/architecture.md) and
-[current validation](../../../../docs/dev/validation/README.md).
+See [architecture](../../../../docs/dev/architecture.md).

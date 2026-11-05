@@ -186,11 +186,8 @@ def main():
     try:
         if args.command == "inspect":
             inspect(args.app)
-        elif args.command == "launch":
-            launch(args.app, features=args.feature)
         else:
-            output = args.output or default_trace_output()
-            launch(args.app, output, features=args.feature)
+            launch(args.app, features=args.feature)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
         print("bg3mfx: " + str(error), file=sys.stderr)
         if isinstance(error, subprocess.CalledProcessError) and error.stderr:

@@ -24,7 +24,7 @@ It checks the replaced instructions at each site, the island space and branch
 reach before patching.
 
 Measured live on October 20 (Lower City, Ultra, Upscaling Off, Frame Cap 60,
-M5 Pro, quiet runtime, two 10–30 s `procpower` windows per run, all at 60 fps):
+M5 Pro, two 10–30 s `procpower` windows per run, all at 60 fps):
 
 | Dynamic Worker Prioritization | Slices | CPU | CPU power |
 |---|---|--:|--:|
@@ -39,5 +39,4 @@ workers fell from 1.02 to 0.61 cores, and the render thread's waiting on jobs
 from 9.6% to 2.7% of its time. The remaining lock time is spread over many
 other sites. No rendering errors in play (about
 33,000 slices); the largest frame used 0.47 MB of the 21 MiB buffer.
-Uncapped (CPU-bound) frame rate is not yet measured. See
-[performance analysis](../../../docs/dev/performance.md).
+Uncapped (CPU-bound) frame rate is not yet measured.

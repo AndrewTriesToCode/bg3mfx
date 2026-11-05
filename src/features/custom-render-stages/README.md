@@ -43,7 +43,7 @@ per method; only methods listed in `SupportedBuild.h`
 
 `CustomRenderStages.mm` replaces the Span overload's slot (0x2c8) in App's
 vtable, at this feature's activation: after every feature has installed, and
-only if a list was registered (or the trace asked for the shim). It checks
+only if a list was registered. It checks
 both vtable slots and every pack's bytes against `SupportedBuild.h` first.
 The vtable page is made writable, the pointer stored, and the page made
 read-only again (`BG3MFXPatchPointer`).

@@ -97,8 +97,7 @@ the shared eight-sample table is unchanged for other views and modes.
 image displacement: X is negated and Y retains the native Y-up sign. The old
 adapter supplied the opposite displacement in both framebuffer axes, preventing
 correct temporal reconstruction. The analytic reconstruction test and captured
-depth registration establish this conversion; see the
-[quality diagnosis](validation/temporal-jitter-diagnosis.md).
+depth registration establish this conversion.
 
 Temporal uses `MTL4FXTemporalScaler` on devices reporting `supportsMetal4FX:`;
 other devices retain `MTLFXTemporalScaler`. A dedicated Metal 4 queue waits on
@@ -113,9 +112,7 @@ Metal 4 work is then submitted without the wait, because the MetalFX scaler
 stalls its next submission if any command buffer it encoded into never runs.
 When committing a buffer would not reach the hook, the work is submitted at once.
 Per-submission residency and feedback-owned resources preserve GPU lifetimes.
-This does not convert BG3's renderer or presentation to Metal 4. See the
-[Metal 4 audit](validation/metal4-temporal.md) for the API/model distinction and
-validation limits.
+This does not convert BG3's renderer or presentation to Metal 4.
 
 `MetalFXPipeline.mm` owns only the MetalFX Spatial/Temporal scaler objects,
 resource checks, output allocation, scaler encoding, and its cross-API GPU event bridge. It has no BG3 menu,
@@ -180,21 +177,19 @@ case. On the paced paths (the first two rows) BG3 prefers one stand-in, then can
 borrow one overflow slot after a short grace wait; this lets a nearly-finished
 copy release the low-latency slot while avoiding a long render-thread stall.
 The fast vsync-off path keeps BG3's own buffering and allows at most one
-additional stand-in up to a total of three. The frame log records BG3's
-requested buffering, the stand-in limit, wait time, and overflow use. The
+additional stand-in up to a total of three. The
 refresh interval is read on the main thread from the
 layer's window. The stand-in is released when the real copy completes, before
 any wait, and the worker skips the wait when BG3's next frame is already
 queued. Frames without a generated image are presented at once. Only the generated scene goes through an extra
 `CombineUI` pass. The worker never blocks BG3's or Metal's threads. Devices
 without Metal 4 FX use the Metal 3 effect. This implementation still needs
-displayed/pacing validation and does not establish HDR support. See the
-[frame-generation record](validation/frame-generation.md).
+displayed/pacing validation and does not establish HDR support.
 
 ## Hook overhead
 
 Every intercepted Metal call runs on BG3's render thread, which issues about
-12,000 draws per frame. A `sample` of the quiet runtime showed about half of
+12,000 draws per frame. A `sample` of the runtime showed about half of
 that thread inside the hooks, in Temporal and in Frame Generation alike, when
 binds built strings and dictionaries and every call took a global lock to find
 the original method. Hooks now keep one `BG3MFXEncoderState` per encoder with
@@ -217,7 +212,7 @@ also keeps `setBytes` data in a lazy side table, so each encoder's state owns
 nothing in its binding table and is free to destroy. Synthetic overhead for 150
 encoders and about 20,000 draws went from about 1.9 ms (round 2) to about
 0.9 ms. Measured live on
-the quiet runtime before round 3, with the game in the foreground (samples
+the runtime before round 3, with the game in the foreground (samples
 taken while BG3 is in the background measure its background frame throttle,
 `GameClock::CapFrame`, instead): about 16-17% of the render thread. Use
 `MTL_HUD_LOG_ENABLED=1` and `sample` for performance comparisons.
@@ -343,7 +338,6 @@ does not alter the app bundle.
 - `build/analysis/baseline/`: retained unmodded-game baseline evidence.
 - Other `build/` paths (`build/profiling/`, downloaded references) are local
   only; `make clean` never removes them. Never place game assets in tracked folders.
-- `docs/dev/performance.md`: renderer and CPU performance measurements.
 
 Use source-root include paths (for example `common/gpu/GPUResources.h`) with
 `-Isrc`. Both runtime variants share the Makefile's source and header lists;
@@ -487,7 +481,6 @@ only for a feature that adds options to it (metal-hud, metalfx).
     `SetTextureSafe` binds BG3's transparent default texture, and the
     shader drops the normal offset for that frame.
 
-  See [validation](validation/README.md#improved-shadows-october-23-2026).
   The backed-out encoder merge's design is in
   [encoder-merge-plan.md](encoder-merge-plan.md).
 - `src/features/thread-idling/ThreadIdling.*`: CPU Thread Idling (`BG3MFX_FEATURE_THREAD_IDLING=1`). BG3's idle workers, job scheduler,
@@ -526,10 +519,9 @@ only for a feature that adds options to it (metal-hud, metalfx).
   viewport loads, the auto-exposure scene UV load, the SSR history viewport, an SSR history discard after each area change, and loads of the full view rectangle for forward lighting clamps, bloom and DOF radii and the projection jitter divisor; `MetalFXRenderer.mm` gives the fog composite a viewport-mapped vertex
   shader (`viewportFogDescriptor`, whenever the feature is installed) and
   corrects surface grid draws (`SurfaceGridDraw`) and subsurface scattering
-  widths (`SubsurfaceDraw`) while reducing. See
-  [validation](validation/README.md#dynamic-resolution-probe-october-21-2026).
-- Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, server
-  pacing probe `0x800`, thread idling `0x9c0`, uniform slices `0xa00`, custom pipeline bundles `0xad8` (offsets from
+  widths (`SubsurfaceDraw`) while reducing.
+- Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, thread idling `0x9c0`, uniform
+  slices `0xa00`, viewport reduction `0xa40`, SSR history `0xa70`, SSR valid `0xaa0`, SSAO blur `0xac0`, custom pipeline bundles `0xad8` (offsets from
   `0x100004000`). Each install checks its range is still zero.
 - `src/features/metal-hooks/MetalHooks.mm`: Metal hooks; `src/features/metalfx/MetalFXRenderer.mm`: exact texture
   association and pass replacement.
@@ -541,4 +533,3 @@ only for a feature that adds options to it (metal-hud, metalfx).
   presentation worker.
 - `tests/features/`, `tests/common/`, and `tests/integration/`: synthetic Metal pixel and hook regressions.
 - `tools/launch/bg3mfx.py`: guarded, bundle-preserving development launch.
-- `docs/dev/validation/`: current status and dated evidence.

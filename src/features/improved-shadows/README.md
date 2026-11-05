@@ -122,7 +122,7 @@ from the sun then partly shadow themselves.
 
 ## Live check of the native path
 
-November 1, 2026 (quiet runtime, displayed, M5 Pro, BG3 4.1.1.7631656, with
+November 1, 2026 (displayed, M5 Pro, BG3 4.1.1.7631656, with
 metalfx and duplicate-shadow-fix): `improved shadows: ready` was logged at
 startup, and the user saw correct sun shadows, with no flashing, dotted
 lines, diamond patches or dark slopes, at High and Low Shadow Quality,

@@ -38,5 +38,4 @@ other features off), the current defaults used 596% CPU against stock's 727%
 at the same frame rate. A 50 µs worker poll (643%) or BG3's 101 µs scheduler
 window (662%, the scheduler then never sleeps) added CPU without measurable
 fps; BG3's own polls with the `CapFrame` sleep used 939%, as `CapFrame` no longer
-spins and its work moves to spinning workers. See [performance analysis](../../../docs/dev/performance.md)
-and [current validation](../../../docs/dev/validation/README.md).
+spins and its work moves to spinning workers.

@@ -34,7 +34,7 @@ installed by root:
    "MetalFX could not start" and root skips metalfx.
 2. dynamic-resolution ([`DynamicResolution.mm`](dynamic-resolution/DynamicResolution.mm)),
    wanted with metalfx but not required. If it cannot install, root reports
-   it in `featureSkipped` and MetalFX carries on without Dynamic.
+   it through `BG3MFXFail` and MetalFX carries on without Dynamic.
 
 Its activation restores the saved choices before BG3 creates its first command
 buffer, and migrates earlier preference keys.

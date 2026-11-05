@@ -15,6 +15,4 @@ On the M5 Pro Lower City CPU sample, the server thread spent 3.5% of samples in
 `sigprocmask` and `__sigaltstack` before the change; the protected Lua call
 time fell 14% afterward. This is a server-thread CPU reduction, not a measured
 frame-rate gain. NPC and combat behavior remained normal during live play; the
-runtime regression suite does not exercise this patch. See [performance
-analysis](../../../docs/dev/performance.md) and
-[current validation](../../../docs/dev/validation/README.md).
+runtime regression suite does not exercise this patch.

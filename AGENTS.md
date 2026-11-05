@@ -43,7 +43,7 @@
   `build/evidence/`. Neither command migrates or removes older data elsewhere
   under `build/`.
 - The runtime has no diagnostics: no event logs, traces, counters or diagnostic build. Temporary diagnostics are allowed while developing a feature, but must be removed before the feature is committed. Do not add custom diagnostics for data that can be obtained from other tools like gpu capture, Metal logging, or cpu sampling.
-- Probes (opt-in checks, captures, forced failures and overrides) are development-time tools. Keep them temporary or under `build/`; do not add them to the runtime or commit them.
+- Probes (opt-in checks, captures, forced failures and overrides) are development-time tools. Keep them temporary or under `build/`; do not add them to the runtime or commit them. The only exceptions are the standalone programs in `tools/probes/`, which are never part of the runtime.
 - Failures are not diagnostics: report them through `BG3MFXFail` (`src/common/Notice.h`).
 - Do not distribute BG3 executables, extracted game assets, or user
   credentials. Modified shaders are acceptable. Local captures and downloaded references stay in ignored

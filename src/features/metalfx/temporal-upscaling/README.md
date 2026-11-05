@@ -35,7 +35,4 @@ user confirmed corrected jitter was clearly better and stable in a saved-camera
 and slow-motion test, then reported that the longer quality-dependent sequence
 looks good in the tested scene. That does not cover every scene or material;
 full Metal shader validation still reports invalid threadgroup loads in Apple's
-private `BBRNetAnisoGaussian` kernel. See [architecture](../../../../docs/dev/architecture.md),
-[jitter diagnosis](../../../../docs/dev/validation/temporal-jitter-diagnosis.md),
-[long-jitter validation](../../../../docs/dev/validation/temporal-long-jitter.md),
-and [current validation](../../../../docs/dev/validation/README.md).
+private `BBRNetAnisoGaussian` kernel. See [architecture](../../../../docs/dev/architecture.md).

@@ -16,5 +16,4 @@ adds it through [custom-menu](../custom-menu/README.md), saves the choice and
 sets the overlay mode on BG3's `CAMetalLayer`s.
 
 The checkbox ordering and HUD on/off were visually checked in BG3 4.1.1.7631656.
-See [architecture](../../../docs/dev/architecture.md) and
-[current validation](../../../docs/dev/validation/README.md).
+See [architecture](../../../docs/dev/architecture.md).

@@ -42,5 +42,4 @@ volumetric fog passes read the stand-in every frame for about 1 min 47 s
 (about 6,400 dispatches). There was no hang and no validation error, and the
 user saw normal lighting and fog. An earlier run of many entries never
 triggered it, because BG3 bound the buffer itself each time. The cost is two or
-three extra binds per encoder; frame time was not measured. See [current
-validation](../../../docs/dev/validation/README.md).
+three extra binds per encoder; frame time was not measured.
