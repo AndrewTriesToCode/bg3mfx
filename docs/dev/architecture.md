@@ -391,6 +391,10 @@ only for a feature that adds options to it (metal-hud, metalfx).
   requires metal-hooks for it): a present-duration filter that replaces BG3's
   1/(settings refresh + 1), the fullscreen mode's rate kept in a borderless
   window, with 1/(screen rate + 1).
+- `src/features/custom-menu/FullscreenFit.*`: part of custom-menu: after
+  macOS's full-screen transition, moves BG3's Borderless window, left as tall
+  as the whole screen with its bottom off screen on a notched display, to the
+  frame below the notch.
 - `src/common/ScreenTiming.*`: the game window's screen timing from
   `NSScreen` (shortest and longest intervals, step), read on the main thread
   and copied for any thread; used by custom-menu and max-frame-rate.

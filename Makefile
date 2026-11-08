@@ -83,6 +83,7 @@ RUNTIME_SOURCES = \
 	src/features/custom-menu/CustomMenu.mm \
 	src/features/custom-menu/RenderViewFocus.mm \
 	src/features/custom-menu/RefreshRepair.mm \
+	src/features/custom-menu/FullscreenFit.mm \
 	src/common/gpu/GPUResources.mm \
 	src/common/gpu/MetalFXPipeline.mm \
 	src/common/native/CodePatch.mm \
@@ -123,6 +124,7 @@ RUNTIME_HEADERS = \
 	src/features/custom-pipeline-bundles/CustomPipelineBundles.h src/features/custom-pipeline-bundles/PipelineRecord.h \
 	src/features/custom-menu/RenderViewFocus.h \
 	src/features/custom-menu/RefreshRepair.h \
+	src/features/custom-menu/FullscreenFit.h \
 	src/features/metal-hooks/MetalHooks.h \
 	src/features/metal-hooks/MetalHooksInternal.h
 

@@ -4,7 +4,7 @@ Technical name: `custom-menu`.
 
 There is no flag of its own: it is enabled by the features that require it
 (metal-hud, metalfx and max-frame-rate), and requires metal-hooks. It needs the
-supported ARM64 executable. It also repairs two BG3 Video settings bugs
+supported ARM64 executable. It also repairs three BG3 Video settings bugs
 (below).
 
 ## Behavior
@@ -21,6 +21,19 @@ second click before a control responded. BG3's `BindSurface` removes its render
 view (`LSMTLView`) from the window and sets it back as the content view. That
 leaves the window as first responder, so the next click only gave the view its
 focus back.
+
+### Borderless fit repair
+
+BG3's Borderless mode is macOS full screen. On a MacBook with a notch, with
+the game's "Scale to fit below built-in camera" off, it started with the
+bottom of the picture off screen until a resolution change: BG3 sizes the
+window to the whole screen, notch strip included (1728×1117 pt on a 14-inch
+MacBook Pro), and macOS's full-screen transition keeps that height but puts
+the top under the notch, 33 pt down. custom-menu gives the window the frame
+below the notch (1728×1084 pt), as a resolution change does. With Scale to
+fit on, the window is not moved: macOS scales the whole full-screen space
+below the camera, with bars at the sides, and BG3's 16:10 picture is
+stretched to the window's height (not repaired).
 
 ### Borderless refresh repair
 
@@ -56,6 +69,14 @@ first responder again. It does this only for the active key window with no
 sheet or modal window open. If a different view is set, it stops tracking the
 old one without keeping it alive.
 
+[`FullscreenFit.mm`](FullscreenFit.mm), installed with custom-menu, is the
+fit repair: after `NSWindowDidEnterFullScreenNotification` (and
+`NSWindowDidMoveNotification`), a full-screen `LSWindow` whose bottom is
+below its screen gets the screen's frame up to the bottom of
+`auxiliaryTopLeftArea` (the areas beside the camera housing). The safe area
+reports no notch with Scale to fit on, and the visible frame still excludes
+the menu bar when the transition ends, so neither is used.
+
 [`RefreshRepair.mm`](RefreshRepair.mm), installed with custom-menu, is the
 refresh repair: a metal-hooks present-duration filter that recognizes BG3's
 own duration (1/(settings refresh + 1), from `Temporal::Settings` +0x18/+0x1c)
@@ -69,4 +90,6 @@ The menu API is not a speedup; it only adds options. The focus repair is a fix:
 the Video menu stayed responsive after fullscreen settings changes
 (user-confirmed October 16, 2026, BG3 4.1.1.7631656). The API move has not been
 re-checked live.
-The refresh repair has not been checked live yet.
+The refresh repair has not been checked live yet. The fit repair showed the
+whole picture at startup with Scale to fit off (user-confirmed November 7,
+2026, 14-inch MacBook Pro, BG3 4.1.1.7631656).

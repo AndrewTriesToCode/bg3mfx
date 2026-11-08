@@ -2,6 +2,7 @@
 #import "features/custom-menu/CustomMenu.h"
 #import "features/custom-menu/RenderViewFocus.h"
 #import "features/custom-menu/RefreshRepair.h"
+#import "features/custom-menu/FullscreenFit.h"
 #include "common/Feature.h"
 #import "common/Notice.h"
 #include <mach/mach.h>
@@ -75,6 +76,7 @@ void errorOut(NSError **error, NSString *message) {
 BOOL installCustomMenu(const BG3MFXFeatureContext &context, NSError **) {
     slide = context.slide;
     BG3MFXInstallRenderViewFocus();
+    BG3MFXInstallFullscreenFit();
     if (!BG3MFXInstallRefreshRepair(context.slide))
         BG3MFXFail(@"The borderless refresh repair could not be installed.", nil, nil);
     return YES;
