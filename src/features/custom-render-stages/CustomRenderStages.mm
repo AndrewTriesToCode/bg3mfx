@@ -298,5 +298,5 @@ BOOL activateCustomRenderStages(const BG3MFXFeatureContext &context, NSError **e
     return installShim(context.slide, error);
 }
 }
-BG3MFX_FEATURE(customRenderStages, {"custom-render-stages", nullptr, true, nullptr,
+BG3MFX_FEATURE(customRenderStages, {"custom-render-stages", nullptr, true,
     installCustomRenderStages, activateCustomRenderStages});

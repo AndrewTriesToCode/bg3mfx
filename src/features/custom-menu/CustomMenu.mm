@@ -97,7 +97,7 @@ BOOL activateCustomMenu(const BG3MFXFeatureContext &, NSError **error) {
     return YES;
 }
 }
-BG3MFX_FEATURE(customMenu, {"custom-menu", nullptr, true, nullptr, installCustomMenu, activateCustomMenu});
+BG3MFX_FEATURE(customMenu, {"custom-menu", nullptr, true, installCustomMenu, activateCustomMenu});
 
 // AddTranslatedString returns its nontrivial TextHandle through explicit argument 0,
 // consumes argument 2, and takes StringView in registers 3/4.

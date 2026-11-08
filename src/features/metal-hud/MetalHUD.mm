@@ -68,4 +68,4 @@ BOOL installMetalHUD(const BG3MFXFeatureContext &, NSError **) {
 }
 const char *const metalHUDRequires[] = {"custom-menu", nullptr};
 }
-BG3MFX_FEATURE(metalHUD, {"metal-hud", metalHUDRequires, false, nullptr, installMetalHUD, nullptr});
+BG3MFX_FEATURE(metalHUD, {"metal-hud", metalHUDRequires, false, installMetalHUD, nullptr});

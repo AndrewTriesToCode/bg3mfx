@@ -49,4 +49,4 @@ const char *const metalFXRequires[] = {"metal-hooks", nullptr};
 constexpr bool metalFXNative = false;
 #endif
 }
-BG3MFX_FEATURE(metalFX, {"metalfx", metalFXRequires, metalFXNative, nullptr, installMetalFX, activateMetalFX});
+BG3MFX_FEATURE(metalFX, {"metalfx", metalFXRequires, metalFXNative, installMetalFX, activateMetalFX});

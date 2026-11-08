@@ -169,7 +169,7 @@ test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-r
 	$(BIN_DIR)/temporal-upscaler-smoke
 	BG3MFX_TEST_DIRECT_OUTPUT=1 $(BIN_DIR)/temporal-upscaler-smoke
 	$(BIN_DIR)/runtime-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
-	BG3MFX_ENABLE=1 $(BIN_DIR)/runtime-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
+	BG3MFX_ENABLE=1 BG3MFX_FEATURE_METAL_HOOKS=1 $(BIN_DIR)/runtime-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib no-taa
 	$(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib resize
@@ -206,7 +206,7 @@ $(BIN_DIR)/hook-overhead: tools/probes/hook_overhead.mm | $(BIN_DIR)
 
 hook-overhead: $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/hook-overhead
-	$(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib
+	BG3MFX_FEATURE_METAL_HOOKS=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib
 	BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1 BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=1 BG3MFX_FEATURE_IMPROVED_SHADOWS=1 BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib
 	BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1 BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=1 BG3MFX_FEATURE_IMPROVED_SHADOWS=1 BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1 BG3MFX_FEATURE_METALFX=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFXTest.dylib 3
 

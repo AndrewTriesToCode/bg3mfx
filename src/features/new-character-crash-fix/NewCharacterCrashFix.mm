@@ -51,4 +51,4 @@ BOOL installNewCharacterCrashFix(const BG3MFXFeatureContext &, NSError **) {
 }
 const char *const newCharacterCrashFixRequires[] = {"metal-hooks", nullptr};
 }
-BG3MFX_FEATURE(newCharacterCrashFix, {"new-character-crash-fix", newCharacterCrashFixRequires, false, nullptr, installNewCharacterCrashFix, nullptr});
+BG3MFX_FEATURE(newCharacterCrashFix, {"new-character-crash-fix", newCharacterCrashFixRequires, false, installNewCharacterCrashFix, nullptr});

@@ -36,5 +36,5 @@ BOOL installDuplicateShadowFix(const BG3MFXFeatureContext &, NSError **error) {
     return BG3MFXInstallDuplicateShadowFix(error);
 }
 }
-BG3MFX_FEATURE(duplicateShadowFix, {"duplicate-shadow-fix", duplicateShadowFixRequires, false, nullptr,
+BG3MFX_FEATURE(duplicateShadowFix, {"duplicate-shadow-fix", duplicateShadowFixRequires, false,
     installDuplicateShadowFix, nullptr});

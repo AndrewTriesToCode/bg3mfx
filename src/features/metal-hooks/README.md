@@ -3,8 +3,9 @@
 Technical name: `metal-hooks`.
 
 The Metal interception layer the other renderer features build on. It has no
-player-visible effect itself and no flag: it is wanted in every process, also
-outside BG3 so the hook regressions can run it.
+player-visible effect itself. It is enabled by the features that require it
+(or `BG3MFX_FEATURE_METAL_HOOKS=1`, as the hook regressions outside BG3 set);
+with none of them requested, Metal is not hooked.
 
 ## Behavior
 

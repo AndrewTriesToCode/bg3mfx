@@ -592,8 +592,7 @@ static id newQueueLimit(id self, SEL cmd, NSUInteger count) {
     instrumentQueue(queue);
     return queue;
 }
-// Root installs metal-hooks in every process, before the features that
-// require it.
+// Root installs metal-hooks before the features that require it.
 static BOOL installMetalHooks(const BG3MFXFeatureContext &context, NSError **) {
     runtimeEnabled = context.runtimeEnabled;
     return YES;
@@ -627,5 +626,4 @@ static BOOL activateMetalHooks(const BG3MFXFeatureContext &, NSError **) {
     }
     return YES;
 }
-static bool metalHooksWanted(const BG3MFXFeatureContext &) { return true; }
-BG3MFX_FEATURE(metalHooks, {"metal-hooks", nullptr, false, metalHooksWanted, installMetalHooks, activateMetalHooks});
+BG3MFX_FEATURE(metalHooks, {"metal-hooks", nullptr, false, installMetalHooks, activateMetalHooks});

@@ -67,8 +67,7 @@ std::vector<Entry> run(std::vector<const BG3MFXFeature *> features, const BG3MFX
         }
         const char *value = getenv(flag(entry.feature->name).c_str());
         entry.off = value && strcmp(value, "0") == 0;
-        entry.enabled = !entry.off && ((context.runtimeEnabled && value && strcmp(value, "1") == 0) ||
-            (entry.feature->wanted && entry.feature->wanted(context)));
+        entry.enabled = !entry.off && context.runtimeEnabled && value && strcmp(value, "1") == 0;
     }
     // Enabling a feature enables what it requires, except a feature turned off
     // with =0 (the player launcher sets every flag to 1, so a player's 0 must

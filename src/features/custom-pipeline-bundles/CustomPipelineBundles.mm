@@ -401,4 +401,4 @@ BOOL installCustomPipelineBundles(const BG3MFXFeatureContext &context, NSError *
     return YES;
 }
 }
-BG3MFX_FEATURE(customPipelineBundles, {"custom-pipeline-bundles", nullptr, true, nullptr, installCustomPipelineBundles, nullptr});
+BG3MFX_FEATURE(customPipelineBundles, {"custom-pipeline-bundles", nullptr, true, installCustomPipelineBundles, nullptr});

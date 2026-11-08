@@ -51,4 +51,4 @@ BOOL installSSAOBlurFix(const BG3MFXFeatureContext &context, NSError **error) {
     return BG3MFXInstallSSAOBlurFix(context.slide, error);
 }
 }
-BG3MFX_FEATURE(ssaoBlurFixFeature, {"ssao-blur-fix", nullptr, true, nullptr, installSSAOBlurFix, nullptr});
+BG3MFX_FEATURE(ssaoBlurFixFeature, {"ssao-blur-fix", nullptr, true, installSSAOBlurFix, nullptr});

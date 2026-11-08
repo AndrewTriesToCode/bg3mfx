@@ -130,4 +130,4 @@ BOOL installReduceLocking(const BG3MFXFeatureContext &context, NSError **error) 
     return BG3MFXInstallUniformSlices(context.slide, error);
 }
 }
-BG3MFX_FEATURE(reduceLockingFeature, {"reduce-locking", nullptr, true, nullptr, installReduceLocking, nullptr});
+BG3MFX_FEATURE(reduceLockingFeature, {"reduce-locking", nullptr, true, installReduceLocking, nullptr});

@@ -15,8 +15,8 @@ Before BG3's `main`, root:
 2. reads the registrations from the runtime image's `__DATA,bg3mfx_features`
    section;
 3. enables a feature when `BG3MFX_FEATURE_<NAME>=1` is set while
-   `BG3MFX_ENABLE=1` (the name in upper case, `-` as `_`), when the feature's
-   own `wanted` check asks for it, or when an enabled feature requires it. An
+   `BG3MFX_ENABLE=1` (the name in upper case, `-` as `_`), or when an enabled
+   feature requires it; nothing is enabled unless requested. An
    explicit `BG3MFX_FEATURE_<NAME>=0` keeps a feature off even then, and the
    features that require it are skipped: the player launcher sets every flag
    to 1, so a player's 0 must win;
@@ -41,6 +41,6 @@ None by itself: it only orders the installs.
 ## Tests
 
 `tests/features/root/root_smoke.mm` runs root's resolution on stand-in
-features: flags and the runtime switch, `wanted`, requirements enabled and
+features: flags and the runtime switch, requirements enabled and
 installed first, installs before activations, and native, install,
 activation, cycle and unknown-requirement skips.

@@ -146,4 +146,4 @@ BOOL installThreadIdling(const BG3MFXFeatureContext &context, NSError **error) {
     return BG3MFXInstallThreadIdling(context.slide, error);
 }
 }
-BG3MFX_FEATURE(threadIdlingFeature, {"thread-idling", nullptr, true, nullptr, installThreadIdling, nullptr});
+BG3MFX_FEATURE(threadIdlingFeature, {"thread-idling", nullptr, true, installThreadIdling, nullptr});

@@ -36,10 +36,9 @@ template<int N> struct Fake {
     }
 };
 template<int N> const char *Fake<N>::name;
-template<int N> BG3MFXFeature feature(const char *name, const char *const *requires, bool native = false,
-                                      bool (*wanted)(const BG3MFXFeatureContext &) = nullptr) {
+template<int N> BG3MFXFeature feature(const char *name, const char *const *requires, bool native = false) {
     Fake<N>::name = name;
-    return {name, requires, native, wanted, Fake<N>::install, Fake<N>::activate};
+    return {name, requires, native, Fake<N>::install, Fake<N>::activate};
 }
 }
 void BG3MFXFail(NSString *message, NSString *, NSString *) { failures.push_back(message.UTF8String); }
@@ -65,7 +64,6 @@ void flags(std::initializer_list<const char *> names) {
                              "BG3MFX_FEATURE_NATIVE_PATCH", "BG3MFX_FEATURE_LOOP_A", "BG3MFX_FEATURE_ORPHAN"}) unsetenv(name);
     for (const char *name : names) setenv(name, "1", 1);
 }
-bool alwaysWanted(const BG3MFXFeatureContext &) { return true; }
 }
 
 int main() {
@@ -84,7 +82,6 @@ int main() {
         const BG3MFXFeature loopA = feature<5>("loop-a", needsLoopB);
         const BG3MFXFeature loopB = feature<6>("loop-b", needsLoopA);
         const BG3MFXFeature orphan = feature<7>("orphan", needsMissing);
-        const BG3MFXFeature always = feature<8>("always", nullptr, false, alwaysWanted);
         const BG3MFXFeature top = feature<9>("top", needsConsumer);
 
         // Off without a flag; a flag only counts with BG3MFX_ENABLE=1.
@@ -117,11 +114,6 @@ int main() {
         check(calls.empty() && [skipped(entries, "consumer") isEqualToString:@"Requires provider, which is turned off."],
               "a requirement turned off");
         check(failures == std::vector<std::string>{"Feature consumer was skipped: Requires provider, which is turned off."}, "a skip is reported");
-
-        // `wanted` enables without a flag, with or without the runtime.
-        flags({});
-        runAll({&always}, false);
-        check((calls == std::vector<std::string>{"install always", "activate always"}), "wanted");
 
         // A native feature needs the supported build, and so do its dependents;
         // other features still install, with a zero slide.
@@ -162,7 +154,7 @@ int main() {
         check(failures == std::vector<std::string>{"Feature provider is registered twice; the second is ignored."}, "duplicate reported");
 
         check(flag("custom-render-stages") == "BG3MFX_FEATURE_CUSTOM_RENDER_STAGES", "flag names");
-        puts("Root: flags with the runtime, wanted features, requirements first and enabled with their dependents, "
+        puts("Root: flags with the runtime, requirements first and enabled with their dependents, "
              "installs before activations, native, install, activation, cycle and unknown-requirement skips passed.");
     }
 }

@@ -12,5 +12,5 @@ BOOL installRenderThreadOptimizations(const BG3MFXFeatureContext &, NSError **) 
 }
 const char *const renderThreadOptimizationsRequires[] = {"metal-hooks", nullptr};
 }
-BG3MFX_FEATURE(renderThreadOptimizations, {"render-thread-optimizations", renderThreadOptimizationsRequires, false, nullptr,
+BG3MFX_FEATURE(renderThreadOptimizations, {"render-thread-optimizations", renderThreadOptimizationsRequires, false,
                                            installRenderThreadOptimizations, nullptr});

@@ -186,5 +186,5 @@ namespace {
 const char *const improvedShadowsRequires[] = {"custom-render-stages", "custom-pipeline-bundles", nullptr};
 }
 // Native: it calls BG3's functions at the supported build's addresses.
-BG3MFX_FEATURE(improvedShadows, {"improved-shadows", improvedShadowsRequires, true, nullptr,
+BG3MFX_FEATURE(improvedShadows, {"improved-shadows", improvedShadowsRequires, true,
     BG3MFXInstallImprovedShadows, nullptr});

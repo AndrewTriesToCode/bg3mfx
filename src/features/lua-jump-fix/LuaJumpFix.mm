@@ -70,4 +70,4 @@ BOOL installLuaJumpFix(const BG3MFXFeatureContext &context, NSError **error) {
     return BG3MFXInstallLuaJumpFix(context.slide, error);
 }
 }
-BG3MFX_FEATURE(luaJumpFixFeature, {"lua-jump-fix", nullptr, true, nullptr, installLuaJumpFix, nullptr});
+BG3MFX_FEATURE(luaJumpFixFeature, {"lua-jump-fix", nullptr, true, installLuaJumpFix, nullptr});

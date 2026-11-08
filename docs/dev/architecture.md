@@ -375,7 +375,8 @@ dependents, each reporting why through `BG3MFXFail`. The player launcher sets ev
 can set one to 0 to turn it off. `tools/launch/bg3mfx.py` sets only the
 features named with `--feature`, so a live test exercises one at a time.
 `BG3MFX_FEATURE_METALFX` covers MetalFX Spatial, Temporal (with its jitter
-hooks and Dynamic resolution), Frame Generation and the FSR_Tonemap skip. The Video menu is patched
+hooks and Dynamic resolution), Frame Generation and the FSR_Tonemap skip. No
+feature enables itself. The Video menu is patched
 only for a feature that adds options to it (metal-hud, metalfx).
 
 - `src/features/root/Root.mm`: the root feature. Its constructor runs last in
@@ -416,8 +417,8 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `BG3MFXMetalFXSelectionChanged`.
 - `src/features/metal-hud/MetalHUD.mm`: the metal-hud feature (requires
   custom-menu): adds the Show Metal HUD checkbox.
-- `src/features/metal-hooks/MetalHooks.mm`: the metal-hooks feature, installed in
-  every process (also outside BG3, for the hook regressions); it hooks Metal
+- `src/features/metal-hooks/MetalHooks.mm`: the metal-hooks feature, enabled by the
+  features that require it (the hook regressions set its flag); it hooks Metal
   at activation, after the menu and the native patches. Features that require
   it register with its hook points (`MetalHooks.h`) from their install: a
   new-encoder observer, a render-pass observer and one draw replacement. Each point holds up to four observers in a fixed array,
