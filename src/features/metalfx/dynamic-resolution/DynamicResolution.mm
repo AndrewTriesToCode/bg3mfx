@@ -1,4 +1,3 @@
-#include "common/Feature.h"
 #include "common/native/SupportedBuild.h"
 #import "features/metalfx/dynamic-resolution/DynamicResolution.h"
 #import "features/metalfx/MetalFX.h"
@@ -368,16 +367,4 @@ static BOOL installDynamic(intptr_t slide, NSError **error) {
     return YES;
 }
 
-// The dynamic-resolution feature. Wanted with metalfx rather than required by
-// it, so MetalFX still starts, without the Dynamic quality, when this cannot
-// install. Installed before BG3 creates its device, so renderer pipelines see
-// the installed state.
-namespace {
-bool dynamicResolutionWanted(const BG3MFXFeatureContext &context) {
-    return context.runtimeEnabled && BG3MFXFeatureEnabled("BG3MFX_FEATURE_METALFX");
-}
-BOOL installDynamicResolution(const BG3MFXFeatureContext &context, NSError **error) {
-    return installDynamic(context.slide, error);
-}
-}
-BG3MFX_FEATURE(dynamicResolution, {"dynamic-resolution", nullptr, true, dynamicResolutionWanted, installDynamicResolution, nullptr});
+BOOL BG3MFXInstallDynamicResolution(intptr_t slide, NSError **error) { return installDynamic(slide, error); }

@@ -87,7 +87,7 @@ RUNTIME_SOURCES = \
 	src/common/Notice.mm \
 	src/features/custom-render-stages/CustomRenderStages.mm \
 	src/features/custom-pipeline-bundles/CustomPipelineBundles.mm \
-	src/features/metalfx/MetalFXRenderer.mm \
+	src/features/metalfx/renderer/MetalFXRenderer.mm \
 	src/features/metal-hooks/MetalHooks.mm \
 	src/features/root/Root.mm
 # Root.mm stays last: its constructor, which installs every feature, must run

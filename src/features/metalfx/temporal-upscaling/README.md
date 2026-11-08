@@ -1,8 +1,7 @@
 # MetalFX Temporal Upscaling
 
 Part of the [metalfx](../README.md) feature (`BG3MFX_FEATURE_METALFX`). Its native
-jitter is the temporal-upscaling feature (`TemporalJitter.mm`), which metalfx
-requires, so root installs it first.
+jitter (`TemporalJitter.mm`) is the first part metalfx's install puts in.
 
 Adds the “MetalFX Temporal” choice to BG3's Upscaling Type menu. It is user-selected and
 defaults to BG3's native Off setting. Temporal replaces the TAA result used by
@@ -22,7 +21,7 @@ The feature implementation is in
 [`TemporalJitter.mm`](../../../../src/features/metalfx/temporal-upscaling/TemporalJitter.mm), and
 [`TemporalJitter.S`](../../../../src/features/metalfx/temporal-upscaling/TemporalJitter.S). The
 shared renderer and MetalFX resource integration lives in
-[`MetalFXRenderer.mm`](../MetalFXRenderer.mm) and
+[`MetalFXRenderer.mm`](../renderer/MetalFXRenderer.mm) and
 [`MetalFXPipeline.mm`](../../../../src/common/gpu/MetalFXPipeline.mm);
 menu persistence is in [`MetalFXOptions.mm`](../MetalFXOptions.mm).
 

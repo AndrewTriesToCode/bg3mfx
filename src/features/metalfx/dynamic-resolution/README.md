@@ -1,6 +1,6 @@
 # Dynamic Resolution
 
-Technical name: `dynamic-resolution`.
+Part of the [metalfx](../README.md) feature (`BG3MFX_FEATURE_METALFX`).
 
 Adds **Dynamic** (quality 4) to BG3's Upscaling Quality menu. It is offered only
 while MetalFX Temporal is the Upscaling Type, and changes the render resolution
@@ -32,9 +32,8 @@ and jitter to match. Dynamic's target counts rendered frames, as BG3's Max
 Frame Rate does; Frame Generation shows twice as many. Dynamic keeps
 native resolution for 60 frames after any change of size, Upscaling Type or
 quality.
-The dynamic-resolution feature, part of [metalfx](../README.md): root installs
-it whenever metalfx is enabled (`wanted`), without metalfx requiring it. If it
-cannot install, root reports it through `BG3MFXFail` and MetalFX does not offer
+metalfx's install puts it in after Temporal's jitter. It is optional: if it
+cannot install, metalfx reports it through `BG3MFXFail` and does not offer
 Dynamic.
 
 ## Implementation
@@ -53,7 +52,7 @@ Dynamic.
   - auto-exposure scene UVs;
   - the render-rectangle loads for forward lighting clamps, bloom and DOF radii,
     and the projection jitter divisor.
-- [`MetalFXRenderer.mm`](../MetalFXRenderer.mm) does the following:
+- [`MetalFXRenderer.mm`](../renderer/MetalFXRenderer.mm) does the following:
   - accepts the reduced TAA viewport as the Temporal content region;
   - creates Dynamic Temporal scalers with `inputContentPropertiesEnabled`;
   - gives the fog composite a viewport-mapped vertex shader;

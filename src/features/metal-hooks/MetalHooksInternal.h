@@ -8,7 +8,7 @@
 #import "features/metal-hooks/BindFilter.h"
 
 // metal-hooks' private interface for the renderer extension (metalfx's
-// renderer, src/features/metalfx/MetalFXRenderer.mm): the per-encoder and
+// renderer, src/features/metalfx/renderer/MetalFXRenderer.mm): the per-encoder and
 // per-pipeline state the hooks keep, the helpers that read it, and the points
 // at which the hooks call the extension. Features other than metalfx use the
 // public hook points in MetalHooks.h.

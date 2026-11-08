@@ -1,4 +1,3 @@
-#include "common/Feature.h"
 #include "common/native/SupportedBuild.h"
 #import "common/Notice.h"
 #include "common/native/CodePatch.h"
@@ -142,17 +141,4 @@ static BOOL installJitter(intptr_t slide, NSError **error) {
     return YES;
 }
 
-// The temporal-upscaling feature: Temporal's native jitter, which metalfx
-// requires.
-namespace {
-BOOL installTemporalUpscaling(const BG3MFXFeatureContext &context, NSError **error) {
-    if (installJitter(context.slide, error)) return YES;
-    // Root then skips metalfx: without the menu options nothing selects
-    // MetalFX, so BG3 renders as usual.
-    NSString *reason = (error && *error ? (*error).localizedDescription : nil) ?: @"Temporal's jitter could not be installed.";
-    BG3MFXFail([@"MetalFX could not start: " stringByAppendingString:reason], @"MetalFX could not start",
-        [reason stringByAppendingString:@"\n\nThe game continues without MetalFX."]);
-    return NO;
-}
-}
-BG3MFX_FEATURE(temporalUpscaling, {"temporal-upscaling", nullptr, true, nullptr, installTemporalUpscaling, nullptr});
+BOOL BG3MFXInstallTemporalJitter(intptr_t slide, NSError **error) { return installJitter(slide, error); }

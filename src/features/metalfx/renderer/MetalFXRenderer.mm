@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstring>
 #include <mutex>
-#include "common/Feature.h"
 #import "common/Notice.h"
 #import "common/gpu/GPUResources.h"
 #import "common/gpu/MetalFXPipeline.h"
@@ -1312,7 +1311,7 @@ static void draw(id encoder, BG3MFXEncoderState *s, const DrawCall &call, void (
 }
 
 namespace {
-BOOL installRenderer(const BG3MFXFeatureContext &, NSError **error) {
+BOOL installRenderer(NSError **error) {
     RendererExtension extension = {};
     extension.constantSlots = ConstantSlots;
     // Dynamic resolution installs later, with metalfx; its corrections check.
@@ -1337,20 +1336,16 @@ BOOL installRenderer(const BG3MFXFeatureContext &, NSError **error) {
     return NO;
 }
 // Frame Generation's stand-in drawables.
-BOOL activateRenderer(const BG3MFXFeatureContext &, NSError **) {
+void activateRenderer() {
     @autoreleasepool {
         CAMetalLayer *layer=[CAMetalLayer layer];
         hook(layer,"nextDrawable",(IMP)layerNextDrawable);
         hook(layer,"setMaximumDrawableCount:",(IMP)layerSetMaximumDrawableCount);
     }
-    return YES;
 }
-// With metalfx, which requires it. Not native, so the standalone hook
-// regressions run it with BG3MFX_FEATURE_METALFX=1 outside BG3.
-bool rendererWanted(const BG3MFXFeatureContext &) { return BG3MFXFeatureEnabled("BG3MFX_FEATURE_METALFX"); }
-const char *const rendererRequires[] = {"metal-hooks", nullptr};
 }
-BG3MFX_FEATURE(metalFXRenderer, {"metalfx-renderer", rendererRequires, false, rendererWanted, installRenderer, activateRenderer});
+BOOL BG3MFXInstallMetalFXRenderer(NSError **error) { return installRenderer(error); }
+void BG3MFXActivateMetalFXRenderer(void) { activateRenderer(); }
 #ifdef BG3MFX_STANDALONE_TEST_HOOKS
 extern "C" NSDictionary *BG3MFXStandaloneGeneratedPair(id<MTLCommandBuffer> buffer) {
     if ([NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return nil;

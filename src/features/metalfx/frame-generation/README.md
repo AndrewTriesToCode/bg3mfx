@@ -12,7 +12,7 @@ generated and rendered images.
 Interpolation and presentation live in
 [`FrameInterpolation.mm`](../../../../src/features/metalfx/frame-generation/FrameInterpolation.mm), with
 scene tracking and menu integration in
-[`MetalFXRenderer.mm`](../MetalFXRenderer.mm) and
+[`MetalFXRenderer.mm`](../renderer/MetalFXRenderer.mm) and
 [`MetalFXOptions.mm`](../MetalFXOptions.mm). Shared MetalFX
 resources are in [`GPUResources.mm`](../../../../src/common/gpu/GPUResources.mm).
 

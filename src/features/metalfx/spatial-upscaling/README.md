@@ -16,7 +16,7 @@ The upscaler is implemented in
 [`SpatialUpscaler.mm`](../../../../src/features/metalfx/spatial-upscaling/SpatialUpscaler.mm), using
 the shared MetalFX resource code in
 [`MetalFXPipeline.mm`](../../../../src/common/gpu/MetalFXPipeline.mm) and
-[`MetalFXRenderer.mm`](../MetalFXRenderer.mm). Menu and saved-quality
+[`MetalFXRenderer.mm`](../renderer/MetalFXRenderer.mm). Menu and saved-quality
 integration is in [`MetalFXOptions.mm`](../MetalFXOptions.mm).
 
 No per-feature frame-rate or GPU-time gain is measured. The user confirmed

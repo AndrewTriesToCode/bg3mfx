@@ -40,7 +40,7 @@ control is disabled while Temporal is selected.
 ## Renderer flow
 
 `MetalHooks.mm` (metal-hooks) contains the Metal interception layer used by both
-runtime builds; `MetalFXRenderer.mm` (metalfx-renderer) does the MetalFX work
+runtime builds; `MetalFXRenderer.mm` (metalfx's renderer) does the MetalFX work
 from its extension points. It
 tracks each command buffer's selected mode and associates exact BG3 textures
 through TAA, post-processing, and the native FSR stage. Unknown or mismatched
@@ -389,19 +389,21 @@ only for a feature that adds options to it (metal-hud, metalfx).
 - `src/features/custom-menu/RenderViewFocus.*`: part of custom-menu. It keeps
   BG3's render view first responder across `BindSurface`, so the Video options
   respond to the first click after a fullscreen settings change.
-- `src/features/metalfx/MetalFX.mm`: the metalfx feature (requires
-  custom-menu, metal-hooks, metalfx-renderer and temporal-upscaling). Its
-  install registers the options; its activation restores the saved choices.
-- `src/features/metalfx/temporal-upscaling/TemporalJitter.*`: the
-  temporal-upscaling feature (native): Temporal's jitter, guarded sample
-  selection and ARM64 preservation. If it cannot install it shows "MetalFX
-  could not start" and root skips metalfx.
-- `src/features/metalfx/dynamic-resolution/DynamicResolution.*`: the
-  dynamic-resolution feature (native; wanted with `BG3MFX_FEATURE_METALFX=1`,
-  not required, so MetalFX starts without Dynamic when it is skipped).
-- `src/features/metalfx/MetalFXRenderer.mm`: the metalfx-renderer feature
-  (requires metal-hooks; wanted with `BG3MFX_FEATURE_METALFX=1`, and not
-  native, so the hook regressions run it outside BG3). It is metal-hooks'
+- `src/features/metalfx/MetalFX.mm`: the metalfx feature (native; requires
+  custom-menu and metal-hooks), the only feature under `metalfx/`. Its
+  install puts in Temporal's jitter, Dynamic resolution (optional), the
+  renderer and the options; its activation hooks `CAMetalLayer` for the
+  renderer and restores the saved choices. In the test runtime
+  (`BG3MFX_STANDALONE_TEST_HOOKS`) it is not native, requires only
+  metal-hooks and installs only the renderer, so the hook regressions run it
+  outside BG3.
+- `src/features/metalfx/temporal-upscaling/TemporalJitter.*`: part of
+  metalfx: Temporal's jitter, guarded sample selection and ARM64
+  preservation. If it cannot install it shows "MetalFX could not start" and
+  metalfx's install fails.
+- `src/features/metalfx/dynamic-resolution/DynamicResolution.*`: part of
+  metalfx, optional: when it cannot install, MetalFX starts without Dynamic.
+- `src/features/metalfx/renderer/MetalFXRenderer.mm`: part of metalfx. It is metal-hooks'
   renderer extension (`MetalHooksInternal.h`): scene tracking, the Spatial and
   Temporal dispatch that replaces FSR, the FSR_Tonemap skip, Frame
   Generation's composition, presentation and stand-in drawables, and Dynamic
@@ -523,7 +525,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, thread idling `0x9c0`, uniform
   slices `0xa00`, viewport reduction `0xa40`, SSR history `0xa70`, SSR valid `0xaa0`, SSAO blur `0xac0`, custom pipeline bundles `0xad8` (offsets from
   `0x100004000`). Each install checks its range is still zero.
-- `src/features/metal-hooks/MetalHooks.mm`: Metal hooks; `src/features/metalfx/MetalFXRenderer.mm`: exact texture
+- `src/features/metal-hooks/MetalHooks.mm`: Metal hooks; `src/features/metalfx/renderer/MetalFXRenderer.mm`: exact texture
   association and pass replacement.
 - `src/features/metalfx/spatial-upscaling/SpatialUpscaler.*` and `src/features/metalfx/temporal-upscaling/TemporalUpscaler.*`: BG3-specific inputs,
   conversions, and destinations for each scaler.

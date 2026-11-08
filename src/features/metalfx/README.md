@@ -3,8 +3,8 @@
 Technical name: `metalfx`.
 
 Opt-in with `BG3MFX_FEATURE_METALFX=1` (the `bg3mfx` launcher sets it).
-Requires custom-menu, metal-hooks and metalfx-renderer, which it turns on too,
-and the supported ARM64 executable.
+Requires custom-menu and metal-hooks, which it turns on too, and the supported
+ARM64 executable.
 
 ## Behavior
 
@@ -25,16 +25,17 @@ The parts:
 
 ## Implementation
 
-[`MetalFX.mm`](MetalFX.mm) registers the feature, and its install registers
-the options with custom-menu. Two native parts are features of their own,
-installed by root:
+[`MetalFX.mm`](MetalFX.mm) registers the feature, the only one in this
+folder. Its install puts in each part, in order:
 
-1. temporal-upscaling ([`TemporalJitter.mm`](temporal-upscaling/TemporalJitter.mm)),
-   Temporal's jitter, which metalfx requires. If it cannot install it shows
-   "MetalFX could not start" and root skips metalfx.
-2. dynamic-resolution ([`DynamicResolution.mm`](dynamic-resolution/DynamicResolution.mm)),
-   wanted with metalfx but not required. If it cannot install, root reports
-   it through `BG3MFXFail` and MetalFX carries on without Dynamic.
+1. Temporal's native jitter ([`TemporalJitter.mm`](temporal-upscaling/TemporalJitter.mm)).
+   If it cannot install it shows "MetalFX could not start" and the install
+   fails, so root skips metalfx.
+2. Dynamic resolution ([`DynamicResolution.mm`](dynamic-resolution/DynamicResolution.mm)),
+   optional: if it cannot install, metalfx reports it through `BG3MFXFail` and
+   carries on without Dynamic.
+3. The renderer ([`MetalFXRenderer.mm`](renderer/MetalFXRenderer.mm)), below.
+4. The options, registered with custom-menu.
 
 Its activation restores the saved choices before BG3 creates its first command
 buffer, and migrates earlier preference keys.
@@ -51,13 +52,11 @@ When the type or Frame Generation changes, they call
 `BG3MFXMetalFXSelectionChanged`. That retries a failed upscaler after a type
 change, and resets Frame Generation and Temporal history.
 
-[`MetalFXRenderer.mm`](MetalFXRenderer.mm) is the renderer work, registered
-as its own feature, metalfx-renderer (requires metal-hooks). It is wanted with
-`BG3MFX_FEATURE_METALFX=1` and is not native, so the standalone hook
-regressions run it outside BG3. Its install registers it as metal-hooks'
+[`MetalFXRenderer.mm`](renderer/MetalFXRenderer.mm) is the renderer work
+([renderer](renderer/README.md)). metalfx's install registers it as metal-hooks'
 renderer extension
 ([`MetalHooksInternal.h`](../metal-hooks/MetalHooksInternal.h)),
-and its activation hooks `CAMetalLayer` for Frame Generation's stand-in
+and metalfx's activation hooks `CAMetalLayer` for Frame Generation's stand-in
 drawables. metal-hooks calls it at:
 
 - command buffer and encoder creation;

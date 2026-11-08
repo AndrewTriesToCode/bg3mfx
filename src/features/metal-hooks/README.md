@@ -20,7 +20,7 @@ afterwards:
 - redundant bind filtering ([`BindFilter.h`](BindFilter.h)), metal-hooks' own
   rules inline in its bind hooks, switched on by render-thread-optimizations.
 
-metalfx-renderer extends it through the private
+metalfx's renderer extends it through the private
 [`MetalHooksInternal.h`](MetalHooksInternal.h). metal-hooks includes no
 feature's header.
 
