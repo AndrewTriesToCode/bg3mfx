@@ -62,6 +62,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **FPS Thermal Guard** | Lowers the frame rate while your Mac is warmer than normal and restores it as it cools. |
 | **Video Options Menu Fix** | Fixes a base game bug that can make the video menu unresponsive in fullscreen. |
 | **Borderless Refresh Rate Fix** | Fixes a base game bug that limits a borderless window to the refresh rate chosen for fullscreen. |
+| **Borderless Notch Fix** | Fixes a base game bug that starts borderless mode on a MacBook with a notch with the bottom of the picture off screen until the resolution is changed. |
 | **Character Creation Crash Fix** | Fixes a base game bug that can freeze or crash the game when entering character creation at certain screen resolutions. |
 
 ## How it works
