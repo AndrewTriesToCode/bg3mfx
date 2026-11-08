@@ -3,8 +3,9 @@
 Technical name: `custom-menu`.
 
 There is no flag of its own: it is enabled by the features that require it
-(metal-hud and metalfx). It needs the supported ARM64 executable. It also
-keeps BG3's Video options responsive after a fullscreen change (below).
+(metal-hud and metalfx), and requires metal-hooks. It needs the
+supported ARM64 executable. It also repairs two BG3 Video settings bugs
+(below).
 
 ## Behavior
 
@@ -20,6 +21,16 @@ second click before a control responded. BG3's `BindSurface` removes its render
 view (`LSMTLView`) from the window and sets it back as the content view. That
 leaves the window as first responder, so the next click only gave the view its
 focus back.
+
+### Borderless refresh repair
+
+BG3 presents each frame no sooner than 1/(refresh rate + 1) after the last,
+using the refresh rate saved in its Video settings: the fullscreen mode's.
+It keeps that in a borderless window, where the screen runs at its own rate,
+so choosing 60 in fullscreen and returning to a 120 Hz borderless window held
+the game at 60. custom-menu replaces that duration with 1/(screen rate + 1),
+the game window's screen rate from `NSScreen`; in exclusive fullscreen the
+screen reports the mode's rate, so it matches BG3's.
 
 ## Implementation
 
@@ -45,9 +56,17 @@ first responder again. It does this only for the active key window with no
 sheet or modal window open. If a different view is set, it stops tracking the
 old one without keeping it alive.
 
+[`RefreshRepair.mm`](RefreshRepair.mm), installed with custom-menu, is the
+refresh repair: a metal-hooks present-duration filter that recognizes BG3's
+own duration (1/(settings refresh + 1), from `Temporal::Settings` +0x18/+0x1c)
+and passes other durations through. Screen timing comes from
+`src/common/ScreenTiming`. Filters run in install order, so a later feature's
+filter sees the repaired duration.
+
 ## Improvement
 
 The menu API is not a speedup; it only adds options. The focus repair is a fix:
 the Video menu stayed responsive after fullscreen settings changes
 (user-confirmed October 16, 2026, BG3 4.1.1.7631656). The API move has not been
 re-checked live.
+The refresh repair has not been checked live yet.

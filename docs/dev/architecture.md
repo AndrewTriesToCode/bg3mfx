@@ -387,6 +387,13 @@ only for a feature that adds options to it (metal-hud, metalfx).
   callbacks, an ApplyCombo wrapper chain, and item calls on BG3's ABI. It
   patches the Video options manager's Init and ApplyCombo at activation,
   after those features have installed.
+- `src/features/custom-menu/RefreshRepair.*`: part of custom-menu (which
+  requires metal-hooks for it): a present-duration filter that replaces BG3's
+  1/(settings refresh + 1), the fullscreen mode's rate kept in a borderless
+  window, with 1/(screen rate + 1).
+- `src/common/ScreenTiming.*`: the game window's screen timing from
+  `NSScreen` (shortest and longest intervals, step), read on the main thread
+  and copied for any thread; used by custom-menu.
 - `src/features/custom-menu/RenderViewFocus.*`: part of custom-menu. It keeps
   BG3's render view first responder across `BindSurface`, so the Video options
   respond to the first click after a fullscreen settings change.
@@ -421,7 +428,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   features that require it (the hook regressions set its flag); it hooks Metal
   at activation, after the menu and the native patches. Features that require
   it register with its hook points (`MetalHooks.h`) from their install: a
-  new-encoder observer, a render-pass observer and one draw replacement. Each point holds up to four observers in a fixed array,
+  new-encoder observer, a render-pass observer, a present-duration filter and one draw replacement. Each point holds up to four observers in a fixed array,
   read without locks; with none registered the cost is one count check.
 - `src/common/native/CodePatch.*`: shared in-memory code patching (header-padding branch
   islands, branch range checks, all-or-nothing page protection) and read-only

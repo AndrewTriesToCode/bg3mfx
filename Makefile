@@ -81,10 +81,12 @@ RUNTIME_SOURCES = \
 	src/features/metal-hud/MetalHUD.mm \
 	src/features/custom-menu/CustomMenu.mm \
 	src/features/custom-menu/RenderViewFocus.mm \
+	src/features/custom-menu/RefreshRepair.mm \
 	src/common/gpu/GPUResources.mm \
 	src/common/gpu/MetalFXPipeline.mm \
 	src/common/native/CodePatch.mm \
 	src/common/Notice.mm \
+	src/common/ScreenTiming.mm \
 	src/features/custom-render-stages/CustomRenderStages.mm \
 	src/features/custom-pipeline-bundles/CustomPipelineBundles.mm \
 	src/features/metalfx/renderer/MetalFXRenderer.mm \
@@ -97,6 +99,7 @@ RUNTIME_HEADERS = \
 	src/common/native/SupportedBuild.h \
 	src/common/Feature.h \
 	src/common/Notice.h \
+	src/common/ScreenTiming.h \
 	src/features/new-character-crash-fix/NewCharacterCrashFix.h \
 	src/features/metal-hooks/BindFilter.h \
 	src/features/metalfx/spatial-upscaling/SpatialUpscaler.h \
@@ -118,6 +121,7 @@ RUNTIME_HEADERS = \
 	src/features/custom-render-stages/CustomRenderStages.h \
 	src/features/custom-pipeline-bundles/CustomPipelineBundles.h src/features/custom-pipeline-bundles/PipelineRecord.h \
 	src/features/custom-menu/RenderViewFocus.h \
+	src/features/custom-menu/RefreshRepair.h \
 	src/features/metal-hooks/MetalHooks.h \
 	src/features/metal-hooks/MetalHooksInternal.h
 

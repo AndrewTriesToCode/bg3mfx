@@ -1,6 +1,7 @@
 #include "common/native/SupportedBuild.h"
 #import "features/custom-menu/CustomMenu.h"
 #import "features/custom-menu/RenderViewFocus.h"
+#import "features/custom-menu/RefreshRepair.h"
 #include "common/Feature.h"
 #import "common/Notice.h"
 #include <mach/mach.h>
@@ -70,12 +71,16 @@ void menuInit(void *manager) {
 void errorOut(NSError **error, NSString *message) {
     if (error) *error = [NSError errorWithDomain:@"BG3MFXCustomMenu" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
 }
-// The focus fix, then the features register their options.
+// The repairs, then the features register their options.
 BOOL installCustomMenu(const BG3MFXFeatureContext &context, NSError **) {
     slide = context.slide;
     BG3MFXInstallRenderViewFocus();
+    if (!BG3MFXInstallRefreshRepair(context.slide))
+        BG3MFXFail(@"The borderless refresh repair could not be installed.", nil, nil);
     return YES;
 }
+// metal-hooks for the refresh repair's present-duration filter.
+const char *const customMenuRequires[] = {"metal-hooks", nullptr};
 // After every feature's install: patch the Video options manager's callbacks.
 BOOL activateCustomMenu(const BG3MFXFeatureContext &, NSError **error) {
     void **table = at<void **>(Native::Callbacks);
@@ -97,7 +102,7 @@ BOOL activateCustomMenu(const BG3MFXFeatureContext &, NSError **error) {
     return YES;
 }
 }
-BG3MFX_FEATURE(customMenu, {"custom-menu", nullptr, true, installCustomMenu, activateCustomMenu});
+BG3MFX_FEATURE(customMenu, {"custom-menu", customMenuRequires, true, installCustomMenu, activateCustomMenu});
 
 // AddTranslatedString returns its nontrivial TextHandle through explicit argument 0,
 // consumes argument 2, and takes StringView in registers 3/4.

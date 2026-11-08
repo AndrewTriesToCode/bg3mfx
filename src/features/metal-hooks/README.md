@@ -16,6 +16,8 @@ originals, and tracks each encoder's bound pipeline and textures. Features that 
 afterwards:
 
 - new-encoder and render-pass observers (up to four each);
+- present-duration filters (up to four), which in turn adjust the minimum
+  duration of each `presentDrawable:afterMinimumDuration:` BG3 makes;
 - one draw replacement, which takes the non-indexed draws of the render
   pipelines it claims (metalfx's renderer);
 - redundant bind filtering ([`BindFilter.h`](BindFilter.h)), metal-hooks' own

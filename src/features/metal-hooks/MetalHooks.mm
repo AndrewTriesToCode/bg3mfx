@@ -64,6 +64,8 @@ static Observers<void (*)(id, BOOL)> encoderObservers;
 BOOL BG3MFXMetalHooksOnNewEncoder(void (*observer)(id, BOOL)) { return encoderObservers.add(observer); }
 static Observers<void (*)(MTLRenderPassDescriptor *)> renderPassObservers;
 BOOL BG3MFXMetalHooksOnRenderPass(void (*observer)(MTLRenderPassDescriptor *)) { return renderPassObservers.add(observer); }
+static Observers<double (*)(double)> presentDurationFilters;
+BOOL BG3MFXMetalHooksFilterPresentDuration(double (*filter)(double)) { return presentDurationFilters.add(filter); }
 static BG3MFXDrawReplacement drawReplacement;
 BOOL BG3MFXMetalHooksReplaceDraws(BG3MFXDrawReplacement replacement) {
     if (hooksActive || drawReplacement.claim || !replacement.claim || !replacement.draw) return NO;
@@ -553,6 +555,11 @@ static void presentTimed(id self, SEL cmd, id drawable, double time) {
     if (renderer.present && renderer.present(self,cmd,drawable) == PresentHandled) return;
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time);
 }
+static void presentAfter(id self, SEL cmd, id drawable, double duration) {
+    if (renderer.present && renderer.present(self,cmd,drawable) == PresentHandled) return;
+    for (size_t i = 0; i < presentDurationFilters.count; ++i) duration = presentDurationFilters.entries[i](duration);
+    ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,duration);
+}
 static void commit(id self, SEL cmd) {
     if (renderer.commit) renderer.commit(self,cmd);
     ((void(*)(id,SEL))original(self,cmd))(self,cmd);
@@ -572,7 +579,7 @@ static id commandBuffer(id self, SEL cmd) {
     hook(buffer,"computeCommandEncoder",(IMP)computeEncoder);
     hook(buffer,"computeCommandEncoderWithDispatchType:",(IMP)computeEncoderType);
     hook(buffer,"presentDrawable:",(IMP)present);
-    hook(buffer,"presentDrawable:afterMinimumDuration:",(IMP)presentTimed);
+    hook(buffer,"presentDrawable:afterMinimumDuration:",(IMP)presentAfter);
     hook(buffer,"presentDrawable:atTime:",(IMP)presentTimed);
     hook(buffer,"commit",(IMP)commit);
     markClassInstrumented(instrumentedBufferClasses,object_getClass(buffer));

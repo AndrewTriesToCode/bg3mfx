@@ -14,6 +14,10 @@
 BOOL BG3MFXMetalHooksOnNewEncoder(void (*observer)(id encoder, BOOL compute));
 // Each render pass BG3 begins, after its encoder is created.
 BOOL BG3MFXMetalHooksOnRenderPass(void (*observer)(MTLRenderPassDescriptor *pass));
+// The minimum duration of each presentDrawable:afterMinimumDuration: BG3 makes:
+// each filter receives the duration so far (seconds, BG3's for the first) and
+// returns the one to use, in registration order. Called on the render thread.
+BOOL BG3MFXMetalHooksFilterPresentDuration(double (*filter)(double duration));
 
 // Draw replacement: one feature may take the non-indexed draws of the render
 // pipelines it claims. Other draws only check a per-pipeline flag.
