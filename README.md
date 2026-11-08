@@ -59,7 +59,6 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | --- | --- |
 | **Metal HUD** | Shows Apple's on-screen performance overlay. |
 | **Snap to Native FPS** | Keeps Max Frame Rate on rates your display shows evenly, such as 120, 80, 60, 48, 40 and 30 on ProMotion, and paces frames to it. |
-| **FPS Thermal Guard** | Lowers the frame rate while your Mac is warmer than normal and restores it as it cools. |
 | **Video Options Menu Fix** | Fixes a base game bug that can make the video menu unresponsive in fullscreen. |
 | **Borderless Refresh Rate Fix** | Fixes a base game bug that limits a borderless window to the refresh rate chosen for fullscreen. |
 | **Borderless Notch Fix** | Fixes a base game bug that starts borderless mode on a MacBook with a notch with the bottom of the picture off screen until the resolution is changed. |
@@ -121,10 +120,6 @@ Baldur's Gate 3 starts with features available. In the game, go to
 - The frame limiter will significantly reduce cpu and gpu usage. Tick
   **Snap to Native FPS** (under Max Frame Rate) so the limit is one your
   display shows evenly; other limits fall to the next rate it can show.
-- Tick **FPS Thermal Guard** for longer sessions on a laptop: it steps the
-  frame rate down while the Mac runs warm. With **Dynamic Upscaling Thermal
-  Guard** also ticked, resolution gives way first and frame rate comes back
-  first.
 - After you untick **Frame Generation**, the Metal HUD keeps showing its frame
   interpolation panel until the game restarts. That is the HUD, not Frame
   Generation: when the HUD's FPS matches its rendered FPS, it is off.
@@ -176,7 +171,7 @@ the environment used to launch `bg3mfx`:
 | **Character Creation Crash Fix** | `BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=0` |
 | **Ambient Occlusion Blur Fix** | `BG3MFX_FEATURE_SSAO_BLUR_FIX=0` |
 | **Metal HUD** | `BG3MFX_FEATURE_METAL_HUD=0` removes the Show Metal HUD option. |
-| **Snap to Native FPS and FPS Thermal Guard** | `BG3MFX_FEATURE_MAX_FRAME_RATE=0` removes both options. |
+| **Snap to Native FPS** | `BG3MFX_FEATURE_MAX_FRAME_RATE=0` removes the option. |
 
 ## Uninstall
 

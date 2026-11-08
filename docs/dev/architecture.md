@@ -434,10 +434,8 @@ only for a feature that adds options to it (metal-hud, metalfx).
   Ticked, it wraps the slider's callback to keep the cap on rates the screen
   shows natively (divisors of its native refresh rates, down to 30), and, as a `BG3MFXMetalHooksFilterPresentDuration` filter
   after custom-menu's refresh repair, makes BG3's
-  `presentDrawable:afterMinimumDuration:` use 1/rate - 0.25 ms while the cap
-  is on. An FPS Thermal Guard checkbox under it, independent of Snap and of
-  the upscaler's Thermal Guard, lengthens that minimum to a lower native rate
-  while `thermalState` is above nominal.
+  `presentDrawable:afterMinimumDuration:` use 0 at the screen's highest
+  rate and 1/rate - half a screen update step below it while the cap is on.
 - `src/features/metal-hooks/MetalHooks.mm`: the metal-hooks feature, enabled by the
   features that require it (the hook regressions set its flag); it hooks Metal
   at activation, after the menu and the native patches. Features that require

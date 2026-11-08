@@ -4,14 +4,13 @@
 #import "common/native/SupportedBuild.h"
 #import "common/ScreenTiming.h"
 #import <Foundation/Foundation.h>
-#import <QuartzCore/QuartzCore.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstring>
 #include <string>
 
-// The max-frame-rate feature: two checkboxes under the Max Frame Rate tick box
+// The max-frame-rate feature: a checkbox under the Max Frame Rate tick box
 // and above its slider, available while the cap is on. Snap to Native FPS
 // does two things:
 // - keeps the slider on rates the screen paces evenly, to the nearest (the
@@ -19,17 +18,16 @@
 //   to 30 (120, 80, 60, 48, 40, 30 on ProMotion; 60, 30 on a fixed 60 Hz
 //   screen);
 // - paces presents to the cap: BG3 presents each frame no sooner than
-//   1/(refresh rate + 1) after the last; that minimum becomes 1/rate - 0.25 ms,
-//   with the rate the lowest the screen can show that is at least the cap (the
-//   cap itself once snapped).
-// FPS Thermal Guard, independent of Snap and of the upscaler's Thermal Guard, lowers the frame rate while macOS reports a
-// thermal state above nominal, without changing the saved cap.
+//   1/(refresh rate + 1) after the last; that minimum becomes 0 at the
+//   screen's highest rate and 1/rate - half a screen step below it, with the
+//   rate the lowest the screen can show that is at least the cap (the cap
+//   itself once snapped).
 
 namespace {
 // BG3's cap: a tick box (0x53) for on/off and a slider (0x54) for the rate.
-constexpr uint16_t snapID = 0x7f07, thermalGuardID = 0x7f08, frameCapToggleID = 0x53, frameCapID = 0x54;
-NSString *const snapPreference = @"BG3MFXSnapNativeFPS", *const thermalGuardPreference = @"BG3MFXFPSThermalGuard";
-std::atomic<bool> snapChecked{false}, thermalGuardChecked{false};
+constexpr uint16_t snapID = 0x7f07, frameCapToggleID = 0x53, frameCapID = 0x54;
+NSString *const snapPreference = @"BG3MFXSnapNativeFPS";
+std::atomic<bool> snapChecked{false};
 BG3MFXMenuCallback capToggleChanged, capChanged;  // BG3's own
 uintptr_t settingsGlobal;
 
@@ -71,8 +69,7 @@ size_t indexOf(void *manager, void *item) {
 }
 // The slider's range (AddSliderOption's 10 and 240).
 constexpr int lowestCap = 10, highestCap = 240;
-// The lowest rate Snap and FPS Thermal Guard use (the screen's refresh rate,
-// if lower).
+// The lowest rate Snap uses (the screen's refresh rate, if lower).
 constexpr int lowestNative = 30;
 // Whether the screen shows `rate` natively: no faster than the screen, its
 // interval a whole number of the screen's update steps (the refresh interval
@@ -103,46 +100,31 @@ float nextRate(float value, int direction) {
         if (nativeRate(rate)) return rate;
     return value;
 }
-// FPS Thermal Guard: a lower frame rate while macOS reports a thermal state
-// above nominal (NSProcessInfo thermalState: fair, serious or critical). After
-// GuardDropSeconds above nominal it steps down one native rate, and again every
-// GuardDropSeconds, to the lowest native rate; after
-// GuardRiseSeconds at nominal it steps back up one rate at a time until it no
-// longer limits. The upscaler's Thermal Guard cuts at once and every 5 s and
-// recovers every 15 s, so it reacts first and this one recovers first.
-constexpr double GuardDropSeconds = 10, GuardRiseSeconds = 10;
-// Render thread only.
-int guardRate;  // 0 while not limiting
-bool guardHot;
-double guardSteppedAt;
-int thermalGuardRate(uint16_t cap) {
-    if (!thermalGuardChecked.load(std::memory_order_relaxed) || !cap) { guardRate = 0; guardHot = false; return 0; }
-    double now = CACurrentMediaTime();
-    bool hot = NSProcessInfo.processInfo.thermalState > NSProcessInfoThermalStateNominal;
-    if (hot != guardHot) { guardHot = hot; guardSteppedAt = now; }
-    // Unlimited, start from the highest native rate at or under the cap: an
-    // unsnapped cap (65) already runs at the one below it (60).
-    int current = guardRate;
-    if (!current) for (current = cap; current > lowestCap && !nativeRate(current); --current) {}
-    if (hot && now - guardSteppedAt >= GuardDropSeconds) {
-        guardSteppedAt = now;
-        for (int rate = current - 1; rate >= lowestCap; --rate)
-            if (nativeRate(rate)) { guardRate = rate; break; }
-    } else if (!hot && guardRate && now - guardSteppedAt >= GuardRiseSeconds) {
-        guardSteppedAt = now;
-        int rate = guardRate + 1;
-        while (rate < cap && !nativeRate(rate)) ++rate;
-        guardRate = rate >= cap ? 0 : rate;
-    }
-    return guardRate;
+// BG3's refresh rate setting as an interval, 0 when unset.
+double settingsRefreshInterval() {
+    namespace Temporal = BG3MFXBuild::Temporal::Layout;
+    const void *settings = *reinterpret_cast<void *const *>(settingsGlobal);
+    if (!settings) return 0;
+    int32_t numerator = read<int32_t>(settings, Temporal::SettingsRefreshNumerator);
+    int32_t denominator = read<int32_t>(settings, Temporal::SettingsRefreshDenominator);
+    return numerator > 0 && denominator > 0 ? double(denominator) / numerator : 0;
 }
-// Snap paces presents to the cap; the guard's rate, when lower, lengthens the
-// minimum further. BG3's saved cap is unchanged.
+// Snap paces presents to the cap: no minimum at the screen's highest rate,
+// where the screen itself paces, and below it 1/rate less half the screen's
+// update step (its refresh interval when it has no steps), halfway between
+// the rate and the next faster one. While the screen is unknown, BG3's
+// refresh rate setting stands in for its refresh interval and step; BG3's
+// duration when that is unset too. BG3's saved cap is unchanged.
 double presentDuration(double duration) {
     uint16_t cap = activeFrameCap();
-    if (cap && snapChecked.load(std::memory_order_relaxed)) duration = 1.0 / displayRate(cap) - 0.00025;
-    if (int rate = thermalGuardRate(cap)) duration = std::max(duration, 1.0 / rate - 0.00025);
-    return duration;
+    if (!cap || !snapChecked.load(std::memory_order_relaxed)) return duration;
+    BG3MFXScreenTiming screen = BG3MFXScreenTimingCurrent();
+    double minimum = screen.minimumInterval, step = screen.granularity > 0 ? screen.granularity : minimum;
+    if (minimum <= 0) minimum = step = settingsRefreshInterval();
+    if (minimum <= 0) return duration;
+    double interval = 1.0 / displayRate(cap);
+    if (interval <= minimum + 1e-6) return 0;
+    return interval - step / 2;
 }
 // The rate Snap last showed on the slider, NAN before it showed one.
 float shownRate = NAN;
@@ -171,7 +153,6 @@ bool capOn(void *manager) {
 void refreshEnabled(void *manager) {
     bool on = capOn(manager);
     BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, snapID), on);
-    BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, thermalGuardID), on);
 }
 void capToggled(void *storage, const void *item) {
     if (capToggleChanged) capToggleChanged(storage, item);
@@ -189,11 +170,6 @@ void snapChanged(void *, const void *item) {
     shownRate = NAN;
     snapCap(slider);
     if (BG3MFXMenuSliderValue(slider) != before && capChanged) capChanged(BG3MFXMenuCallbackStorage(slider), slider);
-}
-void thermalGuardChanged(void *, const void *item) {
-    if (!item || BG3MFXMenuItemID(const_cast<void *>(item)) != thermalGuardID) return;
-    thermalGuardChecked.store(BG3MFXMenuTickBoxValue(item));
-    [NSUserDefaults.standardUserDefaults setBool:thermalGuardChecked.load() forKey:thermalGuardPreference];
 }
 // Settings reset or restored by Apply.
 void applyCombo(void *manager, const void *item, BG3MFXMenuApply next) {
@@ -226,15 +202,11 @@ void *addUnderCapToggle(void *manager, size_t offset, uint16_t id, const char *n
     return box;
 }
 void menuBuilt(void *manager) {
-    // Under the cap's tick box, above its slider: Snap, then FPS Thermal Guard.
+    // Under the cap's tick box, above its slider.
     addUnderCapToggle(manager, 0, snapID, "h00000000g0000g0000g0000g00000000f019", "Snap to Native FPS",
                 "h00000000g0000g0000g0000g00000000f01a",
                 "Keeps Max Frame Rate on rates the display shows evenly and paces frames to it. Available while Max Frame Rate is on.",
                 snapChecked.load(), snapChanged);
-    addUnderCapToggle(manager, 1, thermalGuardID, "h00000000g0000g0000g0000g00000000f01b", "FPS Thermal Guard",
-                "h00000000g0000g0000g0000g00000000f01c",
-                "Lowers the frame rate while the Mac is warmer than normal, and restores it as it cools. Available while Max Frame Rate is on.",
-                thermalGuardChecked.load(), thermalGuardChanged);
     // BG3's cap items are rebuilt with the menu: wrap their callbacks again.
     shownRate = NAN;
     if (void *slider = findCapItem(manager, frameCapID)) {
@@ -250,7 +222,6 @@ void menuBuilt(void *manager) {
 }
 BOOL installMaxFrameRate(const BG3MFXFeatureContext &context, NSError **) {
     snapChecked.store([NSUserDefaults.standardUserDefaults boolForKey:snapPreference]);
-    thermalGuardChecked.store([NSUserDefaults.standardUserDefaults boolForKey:thermalGuardPreference]);
     settingsGlobal = BG3MFXBuild::Temporal::Settings + context.slide;
     if (!BG3MFXMetalHooksFilterPresentDuration(presentDuration)) return NO;
     BG3MFXMenuOnBuilt(menuBuilt);

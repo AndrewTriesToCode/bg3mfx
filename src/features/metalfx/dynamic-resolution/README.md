@@ -125,9 +125,6 @@ Thermal Guard adds a ceiling on the area, from `NSProcessInfo`'s
   3456×2160, target 30) the Mac reached fair about 3 minutes into play and
   stayed there even at the floor (0.111), apart from 40 s at nominal, so with
   sustained load Thermal Guard usually runs near the floor.
-- It is independent of max-frame-rate's FPS Thermal Guard, which lowers the
-  frame rate instead; this one cuts sooner and recovers later, so with both
-  ticked the resolution drops first and the frame rate comes back first.
 
 Live, 2026-10-22, 60 Hz with VSync: a scene that ran 52–54 fps at
 native (GPU fully busy) held 60 fps at area 0.72 with the earlier
