@@ -3,7 +3,7 @@
 Technical name: `custom-menu`.
 
 There is no flag of its own: it is enabled by the features that require it
-(metal-hud and metalfx), and requires metal-hooks. It needs the
+(metal-hud, metalfx and max-frame-rate), and requires metal-hooks. It needs the
 supported ARM64 executable. It also repairs two BG3 Video settings bugs
 (below).
 
@@ -60,8 +60,8 @@ old one without keeping it alive.
 refresh repair: a metal-hooks present-duration filter that recognizes BG3's
 own duration (1/(settings refresh + 1), from `Temporal::Settings` +0x18/+0x1c)
 and passes other durations through. Screen timing comes from
-`src/common/ScreenTiming`. Filters run in install order, so a later feature's
-filter sees the repaired duration.
+`src/common/ScreenTiming`. Filters run in install order, so max-frame-rate's
+Snap to Native FPS pacing, installed after custom-menu, sees the repaired duration.
 
 ## Improvement
 

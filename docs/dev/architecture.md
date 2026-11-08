@@ -393,7 +393,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   window, with 1/(screen rate + 1).
 - `src/common/ScreenTiming.*`: the game window's screen timing from
   `NSScreen` (shortest and longest intervals, step), read on the main thread
-  and copied for any thread; used by custom-menu.
+  and copied for any thread; used by custom-menu and max-frame-rate.
 - `src/features/custom-menu/RenderViewFocus.*`: part of custom-menu. It keeps
   BG3's render view first responder across `BindSurface`, so the Video options
   respond to the first click after a fullscreen settings change.
@@ -424,6 +424,16 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `BG3MFXMetalFXSelectionChanged`.
 - `src/features/metal-hud/MetalHUD.mm`: the metal-hud feature (requires
   custom-menu): adds the Show Metal HUD checkbox.
+- `src/features/max-frame-rate/MaxFrameRate.mm`: the max-frame-rate feature (requires
+  custom-menu and metal-hooks): a Snap to Native FPS checkbox between Max
+  Frame Rate's tick box (0x53) and slider (0x54), following the tick box.
+  Ticked, it wraps the slider's callback to keep the cap on rates the screen
+  shows natively (divisors of its native refresh rates, down to 30), and, as a `BG3MFXMetalHooksFilterPresentDuration` filter
+  after custom-menu's refresh repair, makes BG3's
+  `presentDrawable:afterMinimumDuration:` use 1/rate - 0.25 ms while the cap
+  is on. An FPS Thermal Guard checkbox under it, independent of Snap and of
+  the upscaler's Thermal Guard, lengthens that minimum to a lower native rate
+  while `thermalState` is above nominal.
 - `src/features/metal-hooks/MetalHooks.mm`: the metal-hooks feature, enabled by the
   features that require it (the hook regressions set its flag); it hooks Metal
   at activation, after the menu and the native patches. Features that require

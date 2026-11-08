@@ -79,6 +79,7 @@ RUNTIME_SOURCES = \
 	src/features/metalfx/MetalFX.mm \
 	src/features/metalfx/MetalFXOptions.mm \
 	src/features/metal-hud/MetalHUD.mm \
+	src/features/max-frame-rate/MaxFrameRate.mm \
 	src/features/custom-menu/CustomMenu.mm \
 	src/features/custom-menu/RenderViewFocus.mm \
 	src/features/custom-menu/RefreshRepair.mm \

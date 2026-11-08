@@ -65,7 +65,7 @@ class LauncherTests(unittest.TestCase):
             # Every feature is on unless the player opts out.
             for feature in ("METAL_HUD", "METALFX", "DUPLICATE_SHADOW_FIX", "IMPROVED_SHADOWS",
                             "RENDER_THREAD_OPTIMIZATIONS", "NEW_CHARACTER_CRASH_FIX", "LUA_JUMP_FIX",
-                            "THREAD_IDLING", "REDUCE_LOCKING", "SSAO_BLUR_FIX"):
+                            "THREAD_IDLING", "REDUCE_LOCKING", "SSAO_BLUR_FIX", "MAX_FRAME_RATE"):
                 self.assertIn(f"BG3MFX_FEATURE_{feature}=1", result.stdout)
 
     def test_features_can_be_opted_out(self):

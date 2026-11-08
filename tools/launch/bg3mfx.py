@@ -33,6 +33,7 @@ SUPPORTED_EXECUTABLE_SHA256 = supported_build_value("BG3MFX_SUPPORTED_SHA256")
 # player launcher enables all of them.
 FEATURES = (
     "metal-hud",
+    "max-frame-rate",
     "metalfx",
     "duplicate-shadow-fix",
     "improved-shadows",

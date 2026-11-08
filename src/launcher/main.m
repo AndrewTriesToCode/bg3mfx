@@ -250,7 +250,8 @@ static int launch(NSString *appOverride, BOOL dryRun) {
             @"BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX", @"BG3MFX_FEATURE_IMPROVED_SHADOWS",
             @"BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS",
             @"BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX", @"BG3MFX_FEATURE_LUA_JUMP_FIX", @"BG3MFX_FEATURE_THREAD_IDLING",
-            @"BG3MFX_FEATURE_REDUCE_LOCKING", @"BG3MFX_FEATURE_SSAO_BLUR_FIX"])
+            @"BG3MFX_FEATURE_REDUCE_LOCKING", @"BG3MFX_FEATURE_SSAO_BLUR_FIX",
+            @"BG3MFX_FEATURE_MAX_FRAME_RATE"])
         environment[key] = NSProcessInfo.processInfo.environment[key] ?: @"1";
     NSArray *arguments = @[@"-NoLauncher", @"1"];
     if (dryRun) {
