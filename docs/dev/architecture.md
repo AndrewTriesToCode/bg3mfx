@@ -474,8 +474,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `BG3MFXGetOrCreateRasterizerState` call `GPUDevice`'s. Entry hooks on
   `DataLoader::CreateShader` and `GPUDevice::CreateDepthState` record
   programs' paths and depth-stencil states' settings; blend and rasterizer
-  settings are read from BG3's own copies. See
-  [DeferredBufferStage's hook points](baseline/deferred-buffer-stage.md#hook-points-for-the-merge).
+  settings are read from BG3's own copies.
 - `src/features/render-thread-optimizations/` filters redundant binds (`BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1`, requires metal-hooks): fragment texture slots and pipelines
   already bound in the encoder are not forwarded to the driver. The rules
   are metal-hooks' (`src/features/metal-hooks/BindFilter.h`), inline in its

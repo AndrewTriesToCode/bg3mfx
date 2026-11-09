@@ -8,9 +8,8 @@ part of the former improved-render-engine feature, which has since been split
 into [duplicate-shadow-fix](../../src/features/duplicate-shadow-fix/README.md)
 and [improved-shadows](../../src/features/improved-shadows/README.md). This
 plan is kept for its design and native facts. Everything marked Read was read
-from the disassembly of BG3 4.1.1.7631656 (ARM64). The evidence is in
-[deferred-buffer-stage.md](baseline/deferred-buffer-stage.md)
-and the [command map](baseline/command-buffer.md).
+from the disassembly of BG3 4.1.1.7631656 (ARM64). The evidence is in the
+[command map](baseline/command-buffer.md).
 
 ## Goal
 
@@ -133,7 +132,7 @@ After the original `Load`:
    `BG3MFXCreateProgram("DeferredDecal_ExtractNormal.bshd", {.fragment =
    ExtractNormalFetch_PS})`.
 4. **Extract pipeline.** Copy BG3's extract descriptor (the one that built
-   +0x6480; see the descriptor table in deferred-buffer-stage.md), then:
+   +0x6480), then:
    - set `ShaderID` (+0x00) to the clone and `ManagedRenderPass*` (+0x40) to
      the merged pass;
    - keep the vertex layout (+0x08 = the full-screen triangle's +0x00),

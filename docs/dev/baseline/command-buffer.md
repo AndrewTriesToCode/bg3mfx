@@ -157,7 +157,7 @@ ring buffer, and its offset comes from the bump allocator. (Read)
   and opens a new one. `BeginRenderPass` (0x0f) doesn't touch +0x2b80, so an
   encoder survives across lists or stages if nothing ends the pass. In the
   capture, no encoder spans two stages, so BG3's passes end before the next
-  stage begins (Read; see [DeferredBufferStage](deferred-buffer-stage.md#what-this-means-for-a-merged-prepass--g-buffer)).
+  stage begins (Read).
 - **Resets.** Ending an encoder clears every applied field, so the next
   encoder resends all state.
 - **Blit work.** Clears and copies end the open encoder and use a blit
