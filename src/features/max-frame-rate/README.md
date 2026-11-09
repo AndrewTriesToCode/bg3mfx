@@ -53,8 +53,11 @@ The choice persists (`BG3MFXSnapNativeFPS`). Ticked, it does two things:
   step keeps the minimum clear of both neighbouring steps. While the screen
   is unknown, BG3's refresh rate setting stands in for its refresh interval
   (0 at or above that rate, else 1/cap less half the interval); without
-  that setting BG3's minimum is kept. Frame Generation's own presents are
-  unchanged.
+  that setting BG3's minimum is kept. With Frame Generation, BG3's present
+  is handed to the presenter with this minimum: each generated/real pair
+  spans at least the minimum rounded up to whole screen steps, split between
+  the two images (40 fps on ProMotion: two images three steps apart, 80 shown
+  per second).
 
 An unsnapped cap could not be shown evenly anyway: BG3's limiter at 65 fps
 missed the 12.5 ms step every frame and settled at 60, so pacing is offered

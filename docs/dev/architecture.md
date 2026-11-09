@@ -166,12 +166,12 @@ and real images about half of BG3's smoothed frame interval apart:
 
 | Case | Presentation |
 | --- | --- |
-| VSync on | `presentDrawable:afterMinimumDuration:`, the frame's whole refreshes (at least two) split between the images |
+| VSync on | `presentDrawable:afterMinimumDuration:`, the frame's whole screen steps (refreshes, or ProMotion's update granularity; at least two refreshes, and at least BG3's filtered minimum duration rounded up) split between the images |
 | VSync off, a frame spans at least two refreshes | The same |
 | VSync off, faster | Generated image when its copy finishes, a half-interval wait on the worker, then the real image; uncapped and tearing |
 
-`afterMinimumDuration:` rounds up to whole refreshes, so each minimum is set
-just under its count of refreshes: half the interval rounded up past the frame
+`afterMinimumDuration:` rounds up to whole screen steps, so each minimum is set
+half a step under its count of steps: half the interval rounded up past the frame
 time and let the presenter fall behind. It would also cap the vsync-off fast
 case. On the paced paths (the first two rows) BG3 prefers one stand-in, then can
 borrow one overflow slot after a short grace wait; this lets a nearly-finished

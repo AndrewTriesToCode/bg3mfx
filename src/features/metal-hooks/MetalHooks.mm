@@ -548,16 +548,21 @@ static id computeEncoderType(id self, SEL cmd, MTLDispatchType type) {
     return encoder;
 }
 static void present(id self, SEL cmd, id drawable) {
-    if (renderer.present && renderer.present(self,cmd,drawable) == PresentHandled) return;
+    if (renderer.present && renderer.present(self,cmd,drawable,-1) == PresentHandled) return;
     ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,drawable);
 }
 static void presentTimed(id self, SEL cmd, id drawable, double time) {
-    if (renderer.present && renderer.present(self,cmd,drawable) == PresentHandled) return;
+    if (renderer.present && renderer.present(self,cmd,drawable,-1) == PresentHandled) return;
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,time);
 }
 static void presentAfter(id self, SEL cmd, id drawable, double duration) {
-    if (renderer.present && renderer.present(self,cmd,drawable) == PresentHandled) return;
-    for (size_t i = 0; i < presentDurationFilters.count; ++i) duration = presentDurationFilters.entries[i](duration);
+    // Filtered first: a handled present (Frame Generation) paces by it too.
+    // The extension's own presents keep their duration.
+    double filtered = duration;
+    for (size_t i = 0; i < presentDurationFilters.count; ++i) filtered = presentDurationFilters.entries[i](filtered);
+    PresentAction action = renderer.present ? renderer.present(self,cmd,drawable,filtered) : PresentForward;
+    if (action == PresentHandled) return;
+    if (action != PresentOwn) duration = filtered;
     ((void(*)(id,SEL,id,double))original(self,cmd))(self,cmd,drawable,duration);
 }
 static void commit(id self, SEL cmd) {

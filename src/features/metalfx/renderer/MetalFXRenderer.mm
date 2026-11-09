@@ -1030,18 +1030,19 @@ native:
 // layerNextDrawable). BG3 schedules its present before encoding CombineUI, so
 // the decision waits for commit, once the generated pair exists. The original
 // present never sees a stand-in.
-static BOOL deferPresent(id buffer, SEL cmd, id drawable) {
+static BOOL deferPresent(id buffer, SEL cmd, id drawable, double minimum) {
     if (![BG3MFXFramePresenter presenterForStandIn:drawable]) return NO;
     if (objc_getAssociatedObject(buffer,&deferredPresentKey)) { [drawable present]; return YES; }
-    objc_setAssociatedObject(buffer,&deferredPresentKey,@{@"method":NSStringFromSelector(cmd),@"drawable":drawable},
-        OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(buffer,&deferredPresentKey,
+        @{@"method":NSStringFromSelector(cmd),@"drawable":drawable,@"minimum":@(minimum)},OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return YES;
 }
 // The Frame Generation presenter's own presents pass through these hooks too
-// (they hook every queue's command buffers); they are not BG3 frames.
-static PresentAction present(id self, SEL cmd, id drawable) {
-    if([BG3MFXFramePresenter isPresentationThread]) return PresentForward;
-    if(deferPresent(self,cmd,drawable)) return PresentHandled;
+// (they hook every queue's command buffers); they are not BG3 frames, and keep
+// their own durations: Snap's filter on them held each image a whole frame.
+static PresentAction present(id self, SEL cmd, id drawable, double minimum) {
+    if([BG3MFXFramePresenter isPresentationThread]) return PresentOwn;
+    if(deferPresent(self,cmd,drawable,minimum)) return PresentHandled;
     return PresentForward;
 }
 static void commit(id<MTLCommandBuffer> self, SEL) {
@@ -1059,7 +1060,7 @@ static void commit(id<MTLCommandBuffer> self, SEL) {
     if (pair && !paired) [pair[@"presenter"] discardGeneratedTarget:pair[@"generated"] afterCommandBuffer:self];
     if (drawable) {
         [[BG3MFXFramePresenter presenterForStandIn:drawable] submitStandIn:drawable generated:paired ? pair[@"generated"] : nil
-            afterBuffer:self interval:[pair[@"interval"] doubleValue]];
+            afterBuffer:self interval:[pair[@"interval"] doubleValue] minimum:[request[@"minimum"] doubleValue]];
     }
 }
 // Frame Generation hands BG3 a stand-in instead of a real drawable; the

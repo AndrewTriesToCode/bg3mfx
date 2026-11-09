@@ -281,6 +281,7 @@ struct PresentTask {
     uint64_t value;
     double interval;           // BG3's work time: its interval minus stand-in waits
     double cadence;            // BG3's actual interval between frames
+    double minimum;            // BG3's filtered minimum present duration, negative when none
     NSArray *handlers;
     __weak BG3MFXStandInDrawable *standIn;
 };
@@ -377,7 +378,7 @@ struct PresentTask {
     [pool relinquish:texture afterCommandBuffer:buffer];
 }
 - (void)submitStandIn:(id<CAMetalDrawable>)drawable generated:(id<MTLTexture>)generated
-          afterBuffer:(id<MTLCommandBuffer>)buffer interval:(double)interval {
+          afterBuffer:(id<MTLCommandBuffer>)buffer interval:(double)interval minimum:(double)minimum {
     BG3MFXStandInDrawable *standIn=(BG3MFXStandInDrawable *)drawable;
     NSArray *handlers=[standIn takeSubmission];
     if (!handlers) return;
@@ -389,7 +390,7 @@ struct PresentTask {
     if (buffer) { value=++_eventValue; [buffer encodeSignalEvent:_event value:value]; }
     BG3MFXTexturePool *generatedPool;
     { std::lock_guard<std::mutex> lock(_mutex); generatedPool=_generated; }
-    PresentTask task{standIn.texture,generated,[standIn pool],generatedPool,standIn.layer,value,interval,cadence,handlers,standIn
+    PresentTask task{standIn.texture,generated,[standIn pool],generatedPool,standIn.layer,value,interval,cadence,minimum,handlers,standIn
     };
     std::lock_guard<std::mutex> lock(_mutex);
     _tasks.push_back(std::move(task)); _wake.notify_all();
@@ -416,9 +417,15 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     //
     // Vsync on (and formerly vsync off while a frame spanned at least two
     // refreshes): each image is presented with
-    // presentDrawable:afterMinimumDuration:, which rounds up to whole refreshes. The frame's whole refreshes are split
-    // between the generated image (the smaller half) and the real one, each
-    // minimum set just under its refresh count. Using half the interval instead
+    // presentDrawable:afterMinimumDuration:, which rounds up to whole screen
+    // steps (refreshes; on ProMotion its 4.167 ms update granularity). The
+    // frame's whole steps are split between the generated image (the smaller
+    // half) and the real one, each minimum half a step under its count. A frame
+    // spans BG3's interval rounded down, or BG3's own minimum (Snap to Native
+    // FPS paces by it) rounded up as the screen shows it, whichever is longer,
+    // and at least two refreshes. Without BG3's minimum, Snap's 40 fps on
+    // ProMotion (exactly six steps) rounded down to five, and by whole refreshes
+    // to two: uneven pairs. Using half the interval instead
     // rounded up past the frame time between about 30 and 60 fps: the presenter
     // fell behind, every buffer filled, and BG3 was dragged to about 31 fps with
     // about 110 ms from commit to display (live log and a standalone window
@@ -455,6 +462,8 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     // A conservative startup fallback; use the window's screen as soon as the
     // main thread can resolve it. Keep the last valid value during Space moves.
     auto refresh=std::make_shared<std::atomic<double>>(1.0/60);
+    // Its update step: displayUpdateGranularity, or the refresh interval (0).
+    auto granularity=std::make_shared<std::atomic<double>>(0);
     unsigned refreshCheck=0;
     for (;;) { if (presenterReleasedHere) return; @autoreleasepool {
         PresentTask task;
@@ -470,12 +479,14 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         if (refreshCheck++%30==0) {
             CAMetalLayer *layer=task.layer;
             dispatch_async(dispatch_get_main_queue(),^{
-                NSInteger fps=fgScreenForLayer(layer).maximumFramesPerSecond;
-                if (fps>0) refresh->store(1.0/fps);
+                NSScreen *screen=fgScreenForLayer(layer);
+                NSInteger fps=screen.maximumFramesPerSecond;
+                if (fps>0) { refresh->store(1.0/fps); granularity->store(fmax(screen.displayUpdateGranularity,0)); }
             });
         }
         bool synced=task.layer.displaySyncEnabled;
-        double frameRefresh=refresh->load();
+        double frameRefresh=refresh->load(), frameStep=granularity->load();
+        if (!(frameStep>0) || frameStep>frameRefresh) frameStep=frameRefresh;
         // Vsync off always uses plain presents with BG3's own buffering. Timed
         // presents make a window composited while plain ones go direct, so
         // switching methods near half the refresh rate flipped the window
@@ -483,13 +494,16 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         // alternating near 60 fps at 120 Hz). One stand-in with plain presents
         // held BG3 at about 40 fps: it waited on the presenter's spacing.
         bool spaced=!synced;
-        // Whole refreshes per frame (at least two), split between the generated
-        // and the real image; each minimum just under its count of refreshes.
-        // Rounded down with a margin, so a pair never takes a whole frame: BG3
-        // can always speed up.
-        int refreshes=std::max(2,(int)floor(interval/frameRefresh-0.05));
-        double generatedMinimum=(refreshes/2)*frameRefresh-0.0005;
-        double realMinimum=(refreshes-refreshes/2)*frameRefresh-0.0005;
+        // Whole steps per frame (at least two refreshes), split between the
+        // generated and the real image; each minimum half a step under its
+        // count. BG3's interval is rounded down with a margin, so a pair never
+        // takes a whole frame and BG3 can always speed up; BG3's own minimum is
+        // rounded up, as the screen would show it.
+        int refreshSteps=std::max(1,(int)lround(frameRefresh/frameStep));
+        int steps=std::max(2*refreshSteps,(int)floor(interval/frameStep-0.05));
+        if (task.minimum>0) steps=std::max(steps,(int)ceil(task.minimum/frameStep-1e-3));
+        double generatedMinimum=(steps/2-0.5)*frameStep;
+        double realMinimum=(steps-steps/2-0.5)*frameStep;
         _preferSingleStandIn=!spaced;
         dispatch_semaphore_t generatedReady=spaced ? dispatch_semaphore_create(0) : nil;
         dispatch_semaphore_t realReady=spaced ? dispatch_semaphore_create(0) : nil;
@@ -582,7 +596,7 @@ static void waitUntilMediaTime(CFTimeInterval target) {
 - (void)addPresentedHandler:(MTLDrawablePresentedHandler)block {
     std::lock_guard<std::mutex> lock(_mutex); if (block) [_handlers addObject:[block copy]];
 }
-- (void)present { [_presenter submitStandIn:self generated:nil afterBuffer:nil interval:0]; }
+- (void)present { [_presenter submitStandIn:self generated:nil afterBuffer:nil interval:0 minimum:-1]; }
 - (void)presentAtTime:(CFTimeInterval)time { (void)time; [self present]; }
 - (void)presentAfterMinimumDuration:(CFTimeInterval)duration { (void)duration; [self present]; }
 @end

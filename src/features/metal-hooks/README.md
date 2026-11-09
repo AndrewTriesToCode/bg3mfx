@@ -17,7 +17,10 @@ afterwards:
 
 - new-encoder and render-pass observers (up to four each);
 - present-duration filters (up to four), which in turn adjust the minimum
-  duration of each `presentDrawable:afterMinimumDuration:` BG3 makes;
+  duration of each `presentDrawable:afterMinimumDuration:` BG3 makes (run
+  before the renderer extension, which receives the filtered duration for
+  presents it handles, such as Frame Generation's; the extension's own
+  presents, `PresentOwn`, keep their duration);
 - one draw replacement, which takes the non-indexed draws of the render
   pipelines it claims (metalfx's renderer);
 - redundant bind filtering ([`BindFilter.h`](BindFilter.h)), metal-hooks' own

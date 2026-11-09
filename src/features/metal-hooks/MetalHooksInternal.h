@@ -172,7 +172,9 @@ NSData *constantBytes(id encoder, EncoderStage stage, NSUInteger index, NSUInteg
 // The renderer extension: metalfx's renderer, registered from its install.
 // Each entry is optional.
 enum DispatchAction { DispatchNative, DispatchSuppressed, DispatchDropped };
-enum PresentAction { PresentForward, PresentHandled };
+// PresentOwn: the extension's own present, forwarded with its own duration
+// (present-duration filters apply only to BG3's).
+enum PresentAction { PresentForward, PresentHandled, PresentOwn };
 using FinishEncoder = void (*)(id encoder, SEL cmd, BG3MFXEncoderState *state, id<MTLCommandBuffer> buffer);
 struct RendererExtension {
     // Constant slots (bit per index below 32) whose bindings encoder state records.
@@ -204,7 +206,9 @@ struct RendererExtension {
     // A draw on a slow-draw pipeline; forward issues it.
     void (*draw)(id encoder, BG3MFXEncoderState *state, const DrawCall &call, void (^forward)(void));
     DispatchAction (*dispatch)(id encoder, SEL cmd, NSString *pipeline);
-    PresentAction (*present)(id buffer, SEL cmd, id drawable);
+    // `minimum`: presentDrawable:afterMinimumDuration:'s duration after the
+    // present-duration filters (as BG3's would be); negative for the other presents.
+    PresentAction (*present)(id buffer, SEL cmd, id drawable, double minimum);
     // Before the original commit.
     void (*commit)(id<MTLCommandBuffer> buffer, SEL cmd);
 };

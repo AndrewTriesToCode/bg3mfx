@@ -56,6 +56,8 @@
 - (void)discardGeneratedTarget:(id<MTLTexture>)texture afterCommandBuffer:(id<MTLCommandBuffer>)buffer;
 // Call before BG3 commits the buffer that presents `standIn`. `generated` is
 // shown first when present. A nil buffer presents without GPU ordering.
+// `minimum` is BG3's (filtered) presentDrawable:afterMinimumDuration: duration,
+// negative for other presents: with vsync on, a pair takes at least that long.
 - (void)submitStandIn:(id<CAMetalDrawable>)standIn generated:(id<MTLTexture>)generated
-          afterBuffer:(id<MTLCommandBuffer>)buffer interval:(double)interval;
+          afterBuffer:(id<MTLCommandBuffer>)buffer interval:(double)interval minimum:(double)minimum;
 @end
