@@ -43,6 +43,7 @@ FEATURES = (
     "thread-idling",
     "reduce-locking",
     "ssao-blur-fix",
+    "animation-optimizations",
 )
 
 

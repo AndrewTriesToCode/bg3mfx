@@ -72,6 +72,7 @@ RUNTIME_SOURCES = \
 	src/features/thread-idling/ThreadIdling.mm \
 	src/features/reduce-locking/UniformSlices.mm \
 	src/features/lua-jump-fix/LuaJumpFix.mm \
+	src/features/animation-optimizations/AnimationOptimizations.mm \
 	src/features/ssao-blur-fix/SSAOBlurFix.mm \
 	src/features/metalfx/dynamic-resolution/DynamicResolution.mm \
 	src/features/improved-shadows/ImprovedShadows.mm \
@@ -110,6 +111,8 @@ RUNTIME_HEADERS = \
 	src/features/thread-idling/ThreadIdling.h \
 	src/features/reduce-locking/UniformSlices.h \
 	src/features/lua-jump-fix/LuaJumpFix.h \
+	src/features/animation-optimizations/AnimationOptimizations.h \
+	src/features/animation-optimizations/GrannyKernels.h \
 	src/features/ssao-blur-fix/SSAOBlurFix.h \
 	src/features/metalfx/dynamic-resolution/DynamicResolution.h \
 	src/features/improved-shadows/ImprovedShadows.h \
@@ -148,7 +151,7 @@ $(BIN_DIR)/metalfx-probe: tools/probes/metalfx_probe.m | $(BIN_DIR)
 $(BIN_DIR)/uniform-lock-sim: tools/probes/uniform_lock_sim.cpp | $(BIN_DIR)
 	xcrun clang++ -std=c++17 -O2 -Wall -Wextra -mmacosx-version-min=26.0 $< -o $@
 
-test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/ssr-history-island-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
+test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/ssr-history-island-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/animation-optimizations-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/supported-build-smoke
 	$(BIN_DIR)/root-smoke
 	$(BIN_DIR)/custom-render-stages-smoke
@@ -158,6 +161,7 @@ test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-r
 	$(BIN_DIR)/native-shadows-smoke
 	$(BIN_DIR)/ssr-history-island-smoke
 	$(BIN_DIR)/ssao-blur-fix-smoke
+	$(BIN_DIR)/animation-optimizations-smoke
 	$(BIN_DIR)/bind-filter-smoke
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/libBG3MetalFXTest.dylib hdr
@@ -237,6 +241,9 @@ $(BIN_DIR)/supported-build-smoke: tests/common/supported_build_smoke.cpp src/com
 
 $(BIN_DIR)/ssr-history-island-smoke: tests/integration/ssr_history_island_smoke.cpp tests/integration/ssr_history_island_wrappers.S src/common/native/SupportedBuild.h | $(BIN_DIR)
 	$(CXX) $(CPPFLAGS) -std=c++17 -O2 -Wall -Wextra -arch arm64 tests/integration/ssr_history_island_smoke.cpp tests/integration/ssr_history_island_wrappers.S -o $@
+
+$(BIN_DIR)/animation-optimizations-smoke: tests/features/animation-optimizations/animation_optimizations_smoke.cpp src/features/animation-optimizations/GrannyKernels.h | $(BIN_DIR)
+	$(CXX) $(CPPFLAGS) -std=c++17 -O2 -Wall -Wextra -arch arm64 $< -o $@
 
 $(BIN_DIR)/ssao-blur-fix-smoke: tests/features/ssao-blur-fix/ssao_blur_fix_smoke.cpp tests/features/ssao-blur-fix/ssao_blur_island_wrappers.S src/common/native/SupportedBuild.h | $(BIN_DIR)
 	$(CXX) $(CPPFLAGS) -std=c++17 -O2 -Wall -Wextra -arch arm64 tests/features/ssao-blur-fix/ssao_blur_fix_smoke.cpp tests/features/ssao-blur-fix/ssao_blur_island_wrappers.S -o $@

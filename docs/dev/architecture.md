@@ -522,6 +522,13 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `ClusterInfoBuffer` reads no lights instead of faulting the GPU.
 - `src/features/lua-jump-fix/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
   avoiding two system calls per protected call (`BG3MFX_FEATURE_LUA_JUMP_FIX=1`).
+- `src/features/animation-optimizations/AnimationOptimizations.*`,
+  `GrannyKernels.h`: bit-exact NEON replacements for hot functions of BG3's
+  unoptimized (-O0) Granny animation runtime: four Granny function pointers
+  (matrix products and world/composite transforms) are swapped, and composite
+  transforms, quaternion-to-matrix and normalization, spline sampling, knot
+  searches and three curve decoders are entry-patched
+  (`BG3MFX_FEATURE_ANIMATION_OPTIMIZATIONS=1`).
 - `src/features/ssao-blur-fix/SSAOBlurFix.*`: SSAO's horizontal blur pass
   blurs horizontally again (`BG3MFX_FEATURE_SSAO_BLUR_FIX=1`, set by the
   player launcher). Patches the unified-memory branch of

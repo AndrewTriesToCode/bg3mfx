@@ -64,6 +64,43 @@ namespace Lua {
 inline constexpr uintptr_t LongjmpCall = 0x100769e8c;
 inline constexpr uintptr_t SetjmpCall = 0x100769f64;
 }
+// Animation optimizations (src/features/animation-optimizations/): the Granny
+// 3D runtime, linked unoptimized. Multiply4x3Slot and Multiply4x3TransposeSlot
+// are the writable granny::ColumnMatrixMultiply4x3Impl and
+// ColumnMatrixMultiply4x3TransposeImpl pointers, initially the _Generic
+// functions; the others are functions whose first four instructions are
+// replaced by a jump through x16 (no branch targets them).
+namespace Animation {
+inline constexpr uintptr_t Multiply4x3Slot = 0x1088ad5b8, Multiply4x3Generic = 0x100746e98;
+inline constexpr uintptr_t Multiply4x3TransposeSlot = 0x1088ad5c0, Multiply4x3TransposeGeneric = 0x100747244;
+inline constexpr uintptr_t FullWorldPoseSlot = 0x1088ad5a0, FullWorldPoseGeneric = 0x100727734;
+inline constexpr uintptr_t CompositeTransposeSlot = 0x1088ad5b0, CompositeTransposeGeneric = 0x1007277f8;
+inline constexpr uintptr_t MatrixEqualsQuaternion3x3 = 0x1007452b8;
+inline constexpr uintptr_t CurveExtractKnotValuesD4nK16uC15u = 0x100739a54;
+inline constexpr uintptr_t FindKnotU8 = 0x100741ad8, FindKnotU16 = 0x100741a24, FindKnotU32 = 0x100741970;
+inline constexpr uint32_t MatrixEqualsQuaternion3x3Entry[] = {0xd10103ff, 0xf9001fe0, 0xf9001be1, 0xf9401be8};
+inline constexpr uint32_t CurveExtractEntry[] = {0xd10303ff, 0xa90b7bfd, 0x9102c3fd, 0xb003e808};
+inline constexpr uint32_t FindKnotEntry[] = {0xd100c3ff, 0xa9027bfd, 0x910083fd, 0xb81fc3a0};
+inline constexpr uintptr_t Normalize4 = 0x10072848c, NormalizeWithTest4 = 0x100743070;
+inline constexpr uintptr_t QuadraticCoefficients = 0x100727894, SampleBSpline2x4n = 0x100728cc8, SampleBSpline2x3 = 0x100728934;
+inline constexpr uintptr_t MatrixMultiply3x3 = 0x100745488, BuildCompositeTransform4x4 = 0x10075819c;
+inline constexpr uintptr_t BuildIndexedCompositeBufferTransposed = 0x10075a40c;
+inline constexpr uintptr_t CurveExtractKnotValuesD4nK8uC7u = 0x1007396ac, CurveExtractKnotValuesD3K8uC8u = 0x100733778;
+inline constexpr uint32_t Normalize4Entry[] = {0xd10083ff, 0xa9017bfd, 0x910043fd, 0xf90007e0};
+inline constexpr uint32_t NormalizeWithTest4Entry[] = {0xd100c3ff, 0xa9027bfd, 0x910083fd, 0xf81f83a0};
+inline constexpr uint32_t QuadraticCoefficientsEntry[] = {0xd10183ff, 0xa9057bfd, 0x910143fd, 0xbc1fc3a0};
+// SampleBSpline2x4n and SampleBSpline2x3.
+inline constexpr uint32_t SampleBSplineEntry[] = {0xd10183ff, 0xa9057bfd, 0x910143fd, 0xf81f83a0};
+inline constexpr uint32_t MatrixMultiply3x3Entry[] = {0xd100c3ff, 0xf90017e0, 0xf90013e1, 0xf9000fe2};
+inline constexpr uint32_t BuildCompositeTransform4x4Entry[] = {0xd10203ff, 0xa9077bfd, 0x9101c3fd, 0xd003e708};
+// BuildIndexedCompositeBufferTransposed and CurveExtractKnotValuesD3K8uC8u.
+inline constexpr uint32_t Frame0x80Entry[] = {0xd10203ff, 0xa9077bfd, 0x9101c3fd, 0xf81f83a0};
+// CurveExtractKnotValuesD4nK8uC7u, as D4nK16uC15u.
+inline constexpr uint32_t CurveD4nK8uC7uEntry[] = {0xd10303ff, 0xa90b7bfd, 0x9102c3fd, 0xb003e808};
+// granny's quaternion ScaleOffsetTable, which the D4n curve decoders read,
+// and the identity float table (0..255) they convert values through.
+inline constexpr uintptr_t ScaleOffsetTable = 0x10785a5a0, IdentityTable = 0x1088aab70;
+}
 // SSAO blur fix (src/features/ssao-blur-fix/): rf::RendererCommandBuffer::
 // CompareSetAndBindConstantBuffer<ls::sb::PPSAO_Blur::blur> (0x1061085ec).
 // A changed value goes to the DynamicCB's next ring slot at once (counter
