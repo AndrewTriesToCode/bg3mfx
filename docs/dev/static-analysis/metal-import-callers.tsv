@@ -1,0 +1,6 @@
+import	call_sites	calling_functions	systems	top_callers
+_MTLCopyAllDevices	3	2	Larian rf 3	rf::metal::MetalAPI::Init(); rf::metal::MetalAPI::CollectDisplayAdaptersAndDisplays()
+_CVDisplayLinkCreateWithCGDisplay	3	3	Larian rf 3	rf::metal::MetalAPI::CollectDisplayAdaptersAndDisplays(); rf::metal::MetalAPI::CollectDisplaysInternal()::$_3::operator()(__CFArray const*, rf::Disp; rf::metal::MetalAPI::GetDisplayMode(unsigned int, unsigned int, float, bool&)::$_2::operat
+_CVDisplayLinkGetNominalOutputVideoRefreshPeriod	3	3	Larian rf 3	rf::metal::MetalAPI::CollectDisplayAdaptersAndDisplays(); rf::metal::MetalAPI::CollectDisplaysInternal()::$_3::operator()(__CFArray const*, rf::Disp; rf::metal::MetalAPI::GetDisplayMode(unsigned int, unsigned int, float, bool&)::$_2::operat
+_CVDisplayLinkRelease	3	3	Larian rf 3	rf::metal::MetalAPI::CollectDisplayAdaptersAndDisplays(); rf::metal::MetalAPI::CollectDisplaysInternal()::$_3::operator()(__CFArray const*, rf::Disp; rf::metal::MetalAPI::GetDisplayMode(unsigned int, unsigned int, float, bool&)::$_2::operat
+_MTLCreateSystemDefaultDevice	1	1	Larian rf 1	rf::metal::MetalAPI::Init()

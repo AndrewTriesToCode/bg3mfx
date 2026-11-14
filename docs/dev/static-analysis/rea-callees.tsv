@@ -1,0 +1,490 @@
+caller	caller_address	callee_address	callee_system	callee
+main	0x100b911e8	0x1077cb234	stub	_NSApplicationMain
+main	0x100b911e8	0x1077cc9c8	stub	_chdir
+main	0x100b911e8	0x1077ccc80	stub	_free
+main	0x100b911e8	0x1077ccd28	stub	_getcwd
+main	0x100b911e8	0x1077cd760	stub	_strdup
+main	0x100b911e8	0x1077cd79c	stub	_strlen
+main	0x100b911e8	0x1077cd7fc	stub	_strrchr
+applicationDidFinishLaunching	0x100b8db1c	0x106498fe8	Larian ls	ls::ArgumentString::ArgumentString(char const*, char, char)
+applicationDidFinishLaunching	0x100b8db1c	0x106498ff8	Larian ls	ls::ArgumentString::~ArgumentString()
+applicationDidFinishLaunching	0x100b8db1c	0x1077caeec	stub	_CGEventSourceFlagsState
+applicationDidFinishLaunching	0x100b8db1c	0x1077cb7bc	stub	__NSGetArgc
+applicationDidFinishLaunching	0x100b8db1c	0x1077cb7c8	stub	__NSGetArgv
+applicationDidFinishLaunching	0x100b8db1c	0x1077cd70c	stub	_strcasecmp
+applicationDidFinishLaunching	0x100b8db1c	0x1077d14a0	stub	_objc_msgSend$enableCrashReporting
+applicationDidFinishLaunching	0x100b8db1c	0x1077d2140	stub	_objc_msgSend$launchGame
+applicationDidFinishLaunching	0x100b8db1c	0x1077d2880	stub	_objc_msgSend$objectForKey:
+applicationDidFinishLaunching	0x100b8db1c	0x1077d4f60	stub	_objc_msgSend$showCrashReporter
+applicationDidFinishLaunching	0x100b8db1c	0x1077d4fa0	stub	_objc_msgSend$showLauncher
+applicationDidFinishLaunching	0x100b8db1c	0x1077d5100	stub	_objc_msgSend$standardUserDefaults
+launchGame	0x100b8dd80	0x100b8f0d0	Larian ls	OSXArgumentString::AddArg(char const*, char const*)
+launchGame	0x100b8dd80	0x100bb7a50	Larian cocoa	cocoa::CocoaWindowManager::~CocoaWindowManager()
+launchGame	0x100b8dd80	0x100bb8328	Larian cocoa	cocoa::CocoaWindowManager::CocoaWindowManager(IApp*)
+launchGame	0x100b8dd80	0x106498fe8	Larian ls	ls::ArgumentString::ArgumentString(char const*, char, char)
+launchGame	0x100b8dd80	0x1064b2edc	Larian CoreLibSDM	CoreLibSDM::Init(ls::ArgumentString const&)
+launchGame	0x100b8dd80	0x1065327dc	Larian ls	ls::Path::UpdateRoots()
+launchGame	0x100b8dd80	0x106536728	libc++	std::__1::basic_string<char, std::__1::char_traits<char>, ls::StringAllocator<char>>::__grow_by_and_replace(unsigned int, unsigned int, unsigned int, unsigned i
+launchGame	0x100b8dd80	0x106536958	Larian ls	ls::STDString::STDString(char const*)
+launchGame	0x100b8dd80	0x106536bf4	Larian ls	ls::STDString::STDString(ls::_StringView<char> const&)
+launchGame	0x100b8dd80	0x106538750	Larian ls	ls::STDString::operator=(ls::_StringView<char> const&)
+launchGame	0x100b8dd80	0x10653ceb8	Larian ls	ls::StaticDataManager::Shutdown()
+launchGame	0x100b8dd80	0x10656756c	unattributed C	operator new(unsigned long)
+launchGame	0x100b8dd80	0x1065676c4	unattributed C	operator delete(void*)
+launchGame	0x100b8dd80	0x1077cb270	stub	_NSRunCriticalAlertPanel
+launchGame	0x100b8dd80	0x1077cb27c	stub	_NSRunInformationalAlertPanel
+launchGame	0x100b8dd80	0x1077cb7bc	stub	__NSGetArgc
+launchGame	0x100b8dd80	0x1077cb7c8	stub	__NSGetArgv
+launchGame	0x100b8dd80	0x1077cc89c	stub	__exit
+launchGame	0x100b8dd80	0x1077cc944	stub	_atexit
+launchGame	0x100b8dd80	0x1077cc9a4	stub	_bzero
+launchGame	0x100b8dd80	0x1077ccc80	stub	_free
+launchGame	0x100b8dd80	0x1077cccf8	stub	_fwrite
+launchGame	0x100b8dd80	0x1077ccf44	stub	_mach_absolute_time
+launchGame	0x100b8dd80	0x1077cd004	stub	_malloc
+launchGame	0x100b8dd80	0x1077cd0e8	stub	_objc_alloc_init
+launchGame	0x100b8dd80	0x1077cd0f4	stub	_objc_autorelease
+launchGame	0x100b8dd80	0x1077cd100	stub	_objc_autoreleasePoolPop
+launchGame	0x100b8dd80	0x1077cd10c	stub	_objc_autoreleasePoolPush
+launchGame	0x100b8dd80	0x1077cd130	stub	_objc_enumerationMutation
+launchGame	0x100b8dd80	0x1077cd16c	stub	_objc_opt_class
+launchGame	0x100b8dd80	0x1077cd178	stub	_objc_opt_isKindOfClass
+launchGame	0x100b8dd80	0x1077cd208	stub	_pathconf
+launchGame	0x100b8dd80	0x1077cd700	stub	_statfs
+launchGame	0x100b8dd80	0x1077cd79c	stub	_strlen
+launchGame	0x100b8dd80	0x1077d01e0	stub	_objc_msgSend$aWindowFocus:
+launchGame	0x100b8dd80	0x1077d02a0	stub	_objc_msgSend$addObserver:selector:name:object:
+launchGame	0x100b8dd80	0x1077d0500	stub	_objc_msgSend$arrayWithObjects:
+launchGame	0x100b8dd80	0x1077d0660	stub	_objc_msgSend$boolForKey:
+launchGame	0x100b8dd80	0x1077d0680	stub	_objc_msgSend$boolValue
+launchGame	0x100b8dd80	0x1077d0700	stub	_objc_msgSend$bundlePath
+launchGame	0x100b8dd80	0x1077d0e40	stub	_objc_msgSend$countByEnumeratingWithState:objects:count:
+launchGame	0x100b8dd80	0x1077d1020	stub	_objc_msgSend$defaultCenter
+launchGame	0x100b8dd80	0x1077d1080	stub	_objc_msgSend$defaultManager
+launchGame	0x100b8dd80	0x1077d13e0	stub	_objc_msgSend$drain
+launchGame	0x100b8dd80	0x1077d1680	stub	_objc_msgSend$fileHandleForReading
+launchGame	0x100b8dd80	0x1077d16a0	stub	_objc_msgSend$fileSystemRepresentation
+launchGame	0x100b8dd80	0x1077d1fc0	stub	_objc_msgSend$isActive
+launchGame	0x100b8dd80	0x1077d2020	stub	_objc_msgSend$isEqualToString:
+launchGame	0x100b8dd80	0x1077d2100	stub	_objc_msgSend$launch
+launchGame	0x100b8dd80	0x1077d2360	stub	_objc_msgSend$localizedStringForKey:value:table:
+launchGame	0x100b8dd80	0x1077d23c0	stub	_objc_msgSend$mainBundle
+launchGame	0x100b8dd80	0x1077d2780	stub	_objc_msgSend$nextEventMatchingMask:untilDate:inMode:dequeue:
+launchGame	0x100b8dd80	0x1077d2880	stub	_objc_msgSend$objectForKey:
+launchGame	0x100b8dd80	0x1077d28e0	stub	_objc_msgSend$openConnectedMFiDevices
+launchGame	0x100b8dd80	0x1077d2ae0	stub	_objc_msgSend$pipe
+launchGame	0x100b8dd80	0x1077d2cc0	stub	_objc_msgSend$propertyListWithData:options:format:error:
+launchGame	0x100b8dd80	0x1077d2d80	stub	_objc_msgSend$readDataToEndOfFile
+launchGame	0x100b8dd80	0x1077d2f80	stub	_objc_msgSend$removeObserver:
+launchGame	0x100b8dd80	0x1077d3420	stub	_objc_msgSend$sendEvent:
+launchGame	0x100b8dd80	0x1077d3560	stub	_objc_msgSend$setArguments:
+launchGame	0x100b8dd80	0x1077d4080	stub	_objc_msgSend$setLaunchPath:
+launchGame	0x100b8dd80	0x1077d4700	stub	_objc_msgSend$setStandardOutput:
+launchGame	0x100b8dd80	0x1077d4e60	stub	_objc_msgSend$sharedApplication
+launchGame	0x100b8dd80	0x1077d50e0	stub	_objc_msgSend$standardOutput
+launchGame	0x100b8dd80	0x1077d5100	stub	_objc_msgSend$standardUserDefaults
+launchGame	0x100b8dd80	0x1077d51a0	stub	_objc_msgSend$startWirelessControllerDiscoveryWithCompletionHandler:
+launchGame	0x100b8dd80	0x1077d5240	stub	_objc_msgSend$stopWirelessControllerDiscovery
+launchGame	0x100b8dd80	0x1077d5300	stub	_objc_msgSend$stringByDeletingLastPathComponent
+launchGame	0x100b8dd80	0x1077d53c0	stub	_objc_msgSend$stringWithFileSystemRepresentation:length:
+launchGame	0x100b8dd80	0x1077d5660	stub	_objc_msgSend$type
+launchGame	0x100b8dd80	0x1077d5960	stub	_objc_msgSend$waitUntilExit
+BaseApp::Start	0x105d0d3ac	0x100bd8fcc	Larian ls	ls::Path::Path<ls::_StringView<char>>(ls::EPathRoot, ls::_StringView<char> const&)
+BaseApp::Start	0x105d0d3ac	0x100c003e0	Larian ls	ls::Path::Path<char [16]>(ls::EPathRoot, char const (&) [16])
+BaseApp::Start	0x105d0d3ac	0x100c7447c	Larian ls	ls::DynamicArray<ls::STDString, ls::TaggedAllocator<int>>::Reallocate(int)
+BaseApp::Start	0x105d0d3ac	0x100d6f1ac	Larian ls	ls::DynamicArray<ls::STDString, ls::TaggedAllocator<int>>::~DynamicArray()
+BaseApp::Start	0x105d0d3ac	0x10108924c	Larian ls	ls::Path::Path<char [5]>(ls::EPathRoot, char const (&) [5])
+BaseApp::Start	0x105d0d3ac	0x10234ed30	Larian gui	gui::SortUsersPredicate::Compare(Noesis::BaseComponent*, Noesis::BaseComponent*) const
+BaseApp::Start	0x105d0d3ac	0x1030789b8	Larian ls	ls::Path::Path<char [13], ls::_StringView<char>>(ls::EPathRoot, char const (&) [13], ls::_StringView<char> const&)
+BaseApp::Start	0x105d0d3ac	0x103078ca8	Larian ls	ls::Path::Path<char [13], ls::STDString>(ls::EPathRoot, char const (&) [13], ls::STDString const&)
+BaseApp::Start	0x105d0d3ac	0x104e9ca90	Larian ls	ls::Path::Path<char [11]>(ls::EPathRoot, char const (&) [11])
+BaseApp::Start	0x105d0d3ac	0x106461218	Larian rf	rf::metal::MTLRendererCommandBuffer::MTLRendererCommandBuffer(rf::EGPUQueueType, rf::ECommandBufferType, unsigned long, rf::metal::MetalRenderer*)
+BaseApp::Start	0x105d0d3ac	0x106499144	Larian ls	ls::ArgumentString::GetValue(char const*, ls::STDString&) const
+BaseApp::Start	0x105d0d3ac	0x1064a7018	Larian ls	ls::CommandDispatcherBuffer::AddCommand(unsigned long, unsigned long)
+BaseApp::Start	0x105d0d3ac	0x1064bd2a0	Larian ls	ls::Dispatcher::Dispatcher(unsigned int)
+BaseApp::Start	0x105d0d3ac	0x1064cdf00	Larian ls	ls::FileSystem::DoesFileExist(ls::Path const&, bool)
+BaseApp::Start	0x105d0d3ac	0x1064ce080	Larian ls	ls::FileSystem::DoesDirectoryExist(ls::Path const&, bool)
+BaseApp::Start	0x105d0d3ac	0x1064ceae0	Larian ls	ls::FileSystem::CopyFilesFromDir(ls::Path const&, ls::Path const&, ls::_StringView<char> const&, bool, ls::FileSystem::CopyFileParams const&)
+BaseApp::Start	0x105d0d3ac	0x1064cf43c	Larian ls	ls::FileSystem::RemoveDir(ls::Path const&)
+BaseApp::Start	0x105d0d3ac	0x1064cf73c	Larian ls	ls::FileSystem::GetSizeOfFile(ls::Path const&, bool)
+BaseApp::Start	0x105d0d3ac	0x1064cfc8c	Larian ls	ls::FileSystem::SetMediaPath(ls::_StringView<char> const&)
+BaseApp::Start	0x105d0d3ac	0x1065047e0	unattributed C	WaitEvent(EVENT_HANDLE*, unsigned int)
+BaseApp::Start	0x105d0d3ac	0x106528528	Larian ls	ls::PackedFileManager::Destroy()
+BaseApp::Start	0x105d0d3ac	0x1065289ec	Larian ls	ls::PackedFileManager::LoadPackFiles(bool, bool)
+BaseApp::Start	0x105d0d3ac	0x1065355d0	Larian ls	ls::Process::Cleanup()
+BaseApp::Start	0x105d0d3ac	0x106535684	Larian ls	ls::Process::~Process()
+BaseApp::Start	0x105d0d3ac	0x106536958	Larian ls	ls::STDString::STDString(char const*)
+BaseApp::Start	0x105d0d3ac	0x106536d10	Larian ls	ls::STDString::STDString(ls::STDString const&)
+BaseApp::Start	0x105d0d3ac	0x106538584	Larian ls	ls::STDString::operator=(ls::STDString const&)
+BaseApp::Start	0x105d0d3ac	0x106539128	Larian ls	ls::operator+(ls::STDString const&, ls::STDString const&)
+BaseApp::Start	0x105d0d3ac	0x10653e0d0	Larian ls	ls::ThreadEvent::OpenDoor()
+BaseApp::Start	0x105d0d3ac	0x10653e964	Larian ls	ls::ThreadManager::CreateThread(ls::EThreadGroup, ls::ThreadWorker*, char const*)
+BaseApp::Start	0x105d0d3ac	0x10653eef0	Larian ls	ls::ThreadManager::RegisterDispatcher(unsigned int, ls::Dispatcher*)
+BaseApp::Start	0x105d0d3ac	0x10653ff1c	Larian ls	ls::ThreadManager::RegisterThreadName(ls::TypeWrap<unsigned long long, ls::ThreadIDClassname, true> const&, char const*)
+BaseApp::Start	0x105d0d3ac	0x10654b098	Larian ls	ls::TranslatedStringRepository::LoadFromContextFolder(ls::Path const&, bool, bool)
+BaseApp::Start	0x105d0d3ac	0x1077cc6f8	stub	__ZSt9terminatev
+BaseApp::Start	0x105d0d3ac	0x1077cc7ac	stub	___error
+BaseApp::Start	0x105d0d3ac	0x1077cc944	stub	_atexit
+BaseApp::Start	0x105d0d3ac	0x1077cc9a4	stub	_bzero
+BaseApp::Start	0x105d0d3ac	0x1077ccc80	stub	_free
+BaseApp::Start	0x105d0d3ac	0x1077cccf8	stub	_fwrite
+BaseApp::Start	0x105d0d3ac	0x1077cce0c	stub	_gettimeofday
+BaseApp::Start	0x105d0d3ac	0x1077cd004	stub	_malloc
+BaseApp::Start	0x105d0d3ac	0x1077cd028	stub	_memcmp
+BaseApp::Start	0x105d0d3ac	0x1077cd238	stub	_posix_memalign
+BaseApp::Start	0x105d0d3ac	0x1077cd244	stub	_posix_spawn
+BaseApp::Start	0x105d0d3ac	0x1077cd250	stub	_posix_spawn_file_actions_addclose
+BaseApp::Start	0x105d0d3ac	0x1077cd25c	stub	_posix_spawn_file_actions_destroy
+BaseApp::Start	0x105d0d3ac	0x1077cd268	stub	_posix_spawn_file_actions_init
+BaseApp::Start	0x105d0d3ac	0x1077cd3a0	stub	_pthread_getschedparam
+BaseApp::Start	0x105d0d3ac	0x1077cd3dc	stub	_pthread_mach_thread_np
+BaseApp::Start	0x105d0d3ac	0x1077cd460	stub	_pthread_self
+BaseApp::Start	0x105d0d3ac	0x1077cd478	stub	_pthread_setschedparam
+BaseApp::Start	0x105d0d3ac	0x1077cd5c8	stub	_semaphore_signal_all
+BaseApp::Start	0x105d0d3ac	0x1077cd70c	stub	_strcasecmp
+BaseApp::Start	0x105d0d3ac	0x1077cd79c	stub	_strlen
+BaseApp::Start	0x105d0d3ac	0x1077cd934	stub	_thread_policy_set
+BaseApp::Start	0x105d0d3ac	0x1077cda00	stub	_waitpid
+App::Update	0x100bd4758	0x100c73d68	Larian ls	ls::Result<ecs::EntityStorageIndex&, ls::Error>::Raise() const
+App::Update	0x100bd4758	0x100c96b18	Larian ls	ecs::ECBEntityChange& ls::PagedHashMap<ls::ID<ecs::EntityHandleTraits>, ecs::ECBEntityChange, ecs::ECBHashTablePagedFrameOps>::EnsureUniversal<ls::ID<ecs::Entit
+App::Update	0x100bd4758	0x100c96c1c	Larian ls	ls::PagedStorageInterface<ecs::ECBEntityComponentChange, ls::PagedArrayDefaultOps<ecs::ECBFrameAllocator>>::AddPage(ls::PagedStorage<ecs::ECBEntityComponentChan
+App::Update	0x100bd4758	0x100c9750c	Larian ls	ecs::ComponentFrameStorage& ls::DoubleIndexedPagedArray<ecs::ComponentId, ecs::ComponentFrameStorage, ls::PagedArrayDefaultOps<ecs::ECBFrameAllocator>>::Emplace
+App::Update	0x100bd4758	0x1010c86a0	Larian ls	ls::HashSet<ls::ID<ecs::EntityHandleTraits>, ls::HashTableOpsDefault>::Remove(ls::ID<ecs::EntityHandleTraits> const&)
+App::Update	0x100bd4758	0x102f86e00	Larian ecl	ecl::GameClient::PreUpdate(ls::GameTime const&)
+App::Update	0x100bd4758	0x102fb9944	Larian ecs	ls::Result<ecs::_private::EntityViewFinder<ecs::_private::QueryViewFinder<ecs::query::alive::Spec<ls::TypeList<ecl::screen_fade::ScreenFadeToFinishedOneFrameCom
+App::Update	0x100bd4758	0x1030ef1c4	Larian ecl	ecl::PlayerManager::CreatePlayer(ls::EInputPlayerIndex, ls::FixedString const&, bool)
+App::Update	0x100bd4758	0x1030f0610	Larian ecl	ecl::PlayerManager::DestroyPlayer(short)
+App::Update	0x100bd4758	0x103134074	Larian ecl	ecl::SavegameManager::GatherSavedFilesLocal(bool)
+App::Update	0x100bd4758	0x10314439c	Larian ecl	ecl::screen_fade::ScreenFadeSystem::LEGACY_ScreenFadeToRequest(ls::Guid const&, bool, bool, float, float, eoc::screen_fade::EScreenFadeStyle, eoc::screen_fade::
+App::Update	0x100bd4758	0x1031446b0	Larian ls	ls::DynamicArray<ecl::screen_fade::ScreenFadeSystem::ClearScreenFadeData, ls::TaggedAllocator<int>>::Reallocate(int)
+App::Update	0x100bd4758	0x105df2ccc	Larian ls	ls::EffectsManager::PostSceneUpdate(ls::GameTime const&)
+App::Update	0x100bd4758	0x106010688	Larian ls	ls::LoadingScreenManager::Update()
+App::Update	0x100bd4758	0x10608c624	Larian ls	ls::PlayerEventManager::ExecuteRenderViewAssignedEvent(short)
+App::Update	0x100bd4758	0x10635e350	Larian ecs	ecs::ComponentFrameStorageAllocRaw(ecs::ComponentFrameStorage&, int, ecs::ComponentFrameStorageIndex&)
+App::Update	0x100bd4758	0x10638ec08	Larian ecs	ecs::EntityWorld::Update(ls::GameTime const&)
+App::Update	0x100bd4758	0x106395cbc	Larian ecs	ecs::_private::QueryIterator<ecs::QueryTypePersistentTag, ecs::QueryTypeAliveTag, false>::MoveToNextStorage(int)
+App::Update	0x100bd4758	0x106397370	Larian ecs	ecs::_private::QueryIterator<ecs::QueryTypeAddedTag, ecs::QueryTypeAliveTag, false>::MoveToNextStorage(int)
+App::Update	0x100bd4758	0x1063ac5b0	Larian net	net::AbstractPeer::PostUpdate(ls::GameTime const&)
+App::Update	0x100bd4758	0x1063fdb70	Larian net	net::ProfileManagerImpl::RequestUserChange()
+App::Update	0x100bd4758	0x1064bc680	Larian ls	ls::CriticalSection::Lock()
+App::Update	0x100bd4758	0x1064d11dc	Larian ls	ls::gst::Map::Release(ls::gst::NodePoolData const&)
+App::Update	0x100bd4758	0x1064d2b30	Larian ls	ls::gst::Acquire(unsigned int)
+App::Update	0x100bd4758	0x1064d6ba8	Larian ls	ls::InputManager::GetInputValue(unsigned int const&, ls::EInputPlayerIndex) const
+App::Update	0x100bd4758	0x10650267c	Larian ls	ls::_private::IsAssertEnabled(ls::LogEntry const&)
+App::Update	0x100bd4758	0x106502810	Larian ls	ls::_private::AssertImpl(ls::LogEntry const&, char const*)
+App::Update	0x100bd4758	0x106502a18	Larian ls	void helpers::Log<ls::LogEntry>(ls::LogEntry const&, char const*, char const*)
+App::Update	0x100bd4758	0x106535eec	Larian ls	ls::SRWKernelLock::ReadLock()
+App::Update	0x100bd4758	0x10653613c	Larian ls	ls::SRWKernelLock::ReadUnlock()
+App::Update	0x100bd4758	0x10653e0d0	Larian ls	ls::ThreadEvent::OpenDoor()
+App::Update	0x100bd4758	0x1065401c0	Larian ls	ls::ThreadRegistry::RequestThreadIndex()
+App::Update	0x100bd4758	0x106552af0	Larian ls	ls::WorkerThreadScheduler::ClearBatch(ls::WorkerThreadBatch*)
+App::Update	0x100bd4758	0x106552f44	Larian ls	ls::WorkerThreadScheduler::TryScheduleBatch(ls::WorkerThreadBatch*)
+App::Update	0x100bd4758	0x1077cc824	stub	___stack_chk_fail
+App::Update	0x100bd4758	0x1077cd04c	stub	_memset
+App::Update	0x100bd4758	0x1077cd5a4	stub	_semaphore_create
+App::Update	0x100bd4758	0x1077cd5b0	stub	_semaphore_destroy
+App::Update	0x100bd4758	0x1077cd5bc	stub	_semaphore_signal
+App::Update	0x100bd4758	0x1077cd6a0	stub	_snprintf
+BaseApp::InitEngine	0x105d13718	0x100c40e50	Larian ls	ls::Path::Path<char [20]>(ls::EPathRoot, char const (&) [20])
+BaseApp::InitEngine	0x105d13718	0x1010d3008	Larian ls	std::__1::tuple<int, bool> ls::HashTable<ls::FixedString, ls::HashTableOpsDefault>::Ensure<ls::FixedString const&>(ls::FixedString const&)
+BaseApp::InitEngine	0x105d13718	0x105d236fc	Larian ls	ls::Path::Path<char [8]>(ls::EPathRoot, char const (&) [8])
+BaseApp::InitEngine	0x105d13718	0x105d23940	Larian ls	ls::Path::Path<char [15]>(ls::EPathRoot, char const (&) [15])
+BaseApp::InitEngine	0x105d13718	0x105d23b84	Larian BaseApp	__ZZN7BaseApp10InitEngineEvENK5$_101clERKN2ls4PathES4_
+BaseApp::InitEngine	0x105d13718	0x105d24afc	Larian BaseApp	BaseApp::GenerateDefaultWindowTitle(char*) const
+BaseApp::InitEngine	0x105d13718	0x1060f5b2c	Larian ls	ls::ResourceBank::ResourceBank()
+BaseApp::InitEngine	0x105d13718	0x1060fbe08	Larian ls	ls::ResourceManager::FillBank(ls::Path const&, bool)
+BaseApp::InitEngine	0x105d13718	0x1061e5d80	Larian ls	ls::TerrainBrushSystem::ManagedTextureArrayDefault::RecreateTextureArrayTexture(bool)
+BaseApp::InitEngine	0x105d13718	0x1061e8088	Larian ls	ls::TerrainBrushSystem::ManagedTextureArray::ManagedTextureArray(int, char const*)
+BaseApp::InitEngine	0x105d13718	0x1064d2b30	Larian ls	ls::gst::Acquire(unsigned int)
+BaseApp::InitEngine	0x105d13718	0x1065315e0	Larian ls	ls::Path::Normalize(ls::STDString&)
+BaseApp::InitEngine	0x105d13718	0x1065363a8	libc++	std::__1::basic_string<char, std::__1::char_traits<char>, ls::StringAllocator<char>>::__throw_length_error[abi:v160006]() const
+BaseApp::InitEngine	0x105d13718	0x106536728	libc++	std::__1::basic_string<char, std::__1::char_traits<char>, ls::StringAllocator<char>>::__grow_by_and_replace(unsigned int, unsigned int, unsigned int, unsigned i
+BaseApp::InitEngine	0x105d13718	0x106536bf4	Larian ls	ls::STDString::STDString(ls::_StringView<char> const&)
+BaseApp::InitEngine	0x105d13718	0x106538078	libc++	std::__1::basic_string<char, std::__1::char_traits<char>, ls::StringAllocator<char>>::push_back(char)
+BaseApp::InitEngine	0x105d13718	0x10653e964	Larian ls	ls::ThreadManager::CreateThread(ls::EThreadGroup, ls::ThreadWorker*, char const*)
+BaseApp::InitEngine	0x105d13718	0x106550514	Larian ls	ls::WorkerThreadBatch::Init(unsigned long)
+BaseApp::InitEngine	0x105d13718	0x1065507f8	Larian ls	ls::MPMCQueueBounded<ls::WorkerThreadJob*>::Grow(unsigned long)
+BaseApp::InitEngine	0x105d13718	0x106552f44	Larian ls	ls::WorkerThreadScheduler::TryScheduleBatch(ls::WorkerThreadBatch*)
+BaseApp::InitEngine	0x105d13718	0x106553b30	Larian ls	ls::WorkerThreadWorker::Init(ls::WorkerThreadScheduler*, ls::WorkerThreadID)
+BaseApp::InitEngine	0x105d13718	0x1077cc824	stub	___stack_chk_fail
+BaseApp::InitEngine	0x105d13718	0x1077cc944	stub	_atexit
+BaseApp::InitEngine	0x105d13718	0x1077cc9a4	stub	_bzero
+BaseApp::InitEngine	0x105d13718	0x1077ccc80	stub	_free
+BaseApp::InitEngine	0x105d13718	0x1077cccf8	stub	_fwrite
+BaseApp::InitEngine	0x105d13718	0x1077cd004	stub	_malloc
+BaseApp::InitEngine	0x105d13718	0x1077cd040	stub	_memmove
+BaseApp::InitEngine	0x105d13718	0x1077cd04c	stub	_memset
+BaseApp::InitEngine	0x105d13718	0x1077cd5a4	stub	_semaphore_create
+BaseApp::InitEngine	0x105d13718	0x1077cd5b0	stub	_semaphore_destroy
+App::InitGame	0x100bcb908	0x100a63ec8	unattributed C	NvClothCreateFactoryCPU()
+App::InitGame	0x100bcb908	0x100bd9894	Larian App	App::RegisterDataManagers()
+App::InitGame	0x100bcb908	0x100c000d0	Larian ls	ls::Path::Path<char [11]>(ls::Path const&, char const (&) [11])
+App::InitGame	0x100bcb908	0x100c003e0	Larian ls	ls::Path::Path<char [16]>(ls::EPathRoot, char const (&) [16])
+App::InitGame	0x100bcb908	0x100c74c98	Larian App	App::InitServer()
+App::InitGame	0x100bcb908	0x100c7e86c	Larian ls	std::__1::tuple<int, bool> ls::HashTable<unsigned int, ls::HashTableOpsDefault>::Ensure<unsigned int const&>(unsigned int const&)
+App::InitGame	0x100bcb908	0x100c96b18	Larian ls	ecs::ECBEntityChange& ls::PagedHashMap<ls::ID<ecs::EntityHandleTraits>, ecs::ECBEntityChange, ecs::ECBHashTablePagedFrameOps>::EnsureUniversal<ls::ID<ecs::Entit
+App::InitGame	0x100bcb908	0x10108b2ac	Larian ls	__ZNK12_GLOBAL__N_13$_5clERN2ls5thoth6shared7MachineERN3ecs11EntityWorldERN3ecl4roll6stream11RollManagerE
+App::InitGame	0x100bcb908	0x10108b6b0	Larian ecl	ecl::EocClient::ConfigureECS()
+App::InitGame	0x100bcb908	0x10108dcdc	Larian ecl	ecl::EocClient::Load(net::CommunityManager*, ecl::UIManager*)
+App::InitGame	0x100bcb908	0x101096430	Larian ecl	ecl::EocClient::SetControllerMode(ls::EInputDeviceID)
+App::InitGame	0x100bcb908	0x101096a68	Larian ecl	ecl::EocClient::SetKeyboardMode(bool)
+App::InitGame	0x100bcb908	0x101130f54	Larian ls	ls::LEGACY_Set<ls::FixedString, 0ul, ls::NewInterface<ls::FixedString>, ls::DefaultComparator<ls::FixedString>>::Realloc(unsigned long)
+App::InitGame	0x100bcb908	0x101170110	Larian eoc	eoc::SetupAnimationBlueprintTypeManager(gn::GenomeTypeManager&)
+App::InitGame	0x100bcb908	0x101171320	Larian ls	ls::LEGACY_Set<gn::GenomePluginDataDesc, 0ul, ls::NewInterface<gn::GenomePluginDataDesc>, ls::DefaultComparator<gn::GenomePluginDataDesc>>::Ensure(unsigned long
+App::InitGame	0x100bcb908	0x10122492c	Larian ls	ls::DEPRECATED_RefMapImpl<ls::RefMapConfig<ls::ObjectAllocator, ls::FixedString, ls::DefaultResetFunctor<ls::FixedString>, ls::FixedString, ls::DummyResetFuncto
+App::InitGame	0x100bcb908	0x101b681f0	Larian ls	ls::DEPRECATED_RefMapImpl<ls::RefMapConfig<ls::ObjectAllocator, ls::FixedString, ls::DefaultResetFunctor<ls::FixedString>, gn::GenomeNodeTypeDesc, ls::DummyRese
+App::InitGame	0x100bcb908	0x10201eb20	Larian ls	ls::thoth::shared::ConditionManager::ConditionManager()
+App::InitGame	0x100bcb908	0x1020c5da4	Larian ls	ls::thoth::shared::Machine::Configure(ls::thoth::shared::ConditionManager&, ecs::EntityWorld&, ls::thoth::shared::InitParams const&, ls::thoth::shared::Configur
+App::InitGame	0x100bcb908	0x10234ed30	Larian gui	gui::SortUsersPredicate::Compare(Noesis::BaseComponent*, Noesis::BaseComponent*) const
+App::InitGame	0x100bcb908	0x102e16a44	Larian ecs	ls::CameraComponent* ecs::EntityWorld::GetComponent<ls::CameraComponent, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::integral_constant<bool, false>)
+App::InitGame	0x100bcb908	0x1030774c0	Larian ls	ls::LEGACY_Set<ls::SoundbankSearchPath, 0ul, ls::NewInterface<ls::SoundbankSearchPath>, ls::DefaultComparator<ls::SoundbankSearchPath>>::Realloc(unsigned long)
+App::InitGame	0x100bcb908	0x1032b82d0	Larian gn	gn::SourceConverterSettings::Create(std::initializer_list<ls::FixedString>&&)
+App::InitGame	0x100bcb908	0x1037e34d0	Larian ik	ik::SetupAnimationBlueprintPlugins(gn::GenomeManager*)
+App::InitGame	0x100bcb908	0x1037ff32c	Larian ww	ww::WwiseManager::WwiseManager()
+App::InitGame	0x100bcb908	0x103917168	Larian ls	bik::BinkManager::BinkManager()
+App::InitGame	0x100bcb908	0x105991710	Larian esv	__ZZN3esv30SetupAnimationBlueprintPluginsEPN2gn13GenomeManagerEENK3$_0clERNS0_17GenomeTypeManagerE
+App::InitGame	0x100bcb908	0x105b6f8b4	Larian gr	gr::FactoryGr2::FactoryGr2(gr::GrannySystem*)
+App::InitGame	0x100bcb908	0x105b8487c	Larian gr	__ZZN2gr30SetupAnimationBlueprintPluginsEPN2gn13GenomeManagerEENK3$_0clERNS0_17GenomeTypeManagerE
+App::InitGame	0x100bcb908	0x105c3f9f8	Larian ls	ls::FixedStringMap<ls::ClothFabricDesc*>::~FixedStringMap()
+App::InitGame	0x100bcb908	0x105c96868	Larian ls	ls::SetupAnimationBlueprintTypeManager(gn::GenomeTypeManager&)
+App::InitGame	0x100bcb908	0x105cd7484	Larian ls	ls::SetupAnimationBlueprintPlugins(gn::GenomeManager*)
+App::InitGame	0x100bcb908	0x105d37cec	Larian ls	ls::CameraSystem::SetupGenericCamera(ecs::EntityRef, ls::FixedString const&, bool)
+App::InitGame	0x100bcb908	0x105d39020	Larian ecs	ls::DefaultCameraBehavior& ecs::legacy::ImmediateWorldCache::AddComponent<ls::DefaultCameraBehavior>(ls::ID<ecs::EntityHandleTraits>)
+App::InitGame	0x100bcb908	0x105f9c640	Larian ls	ls::GlobalTemplateManager::Initialize()
+App::InitGame	0x100bcb908	0x10608b3dc	Larian ls	ls::PhysicsSystem::InstallPhysicsDataLoader(ls::_StringView<char> const&, ls::PhysicsDataLoader*)
+App::InitGame	0x100bcb908	0x1060fb3e0	Larian ls	ls::ResourceManager::InstallVisualLoader(ls::_StringView<char> const&, ls::VisualDataLoader*)
+App::InitGame	0x100bcb908	0x1060fb830	Larian ls	ls::SortedSet<ls::FSTypeWrap<ls::TAnimationSimpleNameClassname, true>, ls::NewInterface<ls::FSTypeWrap<ls::TAnimationSimpleNameClassname, true>>, ls::DefaultSor
+App::InitGame	0x100bcb908	0x1060fbab4	Larian ls	ls::ResourceManager::InstallGenomeAnimationManager(ls::FixedString const&, gn::GenomeManager*)
+App::InitGame	0x100bcb908	0x10615dc68	Larian ls	ls::SoundManager::HandleInitBankLoading(bool)
+App::InitGame	0x100bcb908	0x10615f144	Larian ls	ls::DEPRECATED_Array<Vector3f, ls::NewInterface<Vector3f>, ls::SoundManager::GetUnassignedPosFunctor>::SetSize(unsigned long)
+App::InitGame	0x100bcb908	0x10615f6f0	Larian ls	ls::SoundManager::GetInitBankPath()
+App::InitGame	0x100bcb908	0x106350c94	Larian gn	gn::GenomeManager::GenomeManager(ls::_StringView<char>&&, ls::_StringView<char>&&, ls::Version const&, ls::Version const&, unsigned long)
+App::InitGame	0x100bcb908	0x106351640	Larian gn	gn::GenomeManager::InstallSourceReaderPlugin(gn::IGenomeSourceReaderPlugin*)
+App::InitGame	0x100bcb908	0x106359c90	Larian gn	gn::GenomeTypeManager::GenomeTypeManager()
+App::InitGame	0x100bcb908	0x10635c71c	Larian gn	gn::GenomeTypeManager::RegisterBlueprintInstancePluginFunc(void (*)(gn::GenomeBlueprintInstance*), void (*)(gn::GenomeExecutionContext&), void (*)(gn::GenomeExe
+App::InitGame	0x100bcb908	0x106367918	Larian ecs	ecs::EntityHandleGenerator::Create()
+App::InitGame	0x100bcb908	0x10638fd40	Larian ecs	ecs::EntityWorld::EndRegisterPhase()
+App::InitGame	0x100bcb908	0x10639350c	Larian ecs	ecs::EntityWorld::AttachImmediateComponentDependencies(ecs::ComponentId const&, ls::ID<ecs::EntityHandleTraits> const&, int)
+App::InitGame	0x100bcb908	0x106499144	Larian ls	ls::ArgumentString::GetValue(char const*, ls::STDString&) const
+App::InitGame	0x100bcb908	0x1064bd2a0	Larian ls	ls::Dispatcher::Dispatcher(unsigned int)
+App::InitGame	0x100bcb908	0x1064c1944	Larian ls	ls::FileFormatIO::LoadFile(ls::Path const&)
+App::InitGame	0x100bcb908	0x1064cdf00	Larian ls	ls::FileSystem::DoesFileExist(ls::Path const&, bool)
+App::InitGame	0x100bcb908	0x1064d0fe4	Larian ls	ls::FixedString::GetHash() const
+App::InitGame	0x100bcb908	0x1064d11dc	Larian ls	ls::gst::Map::Release(ls::gst::NodePoolData const&)
+App::InitGame	0x100bcb908	0x1064d20cc	Larian ls	ls::gst::Add(ls::_StringView<char> const&)
+App::InitGame	0x100bcb908	0x1064d2b30	Larian ls	ls::gst::Acquire(unsigned int)
+App::InitGame	0x100bcb908	0x1064d71cc	Larian ls	ls::DynamicArray<ls::InputListener*, ls::TaggedAllocator<int>>::Reallocate(int)
+App::InitGame	0x100bcb908	0x1065052f8	Larian ls	ls::Thread::Thread(ls::ThreadWorker*, ls::Thread::Config)
+App::InitGame	0x100bcb908	0x10650cf2c	Larian ls	ls::MemoryManager::Allocate(unsigned long, ls::AllocType, int, unsigned long)
+App::InitGame	0x100bcb908	0x1065315e0	Larian ls	ls::Path::Normalize(ls::STDString&)
+App::InitGame	0x100bcb908	0x106535554	unattributed C	lssprintf(char*, unsigned long, char const*, ...)
+App::InitGame	0x100bcb908	0x1065363a8	libc++	std::__1::basic_string<char, std::__1::char_traits<char>, ls::StringAllocator<char>>::__throw_length_error[abi:v160006]() const
+App::InitGame	0x100bcb908	0x106536728	libc++	std::__1::basic_string<char, std::__1::char_traits<char>, ls::StringAllocator<char>>::__grow_by_and_replace(unsigned int, unsigned int, unsigned int, unsigned i
+App::InitGame	0x100bcb908	0x106536958	Larian ls	ls::STDString::STDString(char const*)
+App::InitGame	0x100bcb908	0x106538078	libc++	std::__1::basic_string<char, std::__1::char_traits<char>, ls::StringAllocator<char>>::push_back(char)
+App::InitGame	0x100bcb908	0x106538584	Larian ls	ls::STDString::operator=(ls::STDString const&)
+App::InitGame	0x100bcb908	0x10653e964	Larian ls	ls::ThreadManager::CreateThread(ls::EThreadGroup, ls::ThreadWorker*, char const*)
+App::InitGame	0x100bcb908	0x1065401c0	Larian ls	ls::ThreadRegistry::RequestThreadIndex()
+App::InitGame	0x100bcb908	0x1077cb6fc	stub	_SteamAPI_IsSteamRunning
+App::InitGame	0x100bcb908	0x1077cb75c	stub	_SteamInternal_ContextInit
+App::InitGame	0x100bcb908	0x1077cc824	stub	___stack_chk_fail
+App::InitGame	0x100bcb908	0x1077cc944	stub	_atexit
+App::InitGame	0x100bcb908	0x1077cc9a4	stub	_bzero
+App::InitGame	0x100bcb908	0x1077ccc80	stub	_free
+App::InitGame	0x100bcb908	0x1077cccf8	stub	_fwrite
+App::InitGame	0x100bcb908	0x1077cce0c	stub	_gettimeofday
+App::InitGame	0x100bcb908	0x1077ccf44	stub	_mach_absolute_time
+App::InitGame	0x100bcb908	0x1077cd004	stub	_malloc
+App::InitGame	0x100bcb908	0x1077cd040	stub	_memmove
+App::InitGame	0x100bcb908	0x1077cd238	stub	_posix_memalign
+App::InitGame	0x100bcb908	0x1077cd70c	stub	_strcasecmp
+App::CreateECS	0x100bd7e1c	0x100c85b7c	Larian ls	ls::UniquePtr<ecs::IComponentSignals, void>& ls::DynamicArray<ls::UniquePtr<ecs::IComponentSignals, void>, ls::TaggedAllocator<int>>::SetEnsure<std::nullptr_t, 
+App::CreateECS	0x100bd7e1c	0x100c85ca0	Larian ls	ecs::core::ComponentTypeEntry& ls::SparseArray<ecs::core::ComponentTypeEntry, ls::DefaultAllocator>::EmplaceImpl<ecs::core::ComponentTypeEntry>(int, ecs::core::
+App::CreateECS	0x100bd7e1c	0x100c85e4c	Larian ls	ls::DynamicArray<ecs::ComponentId, ls::TaggedAllocator<int>>::operator=(ls::DynamicArray<ecs::ComponentId, ls::TaggedAllocator<int>>&&)
+App::CreateECS	0x100bd7e1c	0x100c85fec	Larian ls	ls::UniquePtr<ecs::IComponentOps, void>& ls::DynamicArray<ls::UniquePtr<ecs::IComponentOps, void>, ls::TaggedAllocator<int>>::SetEnsure<std::nullptr_t, void>(in
+App::CreateECS	0x100bd7e1c	0x100c86110	Larian ecs	ecs::core::ComponentTypeEntry::~ComponentTypeEntry()
+App::CreateECS	0x100bd7e1c	0x101ca1f74	Larian eoc	eoc::RegisterComponents(ecs::EntityWorld&)
+App::CreateECS	0x100bd7e1c	0x101ef21f4	Larian eoc	eoc::RegisterComponentDependencies(ecs::EntityWorld&)
+App::CreateECS	0x100bd7e1c	0x101ef2750	Larian eoc	eoc::RegisterSystems(ecs::EntityWorld&, eoc::SystemDependencies const&)
+App::CreateECS	0x100bd7e1c	0x1025bf538	Larian gui	gui::RegisterComponents(ecs::EntityWorld&)
+App::CreateECS	0x100bd7e1c	0x1025d7624	Larian gui	gui::RegisterSystems(ecs::EntityWorld&, gui::SystemDependencies const&)
+App::CreateECS	0x100bd7e1c	0x105e80f34	Larian ls	ls::RegisterSharedComponents(ecs::EntityWorld&)
+App::CreateECS	0x100bd7e1c	0x105eb9d28	Larian ls	ls::RegisterClientComponents(ecs::EntityWorld&)
+App::CreateECS	0x100bd7e1c	0x105f23118	Larian ls	ls::RegisterSharedSystems(ecs::EntityWorld&)
+App::CreateECS	0x100bd7e1c	0x105f24adc	Larian ls	ls::RegisterClientSystems(ecs::EntityWorld&)
+App::CreateECS	0x100bd7e1c	0x10638a2f0	Larian ecs	ecs::EntityWorld::EntityWorld(ecs::EntityWorldSettings)
+App::CreateECS	0x100bd7e1c	0x10638c5dc	Larian ecs	ecs::EntityWorld::~EntityWorld()
+App::CreateECS	0x100bd7e1c	0x1077cc944	stub	_atexit
+App::CreateECS	0x100bd7e1c	0x1077ccc80	stub	_free
+App::CreateECS	0x100bd7e1c	0x1077cccf8	stub	_fwrite
+App::CreateECS	0x100bd7e1c	0x1077cd004	stub	_malloc
+App::CreateECS	0x100bd7e1c	0x1077cd238	stub	_posix_memalign
+App::CreateECS	0x100bd7e1c	0x1077cd70c	stub	_strcasecmp
+App::InitFrameStages	0x100bd6f30	0x105d1a738	Larian BaseApp	BaseApp::InitFrameStages(rf::RenderView*)
+App::InitFrameStages	0x100bd6f30	0x105dd01c8	Larian ls	ls::DynamicArray<ls::RenderSubStage*, ls::TaggedAllocator<int>>::Reallocate(int)
+App::InitFrameStages	0x100bd6f30	0x106092ba8	Larian ls	ls::PostProcessStage::InsertStep(ls::PostProcessStep*, int)
+App::InitFrameStages	0x100bd6f30	0x1060dac90	Larian ls	ls::RenderSubStage::RenderSubStage(ls::RenderStage&, ls::RenderSubStage::Config const&)
+App::InitFrameStages	0x100bd6f30	0x106431624	Larian rf	rf::SceneGraph::AddTrackedAppStage(rf::RenderView const*, rf::IAppStage*, bool, rf::IAppStage const*, rf::IAppStage const*)
+App::InitFrameStages	0x100bd6f30	0x106432000	Larian rf	rf::SceneGraph::RemoveTrackedAppStage(rf::RenderView const*, rf::IAppStage*, bool, rf::IAppStage const*)
+App::InitFrameStages	0x100bd6f30	0x106441820	Larian rf	rf::StageGroup::AddAppStageBefore(rf::IAppStage const*, rf::IAppStage*)
+App::InitFrameStages	0x100bd6f30	0x106461218	Larian rf	rf::metal::MTLRendererCommandBuffer::MTLRendererCommandBuffer(rf::EGPUQueueType, rf::ECommandBufferType, unsigned long, rf::metal::MetalRenderer*)
+App::InitFrameStages	0x100bd6f30	0x1077cc944	stub	_atexit
+App::InitFrameStages	0x100bd6f30	0x1077cccf8	stub	_fwrite
+App::InitFrameStages	0x100bd6f30	0x1077cd004	stub	_malloc
+ecl::GameStateRunning::Update	0x102fbd718	0x100c96b18	Larian ls	ecs::ECBEntityChange& ls::PagedHashMap<ls::ID<ecs::EntityHandleTraits>, ecs::ECBEntityChange, ecs::ECBHashTablePagedFrameOps>::EnsureUniversal<ls::ID<ecs::Entit
+ecl::GameStateRunning::Update	0x102fbd718	0x100c96c1c	Larian ls	ls::PagedStorageInterface<ecs::ECBEntityComponentChange, ls::PagedArrayDefaultOps<ecs::ECBFrameAllocator>>::AddPage(ls::PagedStorage<ecs::ECBEntityComponentChan
+ecl::GameStateRunning::Update	0x102fbd718	0x100c9750c	Larian ls	ecs::ComponentFrameStorage& ls::DoubleIndexedPagedArray<ecs::ComponentId, ecs::ComponentFrameStorage, ls::PagedArrayDefaultOps<ecs::ECBFrameAllocator>>::Emplace
+ecl::GameStateRunning::Update	0x102fbd718	0x100ca381c	Larian ecs	ecl::Item* ecs::EntityWorld::GetComponent<ecl::Item, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::integral_constant<bool, false>)
+ecl::GameStateRunning::Update	0x102fbd718	0x100eab9ec	Larian ecs	ecl::Character* ecs::EntityWorld::GetComponent<ecl::Character, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::integral_constant<bool, false>)
+ecl::GameStateRunning::Update	0x102fbd718	0x10109e9a0	Larian ls	ls::Result<ecs::_private::EntityView<ls::TypeList<ecl::player_management::EventsSingletonComponent, ecl::player_management::PlayerIdToPlayerInputIndexMappingSin
+ecl::GameStateRunning::Update	0x102fbd718	0x1010be560	Larian ecs	ls::Result<ecs::_private::EntityViewFinder<ecs::_private::QueryViewFinder<ecs::query::alive::Spec<ls::TypeList<ls::uuid::ToHandleMappingComponent const>, ls::Ty
+ecl::GameStateRunning::Update	0x102fbd718	0x101136c8c	Larian eoc	eoc::AiGrid::ToClosestTilePos(eoc::AiWorldPos const&, eoc::AiTilePos&, bool, bool) const
+ecl::GameStateRunning::Update	0x102fbd718	0x1012ce0d8	Larian ecs	eoc::ai::swarm::ActiveComponent const* ecs::EntityWorld::GetComponent<eoc::ai::swarm::ActiveComponent const, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::in
+ecl::GameStateRunning::Update	0x102fbd718	0x10167b528	Larian eoc	eoc::hit::HitInfo::PartialHitDesc::~PartialHitDesc()
+ecl::GameStateRunning::Update	0x102fbd718	0x10168fa00	Larian ecs	eoc::hit::ProxyComponent const* ecs::EntityWorld::GetComponent<eoc::hit::ProxyComponent const, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::integral_constan
+ecl::GameStateRunning::Update	0x102fbd718	0x1020cbb98	Larian ls	ls::thoth::shared::Machine::Update(bool)
+ecl::GameStateRunning::Update	0x102fbd718	0x10238a028	Larian ecs	ecl::spell_cast::TargetingComponent const* ecs::EntityWorld::GetComponent<ecl::spell_cast::TargetingComponent const, false>(ls::ID<ecs::EntityHandleTraits>, std
+ecl::GameStateRunning::Update	0x102fbd718	0x102f9bc9c	Larian ecl	ecl::GameControl::Update()
+ecl::GameStateRunning::Update	0x102fbd718	0x102fa174c	Larian ecl	ecl::GameInput::ChangeHoveredItemChar(short, ecl::TPlayerInputData&, ecs::EntityRef const&)
+ecl::GameStateRunning::Update	0x102fbd718	0x102fc17cc	Larian ecs	ls::Result<ecs::_private::EntityViewFinder<ecs::_private::QueryViewFinder<ecs::query::alive::Spec<ls::TypeList<ecl::screen_fade::ScreenFadeVisualDataComponent c
+ecl::GameStateRunning::Update	0x102fbd718	0x102fc1958	Larian ecl	ecl::GameStateRunning::StartRealtimeRunning()
+ecl::GameStateRunning::Update	0x102fbd718	0x1030220e4	Larian ecl	ecl::Level::Update(ls::GameTime const&)
+ecl::GameStateRunning::Update	0x102fbd718	0x1030f5d08	Larian ecl	ecl::PlayerManager::ForEachLocalPlayer(ls::Function<void (ecl::Character*)> const&) const
+ecl::GameStateRunning::Update	0x102fbd718	0x1034a314c	Larian ecl	ecl::CanCharacterInteractWithItem(ecl::Character const*, ecl::Item const*, bool, bool, ecl::EInteractionFilter, bool, bool)
+ecl::GameStateRunning::Update	0x102fbd718	0x1034a3d54	Larian ecl	ecl::IsOnClosedRoom(Vector3f const&, ls::FixedString const&)
+ecl::GameStateRunning::Update	0x102fbd718	0x1035d121c	Larian ecl	ecl::PickingHelper::PickCharacterOrItemOrCorpse(ecl::EPickRequestSource)
+ecl::GameStateRunning::Update	0x102fbd718	0x1035dff34	Larian ecl	ecl::PickingHelperManager::GetOrCreatePickingHelper(short)
+ecl::GameStateRunning::Update	0x102fbd718	0x10364e124	Larian ecl	ecl::spell_cast::GetClientSpellCastEntity(ecs::WorldView<ecl::spell_cast::StateComponent const, eoc::spell_cast::IsCastingComponent const> const&, ls::ID<ecs::E
+ecl::GameStateRunning::Update	0x102fbd718	0x10635e350	Larian ecs	ecs::ComponentFrameStorageAllocRaw(ecs::ComponentFrameStorage&, int, ecs::ComponentFrameStorageIndex&)
+ecl::GameStateRunning::Update	0x102fbd718	0x106367918	Larian ecs	ecs::EntityHandleGenerator::Create()
+ecl::GameStateRunning::Update	0x102fbd718	0x106386e20	Larian ecs	ecs::EntityStorageIterator<2u>::FetchFrameComponents()
+ecl::GameStateRunning::Update	0x102fbd718	0x106395cbc	Larian ecs	ecs::_private::QueryIterator<ecs::QueryTypePersistentTag, ecs::QueryTypeAliveTag, false>::MoveToNextStorage(int)
+ecl::GameStateRunning::Update	0x102fbd718	0x106397124	Larian ecs	ecs::_private::QueryIterator<ecs::QueryTypeAddedTag, ecs::QueryTypeAliveTag, true>::operator++()
+ecl::GameStateRunning::Update	0x102fbd718	0x10639723c	Larian ecs	ecs::_private::QueryIterator<ecs::QueryTypeAddedTag, ecs::QueryTypeAliveTag, true>::QueryIterator(ecs::legacy::ImmediateWorldCache const&, ecs::QueryIteratorLis
+ecl::GameStateRunning::Update	0x102fbd718	0x1064bec1c	Larian ls	ls::BufferedEventManager::FireEvents()
+ecl::GameStateRunning::Update	0x102fbd718	0x1064d11dc	Larian ls	ls::gst::Map::Release(ls::gst::NodePoolData const&)
+ecl::GameStateRunning::Update	0x102fbd718	0x1064d6ba8	Larian ls	ls::InputManager::GetInputValue(unsigned int const&, ls::EInputPlayerIndex) const
+ecl::GameStateRunning::Update	0x102fbd718	0x106501610	Larian ls	ls::Text::~Text()
+ecl::GameStateRunning::Update	0x102fbd718	0x106536d10	Larian ls	ls::STDString::STDString(ls::STDString const&)
+ecl::GameStateRunning::Update	0x102fbd718	0x1065401c0	Larian ls	ls::ThreadRegistry::RequestThreadIndex()
+ecl::GameStateRunning::Update	0x102fbd718	0x106546788	Larian ls	ls::TranslatedString::Length() const
+ecl::GameStateRunning::Update	0x102fbd718	0x1077cc764	stub	___cxa_guard_acquire
+ecl::GameStateRunning::Update	0x102fbd718	0x1077cc770	stub	___cxa_guard_release
+ecl::GameStateRunning::Update	0x102fbd718	0x1077cc824	stub	___stack_chk_fail
+ecl::GameStateRunning::Update	0x102fbd718	0x1077cc944	stub	_atexit
+ecl::GameStateRunning::Update	0x102fbd718	0x1077ccc80	stub	_free
+ecl::GameStateRunning::Update	0x102fbd718	0x1077cccf8	stub	_fwrite
+ecl::GameStateRunning::Update	0x102fbd718	0x1077cd004	stub	_malloc
+ecl::GameStateRunning::Update	0x102fbd718	0x1077cd04c	stub	_memset
+esv::GameStateRunning::Update	0x104a285b0	0x1007603b8	Lua	_lua_gc
+esv::GameStateRunning::Update	0x104a285b0	0x100ca1f08	Larian ls	ls::DynamicArray<ls::ID<ecs::EntityHandleTraits>, ls::TaggedAllocator<int>>::Reallocate(int)
+esv::GameStateRunning::Update	0x104a285b0	0x1010d645c	Larian ecs	esv::Character const* ecs::EntityWorld::GetComponent<esv::Character const, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::integral_constant<bool, false>)
+esv::GameStateRunning::Update	0x104a285b0	0x1010d8000	Larian ls	ls::HashTable<net::UserID, ls::HashTableOpsDefault>::~HashTable()
+esv::GameStateRunning::Update	0x104a285b0	0x1010dc580	Larian ls	std::__1::tuple<int, bool> ls::HashTable<net::UserID, ls::HashTableOpsDefault>::Ensure<net::UserID const&>(net::UserID const&)
+esv::GameStateRunning::Update	0x104a285b0	0x10113179c	Larian eoc	eoc::AiGrid::ExecuteWTKernel()
+esv::GameStateRunning::Update	0x104a285b0	0x101216208	Larian ecs	eoc::inventory::OwnerComponent const* ecs::EntityWorld::GetComponent<eoc::inventory::OwnerComponent const, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::inte
+esv::GameStateRunning::Update	0x104a285b0	0x101248558	Larian eoc	eoc::CoverManager::Update()
+esv::GameStateRunning::Update	0x104a285b0	0x1012ce0d8	Larian ecs	eoc::ai::swarm::ActiveComponent const* ecs::EntityWorld::GetComponent<eoc::ai::swarm::ActiveComponent const, true>(ls::ID<ecs::EntityHandleTraits>, std::__1::in
+esv::GameStateRunning::Update	0x104a285b0	0x101b78df8	Larian eoc	eoc::inventory::ForEachEntityInInventory(ecs::WorldView<eoc::inventory::ContainerComponent const> const&, ls::ID<ecs::EntityHandleTraits> const&, ls::Function<v
+esv::GameStateRunning::Update	0x104a285b0	0x102606364	Larian ecs	ecs::FilterIterator<ecs::query::alive::Spec<ls::TypeList<eoc::inventory::IsOwnedComponent const>, ls::TypeList<>, ls::TypeList<>, ls::TypeList<>, ls::TypeList<>
+esv::GameStateRunning::Update	0x104a285b0	0x1049673c4	Larian esv	esv::DiplomacyManager::IncrementVote(net::UserID, unsigned char, unsigned char)
+esv::GameStateRunning::Update	0x104a285b0	0x104a063c8	Larian esv	esv::GameControl::ExecuteDealTrade(net::UserID, bool, bool, int)
+esv::GameStateRunning::Update	0x104a285b0	0x104a0a69c	Larian esv	esv::GameControl::UpdatePortalData(ls::ID<ecs::EntityHandleTraits>, eoc::AIPortalObjectData&)
+esv::GameStateRunning::Update	0x104a285b0	0x104af1d88	Larian esv	esv::ListeningManager::StopListening(ls::ID<ecs::EntityHandleTraits> const&, bool)
+esv::GameStateRunning::Update	0x104a285b0	0x104b5fcf0	Larian ls	ls::LEGACY_Set<eocnet::OverheadTextMessage::OverheadText, 0ul, ls::NewInterface<eocnet::OverheadTextMessage::OverheadText>, ls::DefaultComparator<eocnet::Overhe
+esv::GameStateRunning::Update	0x104a285b0	0x104e9c17c	Larian esv	esv::StoryImplementation::FireEvents()
+esv::GameStateRunning::Update	0x104a285b0	0x1052f8518	Larian esv	esv::EntityManager::DestroyDelayed(ls::Level*)
+esv::GameStateRunning::Update	0x104a285b0	0x106395974	Larian ecs	ecs::_private::QueryIterator<ecs::QueryTypePersistentTag, ecs::QueryTypeAliveTag, true>::operator++()
+esv::GameStateRunning::Update	0x104a285b0	0x106395ad8	Larian ecs	ecs::_private::QueryIterator<ecs::QueryTypePersistentTag, ecs::QueryTypeAliveTag, true>::QueryIterator(ecs::legacy::ImmediateWorldCache const&, ecs::QueryIterat
+esv::GameStateRunning::Update	0x104a285b0	0x1064bec1c	Larian ls	ls::BufferedEventManager::FireEvents()
+esv::GameStateRunning::Update	0x104a285b0	0x1077cc824	stub	___stack_chk_fail
+esv::GameStateRunning::Update	0x104a285b0	0x1077cc944	stub	_atexit
+esv::GameStateRunning::Update	0x104a285b0	0x1077ccc80	stub	_free
+esv::GameStateRunning::Update	0x104a285b0	0x1077cccf8	stub	_fwrite
+esv::GameStateRunning::Update	0x104a285b0	0x1077cd004	stub	_malloc
+esv::GameStateRunning::Update	0x104a285b0	0x1077cd04c	stub	_memset
+ecs::EntityWorld::Update	0x10638ec08	0x10638d0b0	Larian ecs	ecs::EntityWorld::FlushECBs()
+ecs::EntityWorld::Update	0x10638ec08	0x1063a057c	Larian ecs	ecs::core::SystemDependencyExecutor::ExecuteWTKernel()
+ecs::EntityWorld::Update	0x10638ec08	0x10653e0d0	Larian ls	ls::ThreadEvent::OpenDoor()
+ecs::EntityWorld::Update	0x10638ec08	0x106550fac	Larian ls	void ls::MPMCQueueUnbounded<ls::WorkerThreadJob*>::Emplace<ls::WorkerThreadJob* const&>(ls::WorkerThreadJob* const&)
+ecs::EntityWorld::Update	0x10638ec08	0x10655112c	Larian ls	ls::WorkerThreadBatch::FlushJobQueueToWorkers()
+ecs::EntityWorld::Update	0x10638ec08	0x1065512d4	Larian ls	ls::WorkerThreadBatch::WaitForCompletion(bool)
+ecs::EntityWorld::Update	0x10638ec08	0x106552cec	Larian ls	ls::WorkerThreadScheduler::StealJob(ls::EWorkerThreadBatchPriority, ls::WorkerThreadJob*&)
+ecs::EntityWorld::Update	0x10638ec08	0x106552f44	Larian ls	ls::WorkerThreadScheduler::TryScheduleBatch(ls::WorkerThreadBatch*)
+ecs::EntityWorld::Update	0x10638ec08	0x106553050	Larian ls	ls::WorkerThreadScheduler::ScheduleJob(ls::WorkerThreadJob*, ls::EWorkerThreadBatchPriority)
+BaseApp::InitFrameStages	0x105d1aa80	0x100c00a00	Larian ls	ls::DynamicArray<int, ls::TaggedAllocator<int>>::Reallocate(int)
+BaseApp::InitFrameStages	0x105d1aa80	0x100c2a040	Larian ls	ls::DynamicArray<int, ls::TaggedAllocator<int>>::operator=(ls::DynamicArray<int, ls::TaggedAllocator<int>>&&)
+BaseApp::InitFrameStages	0x105d1aa80	0x103159928	Larian ls	ls::DynamicArray<rf::Texture*, ls::TaggedAllocator<int>>::Reallocate(int)
+BaseApp::InitFrameStages	0x105d1aa80	0x10644153c	Larian rf	rf::StageGroup::AddAppStage(rf::IAppStage*)
+BaseApp::InitFrameStages	0x105d1aa80	0x106461218	Larian rf	rf::metal::MTLRendererCommandBuffer::MTLRendererCommandBuffer(rf::EGPUQueueType, rf::ECommandBufferType, unsigned long, rf::metal::MetalRenderer*)
+BaseApp::InitFrameStages	0x105d1aa80	0x1064be4fc	Larian ls	ls::ThreadSafeEventManager::RegisterListener(ls::EventListenerBase*)
+BaseApp::InitFrameStages	0x105d1aa80	0x1077cc6f8	stub	__ZSt9terminatev
+BaseApp::InitFrameStages	0x105d1aa80	0x1077cc944	stub	_atexit
+BaseApp::InitFrameStages	0x105d1aa80	0x1077cc9a4	stub	_bzero
+BaseApp::InitFrameStages	0x105d1aa80	0x1077ccc80	stub	_free
+BaseApp::InitFrameStages	0x105d1aa80	0x1077cccf8	stub	_fwrite
+BaseApp::InitFrameStages	0x105d1aa80	0x1077cd004	stub	_malloc
+BaseApp::InitFrameStages	0x105d1aa80	0x1077cd058	stub	_memset_pattern16
+esv::EocServer::StartUp	0x1010f0d0c	0x100c0262c	Larian ls	ls::DynamicArray<ls::ModuleShortDesc, ls::TaggedAllocator<int>>::~DynamicArray()
+esv::EocServer::StartUp	0x1010f0d0c	0x100c028a0	Larian ls	ls::ModuleShortDesc::~ModuleShortDesc()
+esv::EocServer::StartUp	0x1010f0d0c	0x1012b845c	Larian ls	ls::StaticTypeRegistry::ListNode<ecs::sync::EntitiesDirtyCollectionIndicesBuffer>** ls::StaticTypeRegistry::FindList<ecs::sync::EntitiesDirtyCollectionIndicesBu
+esv::EocServer::StartUp	0x1010f0d0c	0x1012b8c14	Larian ls	ls::StaticTypeRegistry::ListNode<ecs::sync::EntityReplicationAuthority>** ls::StaticTypeRegistry::FindList<ecs::sync::EntityReplicationAuthority>()
+esv::EocServer::StartUp	0x1010f0d0c	0x1012b8db0	Larian ls	ls::SparseArray<ls::UniquePtr<ecs::sync::IComponentSerializer, int>, ls::TaggedAllocator<int>>::Resize(int)
+esv::EocServer::StartUp	0x1010f0d0c	0x1012bd180	Larian ls	ls::HashTable<ls::ID<ecs::EntityHandleTraits>, ecs::sync::RPLHashTableOps>::~HashTable()
+esv::EocServer::StartUp	0x1010f0d0c	0x101b3acf8	Larian eoc	eoc::Text::ConcatParameterized(ls::_StringView<char> const&)
+esv::EocServer::StartUp	0x1010f0d0c	0x101b3b0c8	Larian eoc	eoc::Text::MemMoveParam(unsigned long, unsigned long)
+esv::EocServer::StartUp	0x1010f0d0c	0x101c75dc0	Larian ls	ls::HashMap<ls::Guid, ls::Variant<eoc::ruleset::NoneValue, int, float, ls::FixedString, bool>, ls::HashTableOpsDefault>::operator=(ls::HashMap<ls::Guid, ls::Var
+esv::EocServer::StartUp	0x1010f0d0c	0x101f74f48	Larian eoc	eoc::spell::CastRequirementsManager::CastRequirementsManager(ls::thoth::shared::Machine&, eoc::SpellPrototypeManager const&, eoc::ClassDescriptions const&, eoc:
+esv::EocServer::StartUp	0x1010f0d0c	0x102fc4e64	Larian eoc	eoc::ServerInit::ServerInit(eoc::ServerInit const&)
+esv::EocServer::StartUp	0x1010f0d0c	0x103033c44	Larian ls	ls::LEGACY_Set<eocnet::LobbyPlayerInfo, 0ul, ls::NewInterface<eocnet::LobbyPlayerInfo>, ls::DefaultComparator<eocnet::LobbyPlayerInfo>>::Realloc(unsigned long)
+esv::EocServer::StartUp	0x1010f0d0c	0x104a2037c	Larian esv	esv::GameStateMachine::SetTargetState(esv::GameState*)
+esv::EocServer::StartUp	0x1010f0d0c	0x104af87a8	Larian ls	ls::LEGACY_Set<ls::ModuleShortDesc, 0ul, ls::NewInterface<ls::ModuleShortDesc>, ls::DefaultComparator<ls::ModuleShortDesc>>::Clone(ls::LEGACY_Set<ls::ModuleShor
+esv::EocServer::StartUp	0x1010f0d0c	0x104afe1e8	Larian esv	esv::LobbyManagerOrigins::UpdateLobbyData(eocnet::LobbyData const&, bool, bool)
+esv::EocServer::StartUp	0x1010f0d0c	0x105343aa0	Larian esv	esv::GameServer::Initialize()
+esv::EocServer::StartUp	0x1010f0d0c	0x106055ddc	Larian ls	ls::ModuleInfo::~ModuleInfo()
+esv::EocServer::StartUp	0x1010f0d0c	0x106058a18	Larian ls	ls::ModuleSettings::CreateModFromSettings(ls::DynamicArray<ls::ModuleShortDesc, ls::TaggedAllocator<int>>*) const
+esv::EocServer::StartUp	0x1010f0d0c	0x106366c64	Larian ls	ls::DynamicArray<ls::HashMap<ls::ID<ecs::EntityHandleTraits>, ls::DynamicBitSet<ls::TaggedAllocator<int>>, ecs::sync::RPLHashTableOps>, ls::TaggedAllocator<int>
+esv::EocServer::StartUp	0x1010f0d0c	0x10639d450	Larian ls	ls::DynamicBitSet<ls::TaggedAllocator<int>>::Resize(int, bool)
+esv::EocServer::StartUp	0x1010f0d0c	0x1063a04b4	Larian ecs	ecs::sync::RegisterMessages(net::MessageFactory&)
+esv::EocServer::StartUp	0x1010f0d0c	0x1063b8458	Larian net	net::AbstractPeer::AbstractPeer(ls::ThreadTicket*, unsigned short, unsigned short, unsigned int, bool, unsigned int, unsigned int)
+esv::EocServer::StartUp	0x1010f0d0c	0x1064be1c4	Larian ls	ls::EventManager::RegisterListener(ls::EventListenerBase*)
+esv::EocServer::StartUp	0x1010f0d0c	0x1064d11dc	Larian ls	ls::gst::Map::Release(ls::gst::NodePoolData const&)
+esv::EocServer::StartUp	0x1010f0d0c	0x106501610	Larian ls	ls::Text::~Text()
+esv::EocServer::StartUp	0x1010f0d0c	0x10650182c	Larian ls	ls::Text::Concat(ls::_StringView<char> const&)
+esv::EocServer::StartUp	0x1010f0d0c	0x106535df4	Larian ls	ls::RuntimeStringHandle::RuntimeStringHandle(ls::_StringView<char> const&, unsigned short)
+esv::EocServer::StartUp	0x1010f0d0c	0x106536958	Larian ls	ls::STDString::STDString(char const*)
+esv::EocServer::StartUp	0x1010f0d0c	0x106536d10	Larian ls	ls::STDString::STDString(ls::STDString const&)
+esv::EocServer::StartUp	0x1010f0d0c	0x106538584	Larian ls	ls::STDString::operator=(ls::STDString const&)
+esv::EocServer::StartUp	0x1010f0d0c	0x106545cc4	Larian ls	ls::TranslatedString::TranslatedString(ls::RuntimeStringHandle const&)
+esv::EocServer::StartUp	0x1010f0d0c	0x106545e94	Larian ls	ls::TranslatedString::~TranslatedString()
+esv::EocServer::StartUp	0x1010f0d0c	0x1065465e4	Larian ls	ls::TranslatedString::Get(ls::identity::EIdentity, ls::identity::EIdentity) const
+esv::EocServer::StartUp	0x1010f0d0c	0x1077cc944	stub	_atexit
+esv::EocServer::StartUp	0x1010f0d0c	0x1077cc9a4	stub	_bzero
+esv::EocServer::StartUp	0x1010f0d0c	0x1077ccc80	stub	_free
+esv::EocServer::StartUp	0x1010f0d0c	0x1077cccf8	stub	_fwrite
+esv::EocServer::StartUp	0x1010f0d0c	0x1077cd004	stub	_malloc
+ServerWorker::DoWork	0x100c8eb9c	0x102ad155c	Larian ls	__ZN2ls8FunctionIFvRNS_6khonsu7MachineERKNS_6anubis7CallApiERKNS4_7GameApiEEE18FunctorMethodsHeapIZNS4_4game6System13InitFrameworkERKNSE_10InitParamsEE3$_0E11Mo
+ServerWorker::DoWork	0x100c8eb9c	0x104a2037c	Larian esv	esv::GameStateMachine::SetTargetState(esv::GameState*)
+ServerWorker::DoWork	0x100c8eb9c	0x104a20ac8	Larian esv	esv::GameStateMachine::Update(ls::GameTime const&)
+ServerWorker::DoWork	0x100c8eb9c	0x104ae9fdc	Larian esv	esv::Level::DeactivateSystems()
+ServerWorker::DoWork	0x100c8eb9c	0x104c65890	Larian esv	esv::PlanParser::PlanParser()
+ServerWorker::DoWork	0x100c8eb9c	0x105ce5354	Larian ls	ls::AnimationBlueprintSystem::Setup(gn::GenomeManager*, ls::ThreadTicket*, ls::WorkerThreadBatch*, ls::WorkerThreadBatch*, bool)
+ServerWorker::DoWork	0x100c8eb9c	0x105deb3f4	Larian ls	ls::EffectsManager::OnWorkerThreadStopped(ls::WorkerThreadID)
+ServerWorker::DoWork	0x100c8eb9c	0x1061328dc	Larian ls	ls::ScriptSystem::InstallScriptDataLoader(ls::FixedString const&, ls::ScriptDataLoader*)
+ServerWorker::DoWork	0x100c8eb9c	0x10638d0b0	Larian ecs	ecs::EntityWorld::FlushECBs()
+ServerWorker::DoWork	0x100c8eb9c	0x10638e308	Larian ecs	ecs::EntityWorld::ActivateSystemInternal(ecs::core::SystemTypeEntry&)
+ServerWorker::DoWork	0x100c8eb9c	0x10638ec08	Larian ecs	ecs::EntityWorld::Update(ls::GameTime const&)
+ServerWorker::DoWork	0x100c8eb9c	0x1064bd494	Larian ls	ls::Dispatcher::Process()
+ServerWorker::DoWork	0x100c8eb9c	0x1064d1b8c	Larian ls	ls::GameClock::CapFrame(unsigned long long)
+ServerWorker::DoWork	0x100c8eb9c	0x1065047e0	unattributed C	WaitEvent(EVENT_HANDLE*, unsigned int)
+ServerWorker::DoWork	0x100c8eb9c	0x10653e0d0	Larian ls	ls::ThreadEvent::OpenDoor()
+ServerWorker::DoWork	0x100c8eb9c	0x10653eef0	Larian ls	ls::ThreadManager::RegisterDispatcher(unsigned int, ls::Dispatcher*)
+ServerWorker::DoWork	0x100c8eb9c	0x10653f1a8	Larian ls	ls::ThreadManager::UnregisterDispatcher(unsigned int, ls::Dispatcher*)
+ServerWorker::DoWork	0x100c8eb9c	0x1077cc824	stub	___stack_chk_fail
+ServerWorker::DoWork	0x100c8eb9c	0x1077cc944	stub	_atexit
+ServerWorker::DoWork	0x100c8eb9c	0x1077cccf8	stub	_fwrite
+ServerWorker::DoWork	0x100c8eb9c	0x1077cce0c	stub	_gettimeofday
+ServerWorker::DoWork	0x100c8eb9c	0x1077cd004	stub	_malloc
+ServerWorker::DoWork	0x100c8eb9c	0x1077cd3dc	stub	_pthread_mach_thread_np
+ServerWorker::DoWork	0x100c8eb9c	0x1077cd460	stub	_pthread_self
+ServerWorker::DoWork	0x100c8eb9c	0x1077cd5c8	stub	_semaphore_signal_all

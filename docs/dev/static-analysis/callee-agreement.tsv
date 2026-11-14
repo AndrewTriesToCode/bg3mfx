@@ -1,0 +1,17 @@
+function	rea	local	agree	rea_only	local_only(cleanup)	local_only(other)
+main	7	7	7	0	0	0
+applicationDidFinishLaunching	12	13	12	0	1	0
+launchGame	71	80	71	0	9	0
+BaseApp::Start	56	63	55	1	6	2
+App::Update	40	44	40	0	3	1
+BaseApp::InitEngine	31	45	31	0	13	1
+App::InitGame	82	97	81	1	13	3
+App::CreateECS	22	25	22	0	3	0
+App::InitFrameStages	11	14	11	0	3	0
+ecl::GameStateRunning::Update	45	48	43	2	3	2
+esv::GameStateRunning::Update	27	30	26	1	3	1
+ecs::EntityWorld::Update	9	9	9	0	0	0
+BaseApp::InitFrameStages	13	41	13	0	17	11
+esv::EocServer::StartUp	38	57	38	0	18	1
+ServerWorker::DoWork	25	29	25	0	2	2
+TOTAL	489	602	484	5	94	24

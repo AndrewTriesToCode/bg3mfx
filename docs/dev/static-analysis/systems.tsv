@@ -1,0 +1,107 @@
+system	code_bytes	functions
+Larian ls	36937176	87695
+Larian ecs	20043840	44360
+static initializers	18708588	211382
+Larian esv	13851736	11065
+Larian ecl	7129376	6680
+Noesis GUI	5819996	61126
+Larian gui	4588156	10427
+Larian eoc	3446252	4252
+PhysX	2898452	8453
+Larian ui	1295980	9281
+Wwise	1295404	5604
+Granite (virtual texturing)	1074024	1464
+unattributed C	968632	2222
+LibreSSL/OpenSSL	616744	2499
+Larian gn	520028	2109
+Larian net	455956	1714
+Larian eocnet	427168	1110
+zstd	407112	251
+Larian gr	364748	921
+Larian rf	343764	372
+Larian App	328248	80
+Larian phx	264228	486
+Larian lsnet	231872	355
+libcurl	211092	556
+Larian LSDialogs	202956	503
+RakNet	181720	519
+libwebp	166196	280
+libc++	164596	374
+Granny 3D	159672	669
+NVIDIA libs	131000	346
+Masked Occlusion Culling	112040	115
+Larian GenomeFunctionSDM	103976	2
+libwebsockets	98388	318
+Larian BaseApp	97256	93
+mod.io	91876	73
+LZ4	87908	48
+compiler helpers (shared)	87416	1987
+Lua	82268	324
+Larian navcloud	80696	49
+Opus	77524	93
+Objective-C app shell	76760	437
+Larian GEFS	74012	2
+libpng	70540	155
+zlib/minizip	69484	196
+Larian EocSharedSDM	68280	2
+Larian ik	66180	156
+Larian EocServerSDM	64952	2
+Larian CoreLibSDM	61664	4
+Larian vt	58732	71
+Larian RPGStats	58160	8
+Larian EoCAN	55552	2
+Larian lnb	55464	212
+expat	52252	108
+Larian aspk	47920	237
+Larian GameEngineSDM	47252	2
+Larian osi	45896	95
+Larian stm	38896	152
+PLCrashReporter	37628	34
+tinyxml2	36844	347
+Larian ww	34384	118
+Larian ns	33028	44
+Larian EocClientSDM	32540	2
+Larian scr	29992	34
+Larian cocoa	29864	92
+Larian CItemCombinationManager	20184	5
+Larian DivinityStatsSystem	13412	6
+Larian bs	12300	6
+Larian ffx	12016	30
+Larian LSDFS	11176	2
+Larian EoCGE	10868	4
+Larian twc	9780	40
+Ogg/Vorbis	9576	26
+Larian IKSDM	9124	2
+Larian fx	8712	32
+Larian ServerWorker	8428	18
+Larian nushoin	7228	10
+Larian GrannyBindingSDM	6848	2
+Larian CRPGStats_Treasure_Table_Manager	6512	4
+Larian Eoc	6328	28
+Larian RenderFrameworkSDM	5692	2
+Larian jsonstats	5624	15
+Larian CItemProgressionManager	5520	1
+Larian FaceFXSDM	5188	2
+Larian GameNetSDM	5036	2
+Larian TLFS	4756	1
+Larian StatsObject	3768	13
+Larian GenomeStateMachineSDM	2948	2
+other C++ (anon)	2872	30
+Larian AllSparkCoreSDM	2404	2
+Larian PhysXSDM	2184	2
+Larian CRPGStats_Treasure_Category_Manager	2044	3
+Larian CRPGStats_Modifier	2012	1
+Larian mon	1496	11
+Larian NoesisGUIBindingSDM	1324	2
+Larian KhonsuBindingSDM	744	2
+Larian CocoaBindingSDM	688	2
+Larian GEGE	656	3
+other C++ (FillValueInfo)	576	6
+Steamworks	568	10
+Larian EocNetSDM	568	2
+Larian EocServerMonitorSDM	464	2
+Bink	332	2
+Larian LSDialogsSDM	56	2
+Larian GenomeSDM	56	2
+Larian WwiseBindingSDM	48	2
+other C++ (IAkEffectSlotsOwner)	8	2

@@ -1,0 +1,151 @@
+selector	call_sites	calling_functions	systems	top_callers
+contents	183	78	Larian ls 148, Larian rf 16, Larian ecl 11, Larian ns 6, Larian ecs 1, Larian phx 1	ls::PostProcessStep_DOF::ExecuteWTKernel(); ls::PostProcessStep_Bloom::ExecuteWTKernel(); ls::VertexProcessingStage::ExecuteWTKernel(); ls::ClusteredAssignmentStage::ExecuteWTKernel()
+drawPrimitives:vertexStart:vertexCount:	99	40	Larian ls 87, Larian ecl 7, Larian rf 5	ls::PostProcessStep_DOF::ExecuteWTKernel(); ls::PostProcessStep_Bloom::ExecuteWTKernel(); ls::LocalLightShadowStage::ExecuteWTKernel(); ls::Function<void (rf::RendererCommandBuffer&)>::FunctorMethodsVSSO<ls::Terrain::InitRende
+setFragmentBytes:length:atIndex:	69	30	Larian ls 59, Larian ecl 6, Larian rf 3, Larian ns 1	ls::PostProcessStep_DOF::ExecuteWTKernel(); ls::PostProcessStep_Bloom::ExecuteWTKernel(); ls::LocalLightShadowStage::ExecuteWTKernel(); ls::PostProcessStep_LensFlare::ExecuteWTKernel()
+setBytes:length:atIndex:	53	26	Larian ls 50, Larian rf 2, Larian ecl 1	ls::SSRStage::ExecuteWTKernel(); ls::PostProcessStep_ComputeLUTs::ExecuteWTKernel(); ls::ClusteredAssignmentStage::ExecuteWTKernel(); ls::SubStage_DrawVolumetricFogLighting::ExecuteWTKernel()
+endEncoding	52	17	Larian rf 46, Larian ls 6	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); ls::RenderFrameSystem::RenderScreenshots(); rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator; ls::RenderThread::Update()
+hasUnifiedMemory	42	32	Larian ls 20, Larian rf 17, Larian ecl 5	ls::RenderThread::Update(); rf::metal::MetalRenderer::SetBuffer(rf::Buffer*, rf::sb::Binding const&); ls::GameRenderView::BindGlobalConstantBuffers(rf::RendererCommandBuffer&, bool, bool) cons; ls::GameRenderView::BindPerCameraBuffer(rf::RendererCommandBuffer&, bool) const
+colorAttachments	27	4	Larian rf 27	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r; rf::metal::MetalRenderer::BeginRenderSubPass(int); rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator; rf::metal::MetalRenderer::SetTexture(rf::sb::Binding const&, rf::TextureBindingInfo)
+newBufferWithLength:options:	23	6	Larian rf 21, Larian ls 2	rf::metal::MetalAPI::Init(); rf::TripleBufferAllocator::Allocate(rf::metal::GPUDevice&, rf::TripleGenericCB*, unsigned ; rf::RenderFrame::BeginFrame(); rf::SceneGraph::AddRenderTarget(rf::IAppStage const*, ls::TypeWrap<unsigned int, rf::Textu
+blitCommandEncoder	22	9	Larian rf 20, Larian ls 2	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); ls::RenderFrameSystem::RenderScreenshots(); rf::RenderFrame::BeginFrame(); rf::SceneGraph::AddRenderTarget(rf::IAppStage const*, ls::TypeWrap<unsigned int, rf::Textu
+setVertexBytes:length:atIndex:	15	11	Larian ls 7, Larian ecl 4, Larian rf 3, Larian ns 1	ecl::RegionRoomRenderStage::ExecuteWTKernel(); ls::LocalLightShadowStage::ExecuteWTKernel(); ns::Renderer::DrawBatch(Noesis::Batch const&); bik::BinkManager::Render(rf::RendererCommandBuffer&, rf::RenderView const&, rf::Texture*, 
+commit	15	9	Larian rf 15	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::RenderFrame::BeginFrame(); rf::SceneGraph::AddRenderTarget(rf::IAppStage const*, ls::TypeWrap<unsigned int, rf::Textu; rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+didModifyRange:	14	10	Larian ls 7, Larian rf 3, Larian ns 2, Larian ecs 1, Larian phx 1	ls::RingVertexBuffer::Resize(rf::RendererCommandBuffer&, unsigned int); ls::Shape::BuildLine(ls::FixedString const&, ls::Span<Vector3f const> const&, float, Vecto; void ecs::_private::SystemRegistrationHelper::SystemUpdate<ecl::AiPathVisualSystem>(ecs::S; ns::Renderer::UnmapVertices()
+setLoadAction:	13	3	Larian rf 13	rf::metal::MetalRenderer::BeginRenderSubPass(int); rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator; rf::metal::MetalRenderer::SetTexture(rf::sb::Binding const&, rf::TextureBindingInfo)
+depthAttachment	12	1	Larian rf 12	rf::metal::MetalRenderer::BeginRenderSubPass(int)
+setVertexBuffer:offset:atIndex:	11	6	Larian rf 11	rf::metal::MetalRenderer::BindConstantBuffer(void*, unsigned long, rf::sb::Binding const&); rf::metal::MetalRenderer::PrepareDraw(rf::PrepareDrawData&&); rf::metal::MetalRenderer::BeginRenderSubPass(int); rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+setPurgeableState:	10	4	Larian ls 8, Larian rf 2	ls::RenderThread::Update(); ls::RenderFrameSystem::RenderScreenshots(); invocation function for block in rf::metal::GPUDevice::CreateBufferInternal(unsigned long,; invocation function for block in rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer co
+copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:	10	6	Larian rf 10	rf::RenderFrame::BeginFrame(); rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::SceneGraph::AddRenderTarget(rf::IAppStage const*, ls::TypeWrap<unsigned int, rf::Textu; rf::metal::MetalRenderer::CommitCommandBuffer(bool)
+stencilAttachment	10	1	Larian rf 10	rf::metal::MetalRenderer::BeginRenderSubPass(int)
+replaceRegion:mipmapLevel:slice:withBytes:bytesPerRow:bytesPerImage:	9	7	Larian ecl 5, Larian rf 2, Larian ns 1, Larian ls 1	ecl::ShroudThreadedUpdateManager::OnWTCompletion(); ecl::ShroudManager::DoUpdateTexture(eoc::EShroudDataType, eoc::AiSubgridId const&, rf::Tex; ecl::SurfaceDeferredRenderer::UpdateTexture(eoc::ESurfaceLayer); ns::Renderer::DrawBatch(Noesis::Batch const&)::$_1::operator()(ns::Renderer*, rf::Renderer
+commandBufferWithUnretainedReferences	9	6	Larian rf 9	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::RenderFrame::EndFrame(bool); rf::RendererCommandBuffer::CopyVertexBuffer(rf::VertexBuffer*, rf::VertexBuffer*); rf::metal::MetalRenderer::CommitCommandBuffer(bool)
+usage	8	2	Larian rf 5, Larian vt 3	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::; vt::GraniteResourceCallbacks::CreateTexture2D(id<MTLDevice>, MTLTextureDescriptor*, MTLSam
+commandBuffer	8	5	Larian rf 8	rf::RenderFrame::BeginFrame(); rf::SceneGraph::AddRenderTarget(rf::IAppStage const*, ls::TypeWrap<unsigned int, rf::Textu; rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::; rf::metal::GPUDevice::CreateBufferInternal(unsigned long, rf::EResourceUsage, void const*)
+setUsage:	8	2	Larian rf 8	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::; rf::metal::MetalRenderFrame::CreateFrameBufferSurfaces()
+pixelFormat	7	3	Larian rf 6, Larian vt 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::; rf::metal::MetalRenderer::BeginRenderSubPass(int); vt::GraniteResourceCallbacks::CreateTexture2D(id<MTLDevice>, MTLTextureDescriptor*, MTLSam
+addCompletedHandler:	7	5	Larian rf 6, Larian ls 1	rf::RenderFrame::BeginFrame(); rf::SceneGraph::AddRenderTarget(rf::IAppStage const*, ls::TypeWrap<unsigned int, rf::Textu; ls::RenderThread::Update(); rf::metal::GPUDevice::CreateBufferInternal(unsigned long, rf::EResourceUsage, void const*)
+setVertexBufferOffset:atIndex:	7	4	Larian rf 7	rf::metal::MetalRenderer::PrepareDraw(rf::PrepareDrawData&&); rf::metal::MetalRenderer::BindConstantBuffer(void*, unsigned long, rf::sb::Binding const&); rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::metal::MTLRendererCommandBuffer::SetVertexBuffer(int, rf::VertexBuffer*, unsigned int)
+frontFaceStencil	7	1	Larian rf 7	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+backFaceStencil	7	1	Larian rf 7	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+newFunctionWithName:	6	1	Larian rf 6	rf::GPUDevice::CreateShader(rf::bshd::Shader&&)
+setFragmentBuffer:offset:atIndex:	6	4	Larian rf 6	rf::metal::MetalRenderer::BindConstantBuffer(void*, unsigned long, rf::sb::Binding const&); rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::metal::MetalRenderer::SetBuffer(rf::Buffer*, rf::sb::Binding const&); rf::metal::MetalRenderer::BeginRenderSubPass(int)
+setTexture:	6	3	Larian rf 6	rf::metal::MetalRenderer::BeginRenderSubPass(int); rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator; rf::metal::MetalRenderer::SetTexture(rf::sb::Binding const&, rf::TextureBindingInfo)
+setDrawableSize:	5	3	Larian cocoa 3, Objective-C app shell 2	cocoa::CocoaWindow::Resize(int, int); -[LSMTLView initWithFrame:device:display:hdr:vsync:]; -[LSMTLView windowDidResize:]
+recommendedMaxWorkingSetSize	5	5	Larian ls 2, Larian vt 2, Larian rf 1	void ls::Dispatcher::Dispatch<ecl::VideoOptionsManager::StartApplyGraphicSettings(bool)::$; vt::GraniteManager::Init(); vt::GraniteManager::OnGraphicsSettingsChange(rf::ETextureDetail, int, int); ls::TextureCache::Initialize()
+storageMode	5	3	Larian rf 4, Larian vt 1	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::RendererCommandBuffer::CopyVertexBuffer(rf::VertexBuffer*, rf::VertexBuffer*); vt::GraniteResourceCallbacks::CreateTexture2D(id<MTLDevice>, MTLTextureDescriptor*, MTLSam
+setBuffer:offset:atIndex:	5	4	Larian rf 5	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::metal::MetalRenderer::SetBuffer(rf::Buffer*, rf::sb::Binding const&); rf::metal::MetalRenderer::BindConstantBuffer(void*, unsigned long, rf::sb::Binding const&); rf::metal::MetalRenderer::BeginComputePass(bool)
+setStoreAction:	5	3	Larian rf 5	rf::metal::MetalRenderer::BeginRenderSubPass(int); rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator; rf::metal::MetalRenderer::SetTexture(rf::sb::Binding const&, rf::TextureBindingInfo)
+setPixelFormat:	4	3	Larian rf 3, Objective-C app shell 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::; -[LSMTLView initWithFrame:device:display:hdr:vsync:]; rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+copyFromTexture:sourceSlice:sourceLevel:toTexture:destinationSlice:destinationLevel:sliceCount:levelCount:	4	1	Larian rf 4	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+setScissorRect:	4	2	Larian rf 4	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::metal::MetalRenderer::AcquirePass()
+setComputePipelineState:	4	2	Larian rf 4	rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int); rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+setStencilCompareFunction:	4	1	Larian rf 4	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+maxTotalThreadsPerThreadgroup	4	2	Larian rf 4	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r; rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int)
+setDepthAttachmentPixelFormat:	4	1	Larian rf 4	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+depthAttachmentPixelFormat	4	1	Larian rf 4	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setClearColor:	4	3	Larian rf 4	rf::metal::MetalRenderer::BeginRenderSubPass(int); rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator; rf::metal::MetalRenderer::SetTexture(rf::sb::Binding const&, rf::TextureBindingInfo)
+mipmapLevelCount	3	1	Larian vt 3	vt::GraniteResourceCallbacks::CreateTexture2D(id<MTLDevice>, MTLTextureDescriptor*, MTLSam
+arrayLength	3	2	Larian vt 2, Larian rf 1	vt::GraniteResourceCallbacks::CreateTexture2D(id<MTLDevice>, MTLTextureDescriptor*, MTLSam; rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toBuffer:destinationOffset:destinationBytesPerRow:destinationBytesPerImage:	3	2	Larian ls 2, Larian rf 1	ls::RenderFrameSystem::RenderScreenshots(); rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+textureType	3	2	Larian rf 3	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::; rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+setTextures:withRange:	3	3	Larian rf 3	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::metal::MetalRenderer::SetTexture(rf::Texture* const*, unsigned int, short, rf::sb::Bin; rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int)
+setArrayLength:	3	1	Larian rf 3	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+setWriteMask:	3	2	Larian rf 3	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned; rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+attributes	3	1	Larian rf 3	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+layouts	3	1	Larian rf 3	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+renderCommandEncoderWithDescriptor:	3	3	Larian rf 3	rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator; rf::metal::MetalRenderer::SetTexture(rf::sb::Binding const&, rf::TextureBindingInfo); rf::metal::MetalRenderer::BeginRenderSubPass(int)
+fillBuffer:range:value:	2	2	Larian rf 2	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::metal::MetalRenderer::CommitCommandBuffer(bool)
+copyFromTexture:toTexture:	2	1	Larian rf 2	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+setSamplerStates:withRange:	2	2	Larian rf 2	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*); rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int)
+drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:instanceCount:baseVertex:baseInstance:	2	1	Larian rf 2	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+setVsync:bufferCount:	2	2	Larian rf 2	rf::metal::MetalAPI::Init(); rf::metal::MetalAPI::ResizeRenderFrameWindow(rf::RenderFrame*, int, int, unsigned int, uns
+newLibraryWithFile:error:	2	1	Larian rf 2	rf::metal::MetalAPI::Init()
+texture	2	2	Larian rf 2	rf::metal::MetalRenderFrame::GetDrawable(); rf::metal::MetalRenderer::BeginRenderSubPass(int)
+setStorageMode:	2	2	Larian rf 2	rf::metal::MetalRenderFrame::CreateFrameBufferSurfaces(); rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+newTextureWithDescriptor:	2	2	Larian rf 2	rf::metal::MetalRenderFrame::CreateFrameBufferSurfaces(); rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+newBufferWithBytes:length:options:	2	2	Larian rf 2	rf::TripleBufferAllocator::Allocate(rf::metal::GPUDevice&, rf::TripleGenericCB*, unsigned ; rf::metal::GPUDevice::CreateBufferInternal(unsigned long, rf::EResourceUsage, void const*)
+setCpuCacheMode:	2	1	Larian rf 2	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+newTextureViewWithPixelFormat:textureType:levels:slices:	2	1	Larian rf 2	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+setStencilFailureOperation:	2	1	Larian rf 2	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+setDepthFailureOperation:	2	1	Larian rf 2	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+setDepthStencilPassOperation:	2	1	Larian rf 2	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+setReadMask:	2	1	Larian rf 2	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+newComputePipelineStateWithFunction:error:	2	2	Larian rf 2	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r; rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int)
+threadExecutionWidth	2	2	Larian rf 2	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r; rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int)
+setBlendingEnabled:	2	1	Larian rf 2	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setStencilAttachmentPixelFormat:	2	1	Larian rf 2	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+waitUntilCompleted	2	1	Larian rf 2	rf::metal::MetalRenderer::CommitCommandBuffer(bool)
+setDepthBias:slopeScale:clamp:	2	1	Larian rf 2	rf::metal::MetalRenderer::AcquirePass()
+setDepthClipMode:	2	1	Larian rf 2	rf::metal::MetalRenderer::AcquirePass()
+setViewport:	2	2	Larian rf 2	rf::metal::MetalRenderer::AcquirePass(); rf::metal::MetalRenderer::BeginRenderSubPass(int)
+setRenderPipelineState:	2	1	Larian rf 2	rf::metal::MetalRenderer::AcquirePass()
+setSlice:	2	1	Larian rf 2	rf::metal::MetalRenderer::BeginRenderSubPass(int)
+setClearDepth:	2	1	Larian rf 2	rf::metal::MetalRenderer::BeginRenderSubPass(int)
+setClearStencil:	2	1	Larian rf 2	rf::metal::MetalRenderer::BeginRenderSubPass(int)
+setFragmentBufferOffset:atIndex:	2	1	Larian rf 2	rf::metal::MetalRenderer::BindConstantBuffer(void*, unsigned long, rf::sb::Binding const&)
+saveTextureWithBytes:size:	1	1	Larian ls 1	ls::RenderFrameSystem::RenderScreenshots()
+saveTextureWithBytes:path:size:type:	1	1	Larian ls 1	ls::RenderFrameSystem::RenderScreenshots()
+useResources:count:usage:stages:	1	1	Larian rf 1	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+useResources:count:usage:	1	1	Larian rf 1	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toTexture:destinationSlice:destinationLevel:destinationOrigin:	1	1	Larian rf 1	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+dispatchThreadgroupsWithIndirectBuffer:indirectBufferOffset:threadsPerThreadgroup:	1	1	Larian rf 1	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:	1	1	Larian rf 1	rf::RendererCommandBuffer::Submit(bool, rf::GPUFence*)
+newCommandQueueWithMaxCommandBufferCount:	1	1	Larian rf 1	rf::metal::MetalAPI::Init()
+getDrawable	1	1	Larian rf 1	rf::metal::MetalRenderFrame::GetDrawable()
+presentDrawable:afterMinimumDuration:	1	1	Larian rf 1	rf::metal::MetalRenderFrame::FlipBuffers(bool)
+presentDrawable:	1	1	Larian rf 1	rf::metal::MetalRenderFrame::FlipBuffers(bool)
+texture2DDescriptorWithPixelFormat:width:height:mipmapped:	1	1	Larian rf 1	rf::metal::MetalRenderFrame::CreateFrameBufferSurfaces()
+setWidth:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+setHeight:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+setDepth:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+setMipmapLevelCount:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+setTextureType:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+newTextureViewWithPixelFormat:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+newBufferWithBytesNoCopy:length:options:deallocator:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+copyFromBuffer:sourceOffset:sourceBytesPerRow:sourceBytesPerImage:sourceSize:toTexture:destinationSlice:destinationLevel:destinationOrigin:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+replaceRegion:mipmapLevel:withBytes:bytesPerRow:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+generateMipmapsForTexture:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateTexture(rf::GraphicsBuffer const&, rf::TextureDescriptor, ls::
+setMinFilter:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setMagFilter:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setMipFilter:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setCompareFunction:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setSAddressMode:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setRAddressMode:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setTAddressMode:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setMaxAnisotropy:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+newSamplerStateWithDescriptor:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateSamplerState(rf::EFilter, rf::EAddressMode, rf::EAddressMode, 
+setDepthWriteEnabled:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+setDepthCompareFunction:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+newDepthStencilStateWithDescriptor:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateDepthState(bool, bool, rf::EComparisonFunction, bool, unsigned
+setBufferIndex:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+setOffset:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+setFormat:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+setStride:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+setStepFunction:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+setStepRate:	1	1	Larian rf 1	rf::metal::GPUDevice::CreateVertexFormat(ls::Span<rf::FormatDesc const> const&, ShaderID)
+setVertexFunction:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setFragmentFunction:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setVertexDescriptor:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setSourceRGBBlendFactor:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setDestinationRGBBlendFactor:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setSourceAlphaBlendFactor:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setDestinationAlphaBlendFactor:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setRgbBlendOperation:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+setAlphaBlendOperation:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+stencilAttachmentPixelFormat	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+newRenderPipelineStateWithDescriptor:error:	1	1	Larian rf 1	rf::metal::GPUDevice::CreatePipelineState(rf::TPipelineStateDescriptor<rf::RenderPass*, (r
+enqueue	1	1	Larian rf 1	rf::metal::MetalRenderer::CommitCommandBuffer(bool)
+setTriangleFillMode:	1	1	Larian rf 1	rf::metal::MetalRenderer::AcquirePass()
+setCullMode:	1	1	Larian rf 1	rf::metal::MetalRenderer::AcquirePass()
+setDepthStencilState:	1	1	Larian rf 1	rf::metal::MetalRenderer::AcquirePass()
+setStencilReferenceValue:	1	1	Larian rf 1	rf::metal::MetalRenderer::AcquirePass()
+setLabel:	1	1	Larian rf 1	rf::metal::MetalRenderer::ClearTextures(ls::DynamicArray<rf::Texture*, ls::TaggedAllocator
+setRenderTargetArrayLength:	1	1	Larian rf 1	rf::metal::MetalRenderer::SetTexture(rf::sb::Binding const&, rf::TextureBindingInfo)
+dispatchThreads:threadsPerThreadgroup:	1	1	Larian rf 1	rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int)
+dispatchThreadgroups:threadsPerThreadgroup:	1	1	Larian rf 1	rf::metal::MetalRenderer::Dispatch(rf::PipelineState*, int, int, int)
+setVertexSamplerStates:withRange:	1	1	Larian rf 1	rf::metal::MetalRenderer::PreDraw()
+setFragmentSamplerStates:withRange:	1	1	Larian rf 1	rf::metal::MetalRenderer::PreDraw()
+setVertexTextures:withRange:	1	1	Larian rf 1	rf::metal::MetalRenderer::PreDraw()
+setFragmentTextures:withRange:	1	1	Larian rf 1	rf::metal::MetalRenderer::PreDraw()
+dispatchType	1	1	Larian rf 1	rf::metal::MetalRenderer::BeginComputePass(bool)
+computeCommandEncoderWithDispatchType:	1	1	Larian rf 1	rf::metal::MetalRenderer::BeginComputePass(bool)
