@@ -101,6 +101,8 @@ enum EncoderAssociation : uint16_t {
     uint8_t rendererFlags;  // and its flags
     // Its non-indexed draws go through the draw replacement.
     bool replaceDraws;
+    // Binding it binds the pipeline substitution's choice instead.
+    bool substitute;
 }
 @end
 

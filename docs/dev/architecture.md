@@ -440,11 +440,15 @@ only for a feature that adds options to it (metal-hud, metalfx).
   features that require it (the hook regressions set its flag); it hooks Metal
   at activation, after the menu and the native patches. Features that require
   it register with its hook points (`MetalHooks.h`) from their install: a
-  new-encoder observer, a render-pass observer, a present-duration filter and one draw replacement. Each point holds up to four observers in a fixed array,
+  new-encoder observer, a render-pass observer, a present-duration filter, a render-pipeline descriptor filter, one draw
+  replacement and one pipeline substitution (Metal gets another pipeline at
+  bind; every part of bg3mfx still sees BG3's). Each point holds up to four observers in a fixed array,
   read without locks; with none registered the cost is one count check.
 - `src/common/native/CodePatch.*`: shared in-memory code patching (header-padding branch
   islands, branch range checks, all-or-nothing page protection) and read-only
-  pointer writes (vtable entries in `__DATA_CONST`).
+  pointer writes (vtable entries in `__DATA_CONST`). `BG3MFXHookEntry` hooks
+  a function's entry through a 24-byte island that keeps its first
+  instruction, for features that call the original.
 - `src/features/custom-render-stages/CustomRenderStages.*`: per-view stage lists. It replaces
   `BaseApp::InitFrameStages(view, Span)` in App's vtable (slot 0x2c8), the call
   that adds one stage per code of each pack BG3 passes. Features register a list per view kind
@@ -504,6 +508,20 @@ only for a feature that adds options to it (metal-hud, metalfx).
 
   The backed-out encoder merge's design is in
   [encoder-merge-plan.md](encoder-merge-plan.md).
+- `src/features/improved-display/`: Improved Display (`BG3MFX_FEATURE_IMPROVED_DISPLAY=1`,
+  requires metal-hooks; native). It replaces BG3's Windows-style PQ HDR with
+  macOS EDR on every screen, including EDR-capable screens that aren't HDR
+  displays, and ignores the launcher's HDR option. `ImprovedDisplay.mm` replaces `LSMTLView`'s
+  init and `updateHDRState:` so the drawable is always EDR (RGBA16Float,
+  extended-linear BT.2020), with entry hooks on `ampas::init_TsParams` (the
+  HDR peak becomes 100 nits × the screen's current headroom) and
+  `ls::GameRenderView::Update` (it sets the view's state-changed flag when
+  the headroom changes, so BG3 rebuilds its display LUT). Through metal-hooks
+  it turns BGR10A2 attachments into RGBA16Float, replaces `CombineUI_HDR` and
+  `CombineUINo_UI_HDR` with `ImprovedDisplayShader.h`'s (PQ to extended linear),
+  and substitutes their sRGB gamut-compressing variants on screens without P3.
+  One patched instruction starts BG3's HDR calibration at its paper white and
+  contrast phase, skipping the peak luminance page.
 - `src/features/thread-idling/ThreadIdling.*`: CPU Thread Idling (`BG3MFX_FEATURE_THREAD_IDLING=1`). BG3's idle workers, job scheduler,
   and frame limiter (`GameClock::CapFrame`, the server tick and client frame
   cap) sleep instead of spinning; batch completion waits keep BG3's yield.

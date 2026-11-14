@@ -288,6 +288,35 @@ inline constexpr uint32_t CreateBlendStateFirst = 0xd10243ff;
 inline constexpr uintptr_t CreateRasterizerState = 0x106459c7c;
 inline constexpr uint32_t CreateRasterizerStateFirst = 0xa9bc5ff8;
 }
+// improved-display: entry hooks on two functions and one patched instruction.
+namespace ImprovedDisplay {
+// ampas::init_TsParams(TsParams *out, int hdr, float minNits, float mid,
+// float maxNits, float, float): the ACES SSTS tone scale. The symbol's
+// (float x5, int) is the source; the code takes `out` in x0 and `hdr` in w1.
+// `sub sp, sp, #0xd0`.
+inline constexpr uintptr_t InitTsParams = 0x105c88ed0;
+inline constexpr uint32_t InitTsParamsFirst = 0xd10343ff;
+// ls::GameRenderView::Update(this, GameTime const&), each frame: when its
+// state-changed flag is set it clears it and calls every stage's
+// OnStateChanged (rf::StageGroup::OnStateChanged). PostProcessStep_ComputeLUTs's
+// reads the HDR settings, builds TsParams (HDR: init_TsParams(minNits, 20,
+// maxNits, 150, HDRGamma, 1)) and rebuilds the display LUT when they changed.
+// `sub sp, sp, #0x1e0`.
+inline constexpr uintptr_t RenderViewUpdate = 0x105f7d48c;
+inline constexpr uint32_t RenderViewUpdateFirst = 0xd10783ff;
+// Noesis::MakePtr<gui::DCHDRCalibration, ...>, the HDR calibration's
+// constructor: `mov w8, #1` before `str w8, [x19, #0x8c8]`, its first Phase.
+// OnChangePhase steps it 1 (peak luminance), 2 (paper white and contrast),
+// 3 (done); DoInit and OnChangePhase select phase 1's pattern with
+// GraphicSettings+0x8d and phase 2's with +0x8c.
+inline constexpr uintptr_t CalibrationFirstPhase = 0x1024e7e58;
+inline constexpr uint32_t CalibrationFirstPhaseOriginal = 0x52800028; // mov w8, #1
+inline constexpr uint32_t CalibrationFirstPhasePatched = 0x52800048;  // mov w8, #2
+}
+namespace ImprovedDisplay::Layout {
+// GameRenderView: the state-changed flag (u8) Update consumes.
+inline constexpr size_t RenderViewStateChanged = 0x2b78;
+}
 namespace CustomPipelineBundles::Layout {
 // s_Data's GPU device, and its ObjectContainers: each with entry pages, salt
 // pages and entries per page, at +0x00, +0x08 and +0x10.
@@ -435,7 +464,8 @@ inline constexpr Island SSRHistory{0xa70, 12 * 4};
 inline constexpr Island SSRValid{0xaa0, 32};
 inline constexpr Island SSAOBlur{0xac0, 24};
 inline constexpr Island CustomPipelineBundles{0xad8, 2 * 24};
-inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, ViewportReduction, SSRHistory, SSRValid, SSAOBlur, CustomPipelineBundles};
+inline constexpr Island ImprovedDisplay{0xb08, 2 * 24};
+inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, ViewportReduction, SSRHistory, SSRValid, SSAOBlur, CustomPipelineBundles, ImprovedDisplay};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];

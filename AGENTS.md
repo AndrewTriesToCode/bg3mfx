@@ -61,7 +61,24 @@
 - Keep Steam running.
 - Skip the launcher and intro if possible.
 - Give user instructions on how to interface with app to get the data you need. Do not control the app.
-- When starting from your own process the game might get a niceness penalty impacting performance.
+- Choose the launch by what the run is for:
+  - Feature development and first live tests: the launch helper
+    (`tools/launch/bg3mfx.py launch --feature …`), which keeps its checks, the
+    feature environment, the game's stderr and its exit code. The game is a
+    child of your shell, so when starting it as a background command run
+    `setopt NO_BG_NICE` in the same shell first: zsh otherwise renices
+    background jobs (`&`) by +5 (`BG_NICE`), the game inherits nice 5, and
+    only root can lower it again, so the game must be relaunched.
+  - Performance measurements (frame rate, CPU, power) and GPU captures: `open`
+    (or the user launches it), so the game is a child of launchd and inherits
+    nothing from your process tree. Pass variables with `open --env`; they are
+    ignored if BG3 is already running. Read failures with `log show` (subsystem
+    `com.bg3mfx`). Confirm the runtime loads before relying on
+    `open --env DYLD_INSERT_LIBRARIES=…`.
+- After any launch, verify the running game has no performance penalty, e.g.
+  `ps -o nice -p <PID>` is 0 like a user-launched app such as Finder. The only
+  expected penalties are overheads we chose for diagnostics, such as
+  `MTL_CAPTURE_ENABLED=1` for a GPU capture.
 
 ## Local installation
 

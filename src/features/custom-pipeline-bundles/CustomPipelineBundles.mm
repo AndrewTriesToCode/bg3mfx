@@ -350,27 +350,10 @@ namespace {
 // Moves `address`'s first instruction to `island` and branches it to `hook`;
 // the original continues at island + BG3MFXEntryOriginalOffset.
 BOOL hookEntry(uintptr_t address, uint32_t expected, uintptr_t island, void *hook, NSString *what, NSError **error) {
-    auto fail = [&](NSString *message) {
-        if (error) *error = makeError(6, [NSString stringWithFormat:message, what]);
-        return NO;
-    };
-    // Root has already checked the executable UUID; also check the word replaced.
-    const uint32_t first = *reinterpret_cast<const uint32_t *>(address);
-    if (first != expected || !BG3MFXRelocatable(first)) return fail(@"Unsupported %@.");
-    for (size_t i = 0; i < BG3MFXEntryIslandBytes; ++i)
-        if (*reinterpret_cast<const uint8_t *>(island + i)) return fail(@"The %@ island space is in use.");
-    if (!BG3MFXBranchReaches(address, island) || !BG3MFXBranchReaches(island + BG3MFXEntryOriginalOffset + 4, address + 4))
-        return fail(@"The %@ island is out of range.");
-    // The island first, then the entry that reaches it.
-    const auto result = BG3MFXPatchCode({{island, BG3MFXEntryIslandBytes}, {address, 4}}, [&] {
-        uint32_t words[BG3MFXEntryIslandBytes / 4];
-        BG3MFXEncodeEntryIsland(words, island, address, first, reinterpret_cast<uintptr_t>(hook));
-        memcpy(reinterpret_cast<void *>(island), words, sizeof words);
-        const uint32_t entry = BG3MFXBranch(address, island);
-        memcpy(reinterpret_cast<void *>(address), &entry, 4);
-    });
-    if (result == BG3MFXCodePatchResult::NotWritable) return fail(@"Could not make %@ writable.");
-    return YES;
+    // Root has already checked the executable UUID; this also checks the word replaced.
+    const char *failure = BG3MFXHookEntry(address, expected, island, hook);
+    if (failure && error) *error = makeError(6, [NSString stringWithFormat:@"Could not hook %@: %s.", what, failure]);
+    return !failure;
 }
 
 // Hooks program and depth-stencil state creation at install, before BG3's

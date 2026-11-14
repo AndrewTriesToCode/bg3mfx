@@ -104,3 +104,23 @@ BG3MFXCodePatchResult BG3MFXPatchCode(const std::vector<std::pair<uintptr_t, siz
     }
     return restored ? BG3MFXCodePatchResult::Patched : BG3MFXCodePatchResult::NotRestored;
 }
+
+const char *BG3MFXHookEntry(uintptr_t function, uint32_t expected, uintptr_t island, void *hook) {
+    uint32_t first;
+    memcpy(&first, reinterpret_cast<const void *>(function), 4);
+    if (first != expected || !BG3MFXRelocatable(first)) return "unsupported first instruction";
+    for (size_t i = 0; i < BG3MFXEntryIslandBytes; ++i)
+        if (reinterpret_cast<const uint8_t *>(island)[i]) return "island space in use";
+    if (!BG3MFXBranchReaches(function, island) || !BG3MFXBranchReaches(island + BG3MFXEntryOriginalOffset + 4, function + 4))
+        return "island out of range";
+    // The island first, then the entry that reaches it.
+    const auto result = BG3MFXPatchCode({{island, BG3MFXEntryIslandBytes}, {function, 4}}, [&] {
+        uint32_t words[BG3MFXEntryIslandBytes / 4];
+        BG3MFXEncodeEntryIsland(words, island, function, first, reinterpret_cast<uintptr_t>(hook));
+        memcpy(reinterpret_cast<void *>(island), words, sizeof words);
+        const uint32_t entry = BG3MFXBranch(function, island);
+        memcpy(reinterpret_cast<void *>(function), &entry, 4);
+    });
+    if (result == BG3MFXCodePatchResult::NotWritable) return "code not writable";
+    return nullptr;
+}

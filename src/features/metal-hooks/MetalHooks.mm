@@ -66,6 +66,20 @@ static Observers<void (*)(MTLRenderPassDescriptor *)> renderPassObservers;
 BOOL BG3MFXMetalHooksOnRenderPass(void (*observer)(MTLRenderPassDescriptor *)) { return renderPassObservers.add(observer); }
 static Observers<double (*)(double)> presentDurationFilters;
 BOOL BG3MFXMetalHooksFilterPresentDuration(double (*filter)(double)) { return presentDurationFilters.add(filter); }
+static Observers<MTLRenderPipelineDescriptor *(*)(id, MTLRenderPipelineDescriptor *)> renderPipelineFilters;
+BOOL BG3MFXMetalHooksFilterRenderPipeline(MTLRenderPipelineDescriptor *(*filter)(id, MTLRenderPipelineDescriptor *)) {
+    return renderPipelineFilters.add(filter);
+}
+static MTLRenderPipelineDescriptor *filterRenderPipeline(id device, MTLRenderPipelineDescriptor *desc) {
+    for (size_t i = 0; i < renderPipelineFilters.count && desc; ++i) desc = renderPipelineFilters.entries[i](device, desc);
+    return desc;
+}
+static BG3MFXPipelineSubstitution pipelineSubstitution;
+BOOL BG3MFXMetalHooksSubstitutePipelines(BG3MFXPipelineSubstitution substitution) {
+    if (hooksActive || pipelineSubstitution.claim || !substitution.claim || !substitution.substitute) return NO;
+    pipelineSubstitution = substitution;
+    return YES;
+}
 static BG3MFXDrawReplacement drawReplacement;
 BOOL BG3MFXMetalHooksReplaceDraws(BG3MFXDrawReplacement replacement) {
     if (hooksActive || drawReplacement.claim || !replacement.claim || !replacement.draw) return NO;
@@ -242,9 +256,11 @@ static void endEncoder(id self, SEL cmd) {
 }
 static void pipeline(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id state) {
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(self);
-    if (!(bindDedup && s && !BG3MFXBindFilter::forwardPipeline(s->pipeline,state)))
-        ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
     __unsafe_unretained BG3MFXPipelineInfo *info = state ? (__bridge BG3MFXPipelineInfo *)pipelineInfoPointer(state) : nil;
+    // A substituted pipeline is never deduplicated: its substitute may change.
+    if (info && info->substitute) ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,pipelineSubstitution.substitute(state));
+    else if (!(bindDedup && s && !BG3MFXBindFilter::forwardPipeline(s->pipeline,state)))
+        ((void(*)(id,SEL,id))original(self,cmd))(self,cmd,state);
     NSDictionary *description = info ? info->description : nil;
     if (s) {
         bool slow = info && info->kind;
@@ -265,10 +281,12 @@ static void renderPipelineCreated(id self, MTLRenderPipelineDescriptor *desc, id
     if (renderer.renderPipelineCreated) renderer.renderPipelineCreated(desc, state, reflection, info);
     static SEL create = @selector(newRenderPipelineStateWithDescriptor:error:);
     info->replaceDraws = drawReplacement.claim && drawReplacement.claim(self, desc, state, (BG3MFXCreateRenderPipeline)original(self,create));
+    info->substitute = pipelineSubstitution.claim && pipelineSubstitution.claim(self, desc, state, (BG3MFXCreateRenderPipeline)original(self,create));
     objc_setAssociatedObject(state, &pipelineKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     pipelineGeneration.fetch_add(1, std::memory_order_release);
 }
 static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NSError **error) {
+    desc = filterRenderPipeline(self, desc);
     if (renderer.prepareRenderPipeline) desc = renderer.prepareRenderPipeline(self, desc);
     id state;
     MTLRenderPipelineReflection *reflection = nil;
@@ -282,6 +300,7 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
     return state;
 }
 static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, MTLPipelineOption options, MTLRenderPipelineReflection **reflection, NSError **error) {
+    desc = filterRenderPipeline(self, desc);
     if (renderer.prepareRenderPipeline) desc = renderer.prepareRenderPipeline(self, desc);
     MTLRenderPipelineReflection *extraReflection = nil;
     id state;

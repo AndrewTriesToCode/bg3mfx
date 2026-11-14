@@ -41,3 +41,8 @@ bool BG3MFXRelocatable(uint32_t word);
 inline constexpr size_t BG3MFXEntryIslandBytes = 24, BG3MFXEntryOriginalOffset = 16;
 void BG3MFXEncodeEntryIsland(uint32_t words[BG3MFXEntryIslandBytes / 4], uintptr_t island, uintptr_t function,
     uint32_t first, uintptr_t hook);
+// Installs an entry hook: moves `function`'s first instruction (which must be
+// `expected` and relocatable) to the 24-byte `island`, which must be zero,
+// and branches the function to it. nullptr once patched, else what failed
+// (the code is then unchanged).
+const char *BG3MFXHookEntry(uintptr_t function, uint32_t expected, uintptr_t island, void *hook);

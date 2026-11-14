@@ -44,6 +44,7 @@ FEATURES = (
     "reduce-locking",
     "ssao-blur-fix",
     "animation-optimizations",
+    "improved-display",
 )
 
 

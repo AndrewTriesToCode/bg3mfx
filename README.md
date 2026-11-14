@@ -43,6 +43,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **Duplicate Shadow Fix** | Draws the sun's shadows once per frame instead of twice. |
 | **Improved Shadows** | Replaces the sun shadow filter to fix dotted lines, diamond patches and dark slopes in shadows. |
 | **Ambient Occlusion Blur Fix** | Fixes the game's ambient occlusion blur, which on Macs smooths only vertically, so it smooths horizontally too. |
+| **Improved Display** | Replaces the game's Windows-style HDR with macOS EDR, using your screen's real brightness headroom. Brighter highlights and P3 color even on screens that aren't HDR displays, such as the Apple Studio Display and MacBook Air. The launcher's HDR option no longer matters, and HDR calibration skips the peak-brightness step. |
 
 ### CPU features
 
@@ -170,6 +171,7 @@ the environment used to launch `bg3mfx`:
 | **Reduced Locking** | `BG3MFX_FEATURE_REDUCE_LOCKING=0` |
 | **Character Creation Crash Fix** | `BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=0` |
 | **Ambient Occlusion Blur Fix** | `BG3MFX_FEATURE_SSAO_BLUR_FIX=0` |
+| **Improved Display** | `BG3MFX_FEATURE_IMPROVED_DISPLAY=0` |
 | **Metal HUD** | `BG3MFX_FEATURE_METAL_HUD=0` removes the Show Metal HUD option. |
 | **Snap to Native FPS** | `BG3MFX_FEATURE_MAX_FRAME_RATE=0` removes the option. |
 

@@ -19,6 +19,12 @@ BOOL BG3MFXMetalHooksOnRenderPass(void (*observer)(MTLRenderPassDescriptor *pass
 // returns the one to use, in registration order. Called on the render thread.
 BOOL BG3MFXMetalHooksFilterPresentDuration(double (*filter)(double duration));
 
+// Each render pipeline descriptor BG3 creates a pipeline from: each filter
+// receives the descriptor so far and returns the one to create with (a copy
+// to change it; never modify the one given), in registration order, before
+// any other part of bg3mfx sees it. Called on BG3's pipeline-building threads.
+BOOL BG3MFXMetalHooksFilterRenderPipeline(MTLRenderPipelineDescriptor *(*filter)(id device, MTLRenderPipelineDescriptor *desc));
+
 // Draw replacement: one feature may take the non-indexed draws of the render
 // pipelines it claims. Other draws only check a per-pipeline flag.
 //
@@ -40,6 +46,17 @@ struct BG3MFXDrawReplacement {
                  __unsafe_unretained id<MTLTexture> fragment1, const BG3MFXEncoderCalls &calls, void (^draw)(void));
 };
 BOOL BG3MFXMetalHooksReplaceDraws(BG3MFXDrawReplacement replacement);
+// Pipeline substitution: one feature may bind other pipelines in place of the
+// render pipelines it claims. Every part of bg3mfx still sees BG3's pipeline
+// as the one bound; Metal gets `substitute`'s choice at each bind (from any
+// encoding thread), which must match the claimed pipeline's attachments.
+struct BG3MFXPipelineSubstitution {
+    // A render pipeline BG3 created: whether to substitute it. `create` is the
+    // original creation call (see the draw replacement), for making alternatives.
+    bool (*claim)(id device, MTLRenderPipelineDescriptor *desc, id state, BG3MFXCreateRenderPipeline create);
+    id (*substitute)(__unsafe_unretained id state);
+};
+BOOL BG3MFXMetalHooksSubstitutePipelines(BG3MFXPipelineSubstitution substitution);
 // Redundant bind filtering: drop fragment texture and pipeline binds that
 // repeat the encoder's current ones (BindFilter.h). It is inline in the
 // hottest hooks, where a call per bind would cost more than it saves;
