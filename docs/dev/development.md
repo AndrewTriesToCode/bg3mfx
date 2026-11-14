@@ -104,7 +104,7 @@ build/bin/bg3mfx --dry-run`.
 ## Developer notes
 
 - [Architecture and behavior contracts](architecture.md)
-- [BG3's default renderer](baseline/README.md)
+- [Static analysis of BG3's arm64 executable](static-analysis/README.md)
 
 ## Build files and retained evidence
 

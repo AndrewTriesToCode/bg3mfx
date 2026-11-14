@@ -32,8 +32,7 @@ point-light-shadow-fix feature, until both were folded in here.
 `BaseApp::InitFrameStages` passes the Shadow pack twice, so the game, player
 and offscreen views each get two `CascadedShadowBufferStage`s. Both render the
 same four cascades and the incrementally updated layer into the same maps
-(re6–re10 and re29–re33 in the
-[baseline capture](../../../docs/dev/baseline/frame-capture.md#findings)),
+(re6–re10 and re29–re33 in a frame capture),
 and nothing reads the first pass's maps before the second redraws them.
 
 The feature registers BG3's own lists with the second Shadow pack removed:

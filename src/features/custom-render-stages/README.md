@@ -10,7 +10,7 @@ that require it (Duplicate Shadow Fix, Improved Shadows).
 
 `BaseApp::InitFrameStages(view)` passes fixed packs of `rf::AppStageType`
 codes to the virtual `BaseApp::InitFrameStages(view, Span)`, which adds one
-stage per code (see [views and their stage lists](../../../docs/dev/baseline/README.md#views-and-their-stage-lists)).
+stage per code.
 A feature registers one list per view kind (Game, Player, Fullscreen,
 Offscreen) with `BG3MFXSetViewStages` from its install. A kind without a list
 gets BG3's calls unchanged.

@@ -107,7 +107,7 @@ inline constexpr uintptr_t ScaleOffsetTable = 0x10785a5a0, IdentityTable = 0x108
 // +0x28, slots at +0x00). With unified memory it then records op 0x08 with
 // the DynamicCB itself, and replay binds the slot of the counter at replay:
 // the frame's last write, the vertical direction, for both blur passes
-// (docs/dev/baseline/command-buffer.md). Bind is that branch, from its
+// Bind is that branch, from its
 // AddCommand setup to its `b` to the tail: `mov w21, #0x8` (the op) and
 // `str x20, [x0, #0x8]` (the record's buffer) are patched to op 0x07 and a
 // call to BindIsland, which stores the slot just written: ldr w9, [x20,

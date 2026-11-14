@@ -102,8 +102,7 @@ one full-screen draw.
    frames that kept the encoder, and displayed, the shadows flashed. The
    second patched the kernel's `SetAndBindViewportInternal` call
    (`0x105d491fc`, after the subpass) through an island and an assembly
-   trampoline; it was replaced by this override before running live. See
-   [texture binding](../../../docs/dev/baseline/command-buffer.md#texture-binding).
+   trampoline; it was replaced by this override before running live.
 5. **Our shader**: `ImprovedShadowsShader.h`'s source, compiled on BG3's
    device at the first Load and specialized 12 times, with GBuffer0 at
    `[[texture(6)]]`. The precompiled `shadows.metallib` was dropped: the
@@ -127,8 +126,8 @@ one full-screen draw.
 - `BG3MFXOverrideStageMethod` for 0x03 Load and Unload
   ([custom-render-stages](../custom-render-stages/README.md)). `Load` returns
   a bool.
-- Island pattern and header-padding space: see the encoder-merge plan's hook
-  inventory ([encoder-merge-plan.md](../../../docs/dev/encoder-merge-plan.md)). Reserve 24
+- Island pattern and header-padding space: as for the other islands in
+  `SupportedBuild.h`. Reserve 24
   bytes for this call site in `SupportedBuild.h`'s `Islands`.
 
 ## Open items

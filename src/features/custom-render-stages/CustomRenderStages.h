@@ -7,8 +7,7 @@
 // requires it registers lists from its install; this feature patches BG3 at
 // activation, only if one did. BaseApp::InitFrameStages(view) builds a view's stages
 // by passing fixed packs of rf::AppStageType codes, one virtual call each, to
-// BaseApp::InitFrameStages(view, Span), which adds one stage per code
-// (docs/dev/baseline/README.md, "Views and their stage lists"). The shim
+// BaseApp::InitFrameStages(view, Span), which adds one stage per code. The shim
 // replaces that call's slot in App's vtable.
 //
 // A view kind without a registered list gets BG3's calls unchanged. A

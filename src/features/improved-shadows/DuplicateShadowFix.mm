@@ -16,7 +16,7 @@ BOOL BG3MFXInstallDuplicateShadowFix(NSError **error) {
     // BG3 passes the Shadow pack twice, so each view has two
     // CascadedShadowBuffer stages rendering the same cascades into the same
     // maps; nothing reads the first one's maps before the second redraws them
-    // (docs/dev/baseline/frame-capture.md, finding 1). Keep the first: the
+    // in a frame capture. Keep the first: the
     // stages that capture the shadow buffer (Alpha, Lighting, CascadedShadowMask,
     // VertexProcessing) look up the first match. The Fullscreen view has none.
     const std::vector<uint8_t> window = join(P::First, P::Shadow, P::Second, P::Third);

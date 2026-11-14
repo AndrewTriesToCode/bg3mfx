@@ -460,8 +460,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   a stage its construction looks up, and Game or Player lists without the
   stages `App::InitFrameStages` inserts around. Enabled by the features that
   require it; dependents register from their install, and it patches App's
-  vtable at activation only once a list is registered. See
-  [views and their stage lists](baseline/README.md#views-and-their-stage-lists).
+  vtable at activation only once a list is registered.
   It also lets features override a stage class's `Load`, `Unload`, `Submit` or
   `StartRecording` (`BG3MFXOverrideStageMethod`) by replacing the entry in that
   class's vtable at activation, after checking it against `SupportedBuild.h`
@@ -516,9 +515,6 @@ only for a feature that adds options to it (metal-hud, metalfx).
   of their own (at half resolution when the tile fills the target), and the
   next atlas `LinearizeDepth` uses a clone that reads each texel from its
   face's region.
-
-  The backed-out encoder merge's design is in
-  [encoder-merge-plan.md](encoder-merge-plan.md).
 - `src/features/improved-display/`: Improved Display (`BG3MFX_FEATURE_IMPROVED_DISPLAY=1`,
   requires metal-hooks; native). It replaces BG3's Windows-style PQ HDR with
   macOS EDR on every screen, including EDR-capable screens that aren't HDR

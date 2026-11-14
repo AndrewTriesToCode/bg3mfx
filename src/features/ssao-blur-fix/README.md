@@ -24,7 +24,6 @@ the next slot right away, then records a bind command. With unified memory
 and replay binds the slot its counter names at replay time. By then both
 passes are recorded, so both bind the second write: the vertical direction.
 Without unified memory BG3 records op 0x07 with a fixed buffer, which works.
-See op 0x08 in the [command map](../../../docs/dev/baseline/command-buffer.md).
 
 ## Implementation
 
