@@ -484,16 +484,17 @@ only for a feature that adds options to it (metal-hud, metalfx).
   are metal-hooks' (`src/features/metal-hooks/BindFilter.h`), inline in its
   bind hooks; the feature turns them on with
   `BG3MFXMetalHooksFilterRedundantBinds`.
-- `src/features/duplicate-shadow-fix/DuplicateShadowFix.*`: Duplicate Shadow
-  Fix (`BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=1`, requires
-  custom-render-stages). It registers bg3mfx's own stage lists with
-  custom-render-stages for the Game, Player and Offscreen views: BG3's lists
-  with the second Shadow pack removed, so the sun cascades render once per
-  frame.
-- `src/features/improved-shadows/ImprovedShadows.*`: Improved Shadows
-  (`BG3MFX_FEATURE_IMPROVED_SHADOWS=1`, requires custom-render-stages and
-  custom-pipeline-bundles; native, since it calls BG3 functions). It replaces BG3's
-  sun shadow mask shaders, PCSS (Medium, High) and PCF (Low):
+- `src/features/improved-shadows/`: Improved Shadows
+  (`BG3MFX_FEATURE_IMPROVED_SHADOWS=1`, requires custom-render-stages,
+  custom-pipeline-bundles and metal-hooks; native, since it calls BG3
+  functions). `ImprovedShadows.mm` registers the feature and installs three
+  parts:
+- `src/features/improved-shadows/DuplicateShadowFix.*`: it registers bg3mfx's
+  own stage lists with custom-render-stages for the Game, Player and
+  Offscreen views: BG3's lists with the second Shadow pack removed, so the sun
+  cascades render once per frame.
+- `src/features/improved-shadows/ShadowMask.*`: it replaces BG3's sun shadow
+  mask shaders, PCSS (Medium, High) and PCF (Low):
   - it uses each pixel's G-buffer normal in place of BG3's per-quad derived
     normal, and keeps the full normal offset (no grazing fade);
   - at the first `CascadedShadowMaskStage::Load` (an override through
@@ -505,6 +506,16 @@ only for a feature that adds options to it (metal-hud, metalfx).
     before the kernel records. With no G-buffer normal (Bink videos),
     `SetTextureSafe` binds BG3's transparent default texture, and the
     shader drops the normal offset for that frame.
+
+- `src/features/improved-shadows/PointLightShadowFix.*`: point lights no
+  longer throw straight-edged black wedges from their own shadow faces. BG3
+  draws each tetrahedron face over half the light's tile without the clip
+  distances that keep it to its triangle. Through metal-hooks' draw
+  replacement, shadow caster draws whose `_PerCamera` (fragment buffer 11) has
+  `g_TetrahedronFaceIndex` 0-3 are drawn with the viewport moved into a region
+  of their own (at half resolution when the tile fills the target), and the
+  next atlas `LinearizeDepth` uses a clone that reads each texel from its
+  face's region.
 
   The backed-out encoder merge's design is in
   [encoder-merge-plan.md](encoder-merge-plan.md).

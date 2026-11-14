@@ -2,7 +2,7 @@
 // Span overload are stand-ins (see tests/features/custom-render-stages/custom_render_stages_smoke.mm).
 #import "features/custom-render-stages/CustomRenderStages.mm"
 #import "common/native/CodePatch.mm"
-#import "features/duplicate-shadow-fix/DuplicateShadowFix.mm"
+#import "features/improved-shadows/DuplicateShadowFix.mm"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>

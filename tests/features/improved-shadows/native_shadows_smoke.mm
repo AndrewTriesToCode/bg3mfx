@@ -3,7 +3,7 @@
 // stage is a stand-in laid out as SupportedBuild.h describes. BG3's calls,
 // custom-pipeline-bundles and custom-render-stages are stand-ins; the fragment
 // functions are real, compiled here on the system device.
-#import "features/improved-shadows/ImprovedShadows.mm"
+#import "features/improved-shadows/ShadowMask.mm"
 #include <cstdio>
 #include <cstdlib>
 #include <string>

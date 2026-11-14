@@ -35,7 +35,6 @@ FEATURES = (
     "metal-hud",
     "max-frame-rate",
     "metalfx",
-    "duplicate-shadow-fix",
     "improved-shadows",
     "render-thread-optimizations",
     "new-character-crash-fix",

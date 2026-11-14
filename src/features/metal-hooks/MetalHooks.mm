@@ -80,10 +80,12 @@ BOOL BG3MFXMetalHooksSubstitutePipelines(BG3MFXPipelineSubstitution substitution
     pipelineSubstitution = substitution;
     return YES;
 }
+static uint32_t watchedConstants;
 static BG3MFXDrawReplacement drawReplacement;
 BOOL BG3MFXMetalHooksReplaceDraws(BG3MFXDrawReplacement replacement) {
     if (hooksActive || drawReplacement.claim || !replacement.claim || !replacement.draw) return NO;
     drawReplacement = replacement;
+    watchedConstants |= replacement.constantSlots;
     return YES;
 }
 static void notifyNewEncoder(__unsafe_unretained id encoder, BOOL compute) {
@@ -93,12 +95,11 @@ static void notifyNewEncoder(__unsafe_unretained id encoder, BOOL compute) {
 // The renderer extension (MetalHooksInternal.h); its constant slots and
 // watched vertex buffer slot are copied out for the bind hooks.
 static RendererExtension renderer;
-static uint32_t watchedConstants;
 static NSUInteger watchedVertexSlot = NSNotFound;
 BOOL metalhooks::extendRenderer(const RendererExtension &extension) {
     if (hooksActive || renderer.endEncoding || !extension.endEncoding) return NO;
     renderer = extension;
-    watchedConstants = extension.constantSlots;
+    watchedConstants |= extension.constantSlots;
     watchedVertexSlot = extension.vertexBufferSlot;
     return YES;
 }
@@ -393,6 +394,41 @@ static bool replacedDraw(__unsafe_unretained id encoder, void (^call)(void)) {
             // Keep bind dedup's record true to what Metal now holds.
             if (bindDedup && index < 64) if (__unsafe_unretained BG3MFXEncoderState *s=encoderState(e)) s->bindFilter.fragmentTexture[index]=t;
         },
+        [](__unsafe_unretained id e, const void *bytes, NSUInteger length, NSUInteger index) {
+            static SEL set = @selector(setFragmentBytes:length:atIndex:);
+            ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(e,set))(e,set,bytes,length,index);
+        },
+        [](__unsafe_unretained id e, NSUInteger index, NSUInteger length) -> const void * {
+            if (!constantInputNeeded(index)) return nullptr;
+            ConstantBinding *binding = constantSlot(e,StageFragment,index);
+            if (!binding) return nullptr;
+            if (binding->hasBytes) {
+                NSData *bytes = encoderState(e)->bytes[@(StageFragment*EncoderSlots+index)];
+                return bytes.length >= length ? bytes.bytes : nullptr;
+            }
+            id<MTLBuffer> buffer = binding->buffer;
+            if (!buffer || buffer.storageMode != MTLStorageModeShared) return nullptr;
+            NSUInteger offset = binding->offset, size = buffer.length;
+            if (offset > size || length > size-offset) return nullptr;
+            const uint8_t *contents = (const uint8_t *)buffer.contents;
+            return contents ? contents+offset : nullptr;
+        },
+        [](__unsafe_unretained id e, MTLViewport *viewport) {
+            __unsafe_unretained BG3MFXEncoderState *s=encoderState(e);
+            if (!s || !s->hasViewport) return false;
+            *viewport = s->viewport;
+            return true;
+        },
+        [](__unsafe_unretained id e, MTLScissorRect *scissor) {
+            __unsafe_unretained BG3MFXEncoderState *s=encoderState(e);
+            if (!s || !s->hasScissor) return false;
+            *scissor = s->scissor;
+            return true;
+        },
+        [](__unsafe_unretained id e, MTLViewport viewport) {
+            static SEL set = @selector(setViewport:);
+            ((void(*)(id,SEL,MTLViewport))original(e,set))(e,set,viewport);
+        },
     };
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder);
     return drawReplacement.draw(encoder,s->pipeline,s->textures[0],s->textures[1],calls,call);
@@ -413,14 +449,17 @@ static void drawBaseInstance(__unsafe_unretained id self, SEL cmd, MTLPrimitiveT
     slowDraw(self,DrawCall{type,start,count,instances,base,0,nil,0,MTLIndexTypeUInt16,false},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,NSUInteger,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,start,count,instances,base); });
 }
 static void drawIndexed(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset) {
+    if (replacedDrawBound(self) && replacedDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); return; }
     slowDraw(self,DrawCall{type,0,count,1,0,0,buffer,offset,indexType,true},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset); });
 }
 static void drawIndexedInstances(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances) {
+    if (replacedDrawBound(self) && replacedDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); return; }
     slowDraw(self,DrawCall{type,0,count,instances,0,0,buffer,offset,indexType,true},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances); });
 }
 static void drawIndexedBase(__unsafe_unretained id self, SEL cmd, MTLPrimitiveType type, NSUInteger count, MTLIndexType indexType, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger instances, NSInteger baseVertex, NSUInteger baseInstance) {
+    if (replacedDrawBound(self) && replacedDraw(self,^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger,NSInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances,baseVertex,baseInstance); })) return;
     if (fastDraw(self)) { ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger,NSInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances,baseVertex,baseInstance); return; }
     slowDraw(self,DrawCall{type,0,count,instances,baseInstance,baseVertex,buffer,offset,indexType,true},^{ ((void(*)(id,SEL,MTLPrimitiveType,NSUInteger,MTLIndexType,id,NSUInteger,NSUInteger,NSInteger,NSUInteger))original(self,cmd))(self,cmd,type,count,indexType,buffer,offset,instances,baseVertex,baseInstance); });
 }

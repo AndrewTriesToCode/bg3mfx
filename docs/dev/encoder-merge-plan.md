@@ -5,8 +5,8 @@ merge worked in the game, but displayed HUD runs showed no GPU time
 difference beyond the noise between runs (displayed, Ultra, upscaling off:
 about 22–23.5 ms of GPU time with or without it), so it was removed. It was
 part of the former improved-render-engine feature, which has since been split
-into [duplicate-shadow-fix](../../src/features/duplicate-shadow-fix/README.md)
-and [improved-shadows](../../src/features/improved-shadows/README.md). This
+into features whose shadow parts are now
+[improved-shadows](../../src/features/improved-shadows/README.md). This
 plan is kept for its design and native facts. Everything marked Read was read
 from the disassembly of BG3 4.1.1.7631656 (ARM64). The evidence is in the
 [command map](baseline/command-buffer.md).

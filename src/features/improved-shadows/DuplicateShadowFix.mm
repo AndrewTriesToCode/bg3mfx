@@ -1,6 +1,5 @@
-#import "features/duplicate-shadow-fix/DuplicateShadowFix.h"
+#import "features/improved-shadows/DuplicateShadowFix.h"
 #import "features/custom-render-stages/CustomRenderStages.h"
-#include "common/Feature.h"
 #include <cstdint>
 #include <vector>
 
@@ -22,7 +21,7 @@ BOOL BG3MFXInstallDuplicateShadowFix(NSError **error) {
     // VertexProcessing) look up the first match. The Fullscreen view has none.
     const std::vector<uint8_t> window = join(P::First, P::Shadow, P::Second, P::Third);
     const std::vector<uint8_t> offscreen = join(P::First, P::EarlyVtResolve, P::Shadow, P::Second, P::Third, P::Additional);
-    static const char *const feature = "duplicate-shadow-fix";
+    static const char *const feature = "improved-shadows";
     if (!BG3MFXSetViewStages(BG3MFXViewKind::Game, feature, window.data(), window.size(), error) ||
         !BG3MFXSetViewStages(BG3MFXViewKind::Player, feature, window.data(), window.size(), error) ||
         !BG3MFXSetViewStages(BG3MFXViewKind::Offscreen, feature, offscreen.data(), offscreen.size(), error))
@@ -30,11 +29,3 @@ BOOL BG3MFXInstallDuplicateShadowFix(NSError **error) {
     return YES;
 }
 
-namespace {
-const char *const duplicateShadowFixRequires[] = {"custom-render-stages", nullptr};
-BOOL installDuplicateShadowFix(const BG3MFXFeatureContext &, NSError **error) {
-    return BG3MFXInstallDuplicateShadowFix(error);
-}
-}
-BG3MFX_FEATURE(duplicateShadowFix, {"duplicate-shadow-fix", duplicateShadowFixRequires, false,
-    installDuplicateShadowFix, nullptr});

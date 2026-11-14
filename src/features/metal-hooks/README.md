@@ -24,8 +24,10 @@ afterwards:
 - render-pipeline descriptor filters (up to four), which may return a
   changed copy of each descriptor before anything else sees it
   (improved-display's drawable format and composite shaders);
-- one draw replacement, which takes the non-indexed draws of the render
-  pipelines it claims (metalfx's renderer);
+- one draw replacement, which takes the draws (indexed or not) of the render
+  pipelines it claims, and can read BG3's viewport and the constant buffers
+  at the indexes it names
+  ([improved-shadows](../improved-shadows/README.md)' point-light fix);
 - one pipeline substitution: for the render pipelines it claims, Metal is
   bound the pipeline `substitute` returns at each bind, while every part of
   bg3mfx still tracks BG3's (improved-display's sRGB composite);

@@ -136,7 +136,7 @@ class LaunchTests(unittest.TestCase):
 
     def test_launch_enables_only_the_requested_features(self):
         self.run_launch(features=("thread-idling",))
-        self.run_launch(features=("metalfx", "duplicate-shadow-fix", "improved-shadows"))
+        self.run_launch(features=("metalfx", "improved-shadows"))
 
     def test_hud_starts_shown_only_when_the_checkbox_was_left_on(self):
         self.run_launch(hud=True)

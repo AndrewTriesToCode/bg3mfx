@@ -23,7 +23,7 @@ single and bulk binds, cache boundaries, and overflow-safe fallback.
 October 14 diagnostic counters found about 30,000 fragment texture slots and
 1,130 texture-bind calls per frame, with 92% of slots already holding the same
 texture; 12% of pipeline binds repeated the active pipeline. Live A/B on an
-M5 Pro, Ultra, Upscaling Off, and windowed, with the duplicate-shadow fix and
+M5 Pro, Ultra, Upscaling Off, and windowed, with the duplicate shadow pass removed and
 depth-prepass trim (since removed) enabled, changed 83.1 to 84.0 fps at about 10.7 ms GPU time.
 CPU samples showed render-thread driver time down about 25% per frame and
 texture binds down 72%. The scene remained mostly GPU-limited, so the FPS

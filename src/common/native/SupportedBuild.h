@@ -337,7 +337,7 @@ inline constexpr size_t StateBytes = 0x10;
 inline constexpr size_t PathBytes = 0x10, PathHeapLength = 0x08, PathInlineLength = 0x0f;
 }
 
-// Improved shadows (src/features/improved-shadows/ImprovedShadows.mm): ls::CascadedShadowMaskStage's
+// Improved shadows (src/features/improved-shadows/ShadowMask.mm): ls::CascadedShadowMaskStage's
 // kernel records into the list embedded at List. It picks this frame's
 // program from the table into Current, begins its render pass and subpass
 // (BeginRenderSubPass resets MetalRenderer's highest bound slots, not its

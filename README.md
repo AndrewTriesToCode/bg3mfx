@@ -40,8 +40,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. |
 | **Dynamic Upscaling** | Changes MetalFX Temporal Upscaling factor in real time to maintain a minimum target FPS. |
 | **Dynamic Upscaling Thermal Guard** | Changes MetalFX Temporal Upscaling factor in real time to reduce GPU usage and heat. |
-| **Duplicate Shadow Fix** | Draws the sun's shadows once per frame instead of twice. |
-| **Improved Shadows** | Replaces the sun shadow filter to fix dotted lines, diamond patches and dark slopes in shadows. |
+| **Improved Shadows** | Draws the sun's shadows once per frame instead of twice, replaces the sun shadow filter to fix dotted lines, diamond patches and dark slopes, and removes the black wedges that torches and other point lights throw around themselves. |
 | **Ambient Occlusion Blur Fix** | Fixes the game's ambient occlusion blur, which on Macs smooths only vertically, so it smooths horizontally too. |
 | **Improved Display** | Replaces the game's Windows-style HDR with macOS EDR, using your screen's real brightness headroom. Brighter highlights and P3 color even on screens that aren't HDR displays, such as the Apple Studio Display and MacBook Air. The launcher's HDR option no longer matters, and HDR calibration skips the peak-brightness step. |
 
@@ -163,7 +162,6 @@ the environment used to launch `bg3mfx`:
 | Feature | Environment variable |
 | --- | --- |
 | **MetalFX upscaling and Frame Generation** | `BG3MFX_FEATURE_METALFX=0` removes the MetalFX options from Options → Video, and Dynamic Resolution with them. |
-| **Duplicate Shadow Fix** | `BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=0` |
 | **Improved Shadows** | `BG3MFX_FEATURE_IMPROVED_SHADOWS=0` |
 | **Render Thread Optimizations** | `BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=0` |
 | **CPU Thread Idling** | `BG3MFX_FEATURE_THREAD_IDLING=0` |

@@ -76,7 +76,9 @@ RUNTIME_SOURCES = \
 	src/features/ssao-blur-fix/SSAOBlurFix.mm \
 	src/features/metalfx/dynamic-resolution/DynamicResolution.mm \
 	src/features/improved-shadows/ImprovedShadows.mm \
-	src/features/duplicate-shadow-fix/DuplicateShadowFix.mm \
+	src/features/improved-shadows/ShadowMask.mm \
+	src/features/improved-shadows/PointLightShadowFix.mm \
+	src/features/improved-shadows/DuplicateShadowFix.mm \
 	src/features/metalfx/MetalFX.mm \
 	src/features/metalfx/MetalFXOptions.mm \
 	src/features/metal-hud/MetalHUD.mm \
@@ -116,9 +118,10 @@ RUNTIME_HEADERS = \
 	src/features/animation-optimizations/GrannyKernels.h \
 	src/features/ssao-blur-fix/SSAOBlurFix.h \
 	src/features/metalfx/dynamic-resolution/DynamicResolution.h \
-	src/features/improved-shadows/ImprovedShadows.h \
+	src/features/improved-shadows/ShadowMask.h \
 	src/features/improved-shadows/ImprovedShadowsShader.h \
-	src/features/duplicate-shadow-fix/DuplicateShadowFix.h \
+	src/features/improved-shadows/PointLightShadowFix.h \
+	src/features/improved-shadows/DuplicateShadowFix.h \
 	src/features/improved-display/ImprovedDisplayShader.h \
 	src/common/gpu/GPUResources.h \
 	src/common/gpu/MetalFXPipeline.h \
@@ -153,7 +156,7 @@ $(BIN_DIR)/metalfx-probe: tools/probes/metalfx_probe.m | $(BIN_DIR)
 $(BIN_DIR)/uniform-lock-sim: tools/probes/uniform_lock_sim.cpp | $(BIN_DIR)
 	xcrun clang++ -std=c++17 -O2 -Wall -Wextra -mmacosx-version-min=26.0 $< -o $@
 
-test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/improved-display-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/ssr-history-island-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/animation-optimizations-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
+test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/improved-display-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/point-light-shadow-fix-smoke $(BIN_DIR)/ssr-history-island-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/animation-optimizations-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/supported-build-smoke
 	$(BIN_DIR)/root-smoke
 	$(BIN_DIR)/custom-render-stages-smoke
@@ -162,6 +165,7 @@ test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/improved-display-smoke $(BIN_D
 	$(BIN_DIR)/improved-shadows-smoke
 	$(BIN_DIR)/improved-display-smoke
 	$(BIN_DIR)/native-shadows-smoke
+	$(BIN_DIR)/point-light-shadow-fix-smoke
 	$(BIN_DIR)/ssr-history-island-smoke
 	$(BIN_DIR)/ssao-blur-fix-smoke
 	$(BIN_DIR)/animation-optimizations-smoke
@@ -214,7 +218,10 @@ $(BIN_DIR)/improved-shadows-smoke: tests/features/improved-shadows/improved_shad
 $(BIN_DIR)/improved-display-smoke: tests/features/improved-display/improved_display_smoke.mm src/features/improved-display/ImprovedDisplayShader.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
 
-$(BIN_DIR)/native-shadows-smoke: tests/features/improved-shadows/native_shadows_smoke.mm src/features/improved-shadows/ImprovedShadows.mm src/features/improved-shadows/ImprovedShadows.h src/features/improved-shadows/ImprovedShadowsShader.h src/features/custom-pipeline-bundles/CustomPipelineBundles.h src/features/custom-pipeline-bundles/PipelineRecord.h src/features/custom-render-stages/CustomRenderStages.h src/common/Feature.h src/common/native/SupportedBuild.h | $(BIN_DIR)
+$(BIN_DIR)/native-shadows-smoke: tests/features/improved-shadows/native_shadows_smoke.mm src/features/improved-shadows/ShadowMask.mm src/features/improved-shadows/ShadowMask.h src/features/improved-shadows/ImprovedShadowsShader.h src/features/custom-pipeline-bundles/CustomPipelineBundles.h src/features/custom-pipeline-bundles/PipelineRecord.h src/features/custom-render-stages/CustomRenderStages.h src/common/Feature.h src/common/native/SupportedBuild.h | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
+
+$(BIN_DIR)/point-light-shadow-fix-smoke: tests/features/improved-shadows/point_light_shadow_fix_smoke.mm src/features/improved-shadows/PointLightShadowFix.mm src/features/improved-shadows/PointLightShadowFix.h src/features/metal-hooks/MetalHooks.h src/common/Feature.h src/common/Notice.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
 
 # Developer probe, not part of make test: timings depend on the machine and load.
@@ -224,8 +231,8 @@ $(BIN_DIR)/hook-overhead: tools/probes/hook_overhead.mm | $(BIN_DIR)
 hook-overhead: $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/hook-overhead
 	BG3MFX_FEATURE_METAL_HOOKS=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib
-	BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1 BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=1 BG3MFX_FEATURE_IMPROVED_SHADOWS=1 BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib
-	BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1 BG3MFX_FEATURE_DUPLICATE_SHADOW_FIX=1 BG3MFX_FEATURE_IMPROVED_SHADOWS=1 BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1 BG3MFX_FEATURE_METALFX=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFXTest.dylib 3
+	BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1 BG3MFX_FEATURE_IMPROVED_SHADOWS=1 BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFX.dylib
+	BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=1 BG3MFX_FEATURE_IMPROVED_SHADOWS=1 BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1 BG3MFX_FEATURE_METALFX=1 $(BIN_DIR)/hook-overhead $(BIN_DIR)/libBG3MetalFXTest.dylib 3
 
 $(BIN_DIR)/bind-filter-smoke: tests/features/metal-hooks/bind_filter_smoke.mm src/features/metal-hooks/BindFilter.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
@@ -239,7 +246,7 @@ $(BIN_DIR)/custom-render-stages-smoke: tests/features/custom-render-stages/custo
 $(BIN_DIR)/custom-pipeline-bundles-smoke: tests/features/custom-pipeline-bundles/custom_pipeline_bundles_smoke.mm src/features/custom-pipeline-bundles/CustomPipelineBundles.mm src/features/custom-pipeline-bundles/CustomPipelineBundles.h src/features/custom-pipeline-bundles/PipelineRecord.h src/common/native/CodePatch.mm src/common/Feature.h src/common/native/SupportedBuild.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
 
-$(BIN_DIR)/duplicate-shadow-fix-smoke: tests/features/duplicate-shadow-fix/duplicate_shadow_fix_smoke.mm src/features/duplicate-shadow-fix/DuplicateShadowFix.mm src/features/duplicate-shadow-fix/DuplicateShadowFix.h src/features/custom-render-stages/CustomRenderStages.mm src/features/custom-render-stages/CustomRenderStages.h src/common/Feature.h src/common/native/CodePatch.mm src/common/native/SupportedBuild.h | $(BIN_DIR)
+$(BIN_DIR)/duplicate-shadow-fix-smoke: tests/features/improved-shadows/duplicate_shadow_fix_smoke.mm src/features/improved-shadows/DuplicateShadowFix.mm src/features/improved-shadows/DuplicateShadowFix.h src/features/custom-render-stages/CustomRenderStages.mm src/features/custom-render-stages/CustomRenderStages.h src/common/Feature.h src/common/native/CodePatch.mm src/common/native/SupportedBuild.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -o $@
 
 $(BIN_DIR)/supported-build-smoke: tests/common/supported_build_smoke.cpp src/common/native/SupportedBuild.h | $(BIN_DIR)

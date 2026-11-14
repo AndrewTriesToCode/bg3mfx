@@ -25,8 +25,8 @@ BOOL BG3MFXMetalHooksFilterPresentDuration(double (*filter)(double duration));
 // any other part of bg3mfx sees it. Called on BG3's pipeline-building threads.
 BOOL BG3MFXMetalHooksFilterRenderPipeline(MTLRenderPipelineDescriptor *(*filter)(id device, MTLRenderPipelineDescriptor *desc));
 
-// Draw replacement: one feature may take the non-indexed draws of the render
-// pipelines it claims. Other draws only check a per-pipeline flag.
+// Draw replacement: one feature may take the draws (indexed or not) of the
+// render pipelines it claims. Other draws only check a per-pipeline flag.
 //
 // The original newRenderPipelineStateWithDescriptor:error:, which returns +1.
 // Typed as void * so ARC does not retain it again; take it with __bridge_transfer.
@@ -35,6 +35,18 @@ using BG3MFXCreateRenderPipeline = void *(*)(id, SEL, MTLRenderPipelineDescripto
 struct BG3MFXEncoderCalls {
     void (*setPipeline)(__unsafe_unretained id encoder, __unsafe_unretained id state);
     void (*setFragmentTexture)(__unsafe_unretained id encoder, __unsafe_unretained id<MTLTexture> texture, NSUInteger index);
+    // Binds bytes at a fragment buffer index outside the replacement's
+    // constantSlots, which metal-hooks does not record.
+    void (*setFragmentBytes)(__unsafe_unretained id encoder, const void *bytes, NSUInteger length, NSUInteger index);
+    // The first `length` bytes bound at fragment buffer `index`, one of the
+    // replacement's constantSlots: setFragmentBytes data or a shared buffer's
+    // contents. nullptr when unbound or not readable by the CPU.
+    const void *(*fragmentConstants)(__unsafe_unretained id encoder, NSUInteger index, NSUInteger length);
+    // BG3's latest viewport and scissor on this encoder; false before it sets one.
+    bool (*viewport)(__unsafe_unretained id encoder, MTLViewport *viewport);
+    bool (*scissor)(__unsafe_unretained id encoder, MTLScissorRect *scissor);
+    // Sets the viewport without changing the record of BG3's.
+    void (*setViewport)(__unsafe_unretained id encoder, MTLViewport viewport);
 };
 struct BG3MFXDrawReplacement {
     // A render pipeline BG3 created: whether to take its draws.
@@ -44,6 +56,8 @@ struct BG3MFXDrawReplacement {
     // having drawn nothing, to let BG3's draw run.
     bool (*draw)(__unsafe_unretained id encoder, __unsafe_unretained id state, __unsafe_unretained id<MTLTexture> fragment0,
                  __unsafe_unretained id<MTLTexture> fragment1, const BG3MFXEncoderCalls &calls, void (^draw)(void));
+    // Bit i: record buffer bindings at index i (below 32) for fragmentConstants.
+    uint32_t constantSlots;
 };
 BOOL BG3MFXMetalHooksReplaceDraws(BG3MFXDrawReplacement replacement);
 // Pipeline substitution: one feature may bind other pipelines in place of the

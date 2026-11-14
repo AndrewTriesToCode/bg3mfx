@@ -63,7 +63,7 @@ class LauncherTests(unittest.TestCase):
             self.assertIn("Arguments: -NoLauncher 1", result.stdout)
             self.assertIn("was not started", result.stdout)
             # Every feature is on unless the player opts out.
-            for feature in ("METAL_HUD", "METALFX", "DUPLICATE_SHADOW_FIX", "IMPROVED_SHADOWS",
+            for feature in ("METAL_HUD", "METALFX", "IMPROVED_SHADOWS",
                             "RENDER_THREAD_OPTIMIZATIONS", "NEW_CHARACTER_CRASH_FIX", "LUA_JUMP_FIX",
                             "THREAD_IDLING", "REDUCE_LOCKING", "SSAO_BLUR_FIX", "ANIMATION_OPTIMIZATIONS",
                             "IMPROVED_DISPLAY", "MAX_FRAME_RATE"):

@@ -32,7 +32,7 @@ This injects the runtime library from `build/bin/`, skips the Larian launcher wi
 `-NoLauncher 1`, enables the Metal HUD, and leaves the app bundle unchanged.
 It enables no features unless you name them, so a live test exercises one at a
 time: `--feature thread-idling`, repeatable, with any of `metal-hud`,
-`metalfx`, `duplicate-shadow-fix`, `improved-shadows`,
+`metalfx`, `improved-shadows`,
 `render-thread-optimizations`, `new-character-crash-fix`, `lua-jump-fix`,
 `thread-idling`, `reduce-locking`, `ssao-blur-fix` and `animation-optimizations`. A feature brings the features it
 requires (custom-menu for the menu options, custom-render-stages for the shadow
