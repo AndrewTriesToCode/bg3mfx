@@ -546,6 +546,14 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `ClusterInfoBuffer` reads no lights instead of faulting the GPU.
 - `src/features/lua-jump-fix/LuaJumpFix.*`: BG3's Lua error handling uses `_setjmp`/`_longjmp`,
   avoiding two system calls per protected call (`BG3MFX_FEATURE_LUA_JUMP_FIX=1`).
+- `src/features/script-fixes/ScriptFixes.*`: Script Fixes
+  (`BG3MFX_FEATURE_SCRIPT_FIXES=1`; native). Entry hooks on Lua's `lua_load`
+  and on `ls::FileReader`'s constructor patch BG3's Thoth condition helpers,
+  its condition preprocessor and two AI archetypes as the game reads them.
+  A file from the table is edited only if its SHA-256 is the shipped file's;
+  any other file, or a mod's replacement, loads unchanged. Scripts get a
+  patched copy; archetypes are patched in place with same-length edits (a
+  packaged file's shared copy is recognized once patched).
 - `src/features/animation-optimizations/AnimationOptimizations.*`,
   `GrannyKernels.h`: bit-exact NEON replacements for hot functions of BG3's
   unoptimized (-O0) Granny animation runtime: four Granny function pointers

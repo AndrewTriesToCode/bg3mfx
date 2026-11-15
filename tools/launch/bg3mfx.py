@@ -39,6 +39,7 @@ FEATURES = (
     "render-thread-optimizations",
     "new-character-crash-fix",
     "lua-jump-fix",
+    "script-fixes",
     "thread-idling",
     "reduce-locking",
     "ssao-blur-fix",

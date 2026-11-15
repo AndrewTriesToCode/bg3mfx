@@ -2,6 +2,9 @@ VERSION ?= 0.5.0
 PREFIX ?= /usr/local
 BIN_DIR ?= build/bin
 EVIDENCE_DIR ?= build/evidence
+# Thoth helpers extracted from the game's paks, local only: script-fixes-smoke
+# checks its table against them when they are there.
+SCRIPTS_DIR ?= build/evidence/game-scripts
 CXX = xcrun clang++
 CPPFLAGS = -Isrc
 CXXFLAGS = $(CPPFLAGS) -std=c++17 -fobjc-arc -O2 -Wall -Wextra -mmacosx-version-min=26.0
@@ -72,6 +75,7 @@ RUNTIME_SOURCES = \
 	src/features/thread-idling/ThreadIdling.mm \
 	src/features/reduce-locking/UniformSlices.mm \
 	src/features/lua-jump-fix/LuaJumpFix.mm \
+	src/features/script-fixes/ScriptFixes.mm \
 	src/features/animation-optimizations/AnimationOptimizations.mm \
 	src/features/ssao-blur-fix/SSAOBlurFix.mm \
 	src/features/metalfx/dynamic-resolution/DynamicResolution.mm \
@@ -114,6 +118,7 @@ RUNTIME_HEADERS = \
 	src/features/thread-idling/ThreadIdling.h \
 	src/features/reduce-locking/UniformSlices.h \
 	src/features/lua-jump-fix/LuaJumpFix.h \
+	src/features/script-fixes/ScriptFixes.h \
 	src/features/animation-optimizations/AnimationOptimizations.h \
 	src/features/animation-optimizations/GrannyKernels.h \
 	src/features/ssao-blur-fix/SSAOBlurFix.h \
@@ -156,8 +161,9 @@ $(BIN_DIR)/metalfx-probe: tools/probes/metalfx_probe.m | $(BIN_DIR)
 $(BIN_DIR)/uniform-lock-sim: tools/probes/uniform_lock_sim.cpp | $(BIN_DIR)
 	xcrun clang++ -std=c++17 -O2 -Wall -Wextra -mmacosx-version-min=26.0 $< -o $@
 
-test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/improved-display-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/point-light-shadow-fix-smoke $(BIN_DIR)/ssr-history-island-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/animation-optimizations-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
+test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/script-fixes-smoke $(BIN_DIR)/improved-display-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/point-light-shadow-fix-smoke $(BIN_DIR)/ssr-history-island-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/animation-optimizations-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/supported-build-smoke
+	$(BIN_DIR)/script-fixes-smoke $(SCRIPTS_DIR)
 	$(BIN_DIR)/root-smoke
 	$(BIN_DIR)/custom-render-stages-smoke
 	$(BIN_DIR)/custom-pipeline-bundles-smoke
@@ -260,3 +266,6 @@ $(BIN_DIR)/animation-optimizations-smoke: tests/features/animation-optimizations
 
 $(BIN_DIR)/ssao-blur-fix-smoke: tests/features/ssao-blur-fix/ssao_blur_fix_smoke.cpp tests/features/ssao-blur-fix/ssao_blur_island_wrappers.S src/common/native/SupportedBuild.h | $(BIN_DIR)
 	$(CXX) $(CPPFLAGS) -std=c++17 -O2 -Wall -Wextra -arch arm64 tests/features/ssao-blur-fix/ssao_blur_fix_smoke.cpp tests/features/ssao-blur-fix/ssao_blur_island_wrappers.S -o $@
+
+$(BIN_DIR)/script-fixes-smoke: tests/features/script-fixes/script_fixes_smoke.mm src/features/script-fixes/ScriptFixes.h | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $< -framework Foundation -o $@

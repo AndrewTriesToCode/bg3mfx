@@ -64,6 +64,26 @@ namespace Lua {
 inline constexpr uintptr_t LongjmpCall = 0x100769e8c;
 inline constexpr uintptr_t SetjmpCall = 0x100769f64;
 }
+// script-fixes (src/features/script-fixes/): an entry hook on Lua 5.4's
+// lua_load, through which Khonsu compiles every Thoth and Anubis script.
+// `sub sp, sp, #0x60`.
+namespace ScriptFixes {
+inline constexpr uintptr_t LuaLoad = 0x1007602a0;
+inline constexpr uint32_t LuaLoadFirst = 0xd10183ff;
+// ls::FileReader::FileReader(Path const&, EType, EnumFlags) (C1; returns
+// this), through which (anonymous)::LoadModifiersFromDisk reads AI
+// archetypes. `sub sp, sp, #0x40`.
+inline constexpr uintptr_t FileReaderInit = 0x1064cad78;
+inline constexpr uint32_t FileReaderInitFirst = 0xd10103ff;
+}
+namespace ScriptFixes::Layout {
+// ls::FileReader: loaded flag (u8), data, size (u64). For a packaged file the
+// data can be the FileManager's own copy, shared by every reader.
+inline constexpr size_t ReaderLoaded = 0x00, ReaderData = 0x08, ReaderSize = 0x18;
+// ls::Path is an ls::STDString: when byte 15 is negative, a pointer at 0 and
+// a u32 length at 8; otherwise the characters inline, length in byte 15.
+inline constexpr size_t StringLong = 0x0f, StringLength = 0x08;
+}
 // Animation optimizations (src/features/animation-optimizations/): the Granny
 // 3D runtime, linked unoptimized. Multiply4x3Slot and Multiply4x3TransposeSlot
 // are the writable granny::ColumnMatrixMultiply4x3Impl and
@@ -465,7 +485,8 @@ inline constexpr Island SSRValid{0xaa0, 32};
 inline constexpr Island SSAOBlur{0xac0, 24};
 inline constexpr Island CustomPipelineBundles{0xad8, 2 * 24};
 inline constexpr Island ImprovedDisplay{0xb08, 2 * 24};
-inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, ViewportReduction, SSRHistory, SSRValid, SSAOBlur, CustomPipelineBundles, ImprovedDisplay};
+inline constexpr Island ScriptFixes{0xb38, 2 * 24};
+inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, ViewportReduction, SSRHistory, SSRValid, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];
