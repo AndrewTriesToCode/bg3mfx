@@ -229,30 +229,17 @@ static thread_local bool presentationThread=false;
 static thread_local bool presenterReleasedHere=false;
 
 // Bounds stand-ins in flight. Unlike a semaphore its limit can change per
-// request: BG3's double-buffered vsync allows two, otherwise three.
+// request: one for BG3's double-buffered vsync, otherwise two.
 @interface BG3MFXSlotGate : NSObject
-- (BOOL)acquireWithPreferredLimit:(NSUInteger)preferred maximumLimit:(NSUInteger)maximum
-                            grace:(double)grace timeout:(double)seconds;
+- (BOOL)acquireWithLimit:(NSUInteger)limit timeout:(double)seconds;
 - (void)releaseSlot;
 @end
 @implementation BG3MFXSlotGate { NSCondition *_condition; NSUInteger _inFlight; }
 - (instancetype)init { if ((self=[super init])) _condition=[NSCondition new]; return self; }
-- (BOOL)acquireWithPreferredLimit:(NSUInteger)preferred maximumLimit:(NSUInteger)maximum
-                            grace:(double)grace timeout:(double)seconds {
-    NSDate *graceDeadline=[NSDate dateWithTimeIntervalSinceNow:grace];
+- (BOOL)acquireWithLimit:(NSUInteger)limit timeout:(double)seconds {
     NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:seconds];
     [_condition lock];
-    // Prefer the smaller in-flight limit for lower latency. Give its next
-    // completion a short chance to free a slot; if it does not, borrow one
-    // bounded overflow slot so BG3 can continue encoding instead of blocking.
-    while (_inFlight>=preferred && _inFlight<maximum) {
-        if (![_condition waitUntilDate:graceDeadline]) break;
-    }
-    if (_inFlight<preferred) { ++_inFlight; [_condition unlock]; return YES; }
-    if (_inFlight<maximum) {
-        ++_inFlight; [_condition unlock]; return YES;
-    }
-    while (_inFlight>=maximum) {
+    while (_inFlight>=limit) {
         if (![_condition waitUntilDate:deadline]) { [_condition unlock]; return NO; }
     }
     ++_inFlight;
@@ -295,9 +282,6 @@ struct PresentTask {
     BG3MFXSlotGate *_slots;
     std::atomic<NSUInteger> _drawableIDs;
     std::atomic<double> _standInWait;
-    // Paced presentation prefers one stand-in and borrows one overflow slot
-    // only when its short wait expires, keeping latency low without stalling BG3.
-    std::atomic<bool> _preferSingleStandIn;
     std::mutex _mutex;
     std::condition_variable _wake;
     std::deque<PresentTask> _tasks;
@@ -322,9 +306,8 @@ struct PresentTask {
     if (!_copy || !_queue || !_event) { if (error && !*error) *error=fgError(@"Could not initialize frame presentation."); return nil; }
     _device=device; _pixelFormat=format;
     // Stand-ins in flight bound how far BG3 can run ahead of what has actually
-    // been shown: BG3's own buffering choice, two or three.
+    // been shown: BG3's own buffering choice less the drawable on screen.
     _slots=[BG3MFXSlotGate new];
-    _preferSingleStandIn.store(true);
     // Worker access is bounded by dealloc's stop/join; do not form a self/thread cycle.
     __unsafe_unretained BG3MFXFramePresenter *owner=self;
     _thread=std::thread([owner]{ [owner run]; }); return self;
@@ -353,9 +336,8 @@ struct PresentTask {
     NSUInteger w=(NSUInteger)layer.drawableSize.width, h=(NSUInteger)layer.drawableSize.height;
     if (!w || !h || layer.pixelFormat!=_pixelFormat) return nil;
     CFTimeInterval start=CACurrentMediaTime();
-    NSUInteger preferred=_preferSingleStandIn ? 1 : std::min<NSUInteger>(std::max<NSUInteger>(limit,2),3);
-    NSUInteger maximum=_preferSingleStandIn ? 2 : std::min<NSUInteger>(preferred+1,3);
-    BOOL acquired=[_slots acquireWithPreferredLimit:preferred maximumLimit:maximum grace:0.002 timeout:1];
+    // BG3's buffering counts the drawable on screen; stand-ins only wait.
+    BOOL acquired=[_slots acquireWithLimit:std::min<NSUInteger>(std::max<NSUInteger>(limit,2),3)-1 timeout:1];
     double waited=CACurrentMediaTime()-start;
     _standInWait=_standInWait+waited;
     if (!acquired) return nil;
@@ -444,13 +426,13 @@ static void waitUntilMediaTime(CFTimeInterval target) {
     // tearing as vsync off does without Frame Generation. It skips the wait
     // when BG3's next frame is already queued so it never falls behind.
     //
-    // On paced paths, two stand-ins allow BG3 to overlap the next render with
-    // presenter/GPU completion while bounding queued latency. Prior live tests
-    // at about 32 fps with BG3 triple-buffered measured 47 ms from commit to
+    // BG3's buffering sets the stand-ins in flight on every path, less the
+    // drawable on screen as without Frame Generation: one when double-buffered,
+    // for lower latency, otherwise two. Prior live tests at
+    // about 32 fps with BG3 triple-buffered measured 47 ms from commit to
     // display with one stand-in, 107 ms with three, at the same frame rate
-    // (without Frame Generation: 25 ms double, 50 ms triple). Standalone at
-    // 90 fps, 120 Hz, vsync on: 65 ms -> 48 ms. Vsync off above half the
-    // refresh rate keeps BG3's buffering: one stand-in cost frames there.
+    // (without Frame Generation: 25 ms double, 50 ms triple). One stand-in
+    // cost frames with vsync off, where BG3 always asks for three.
     //
     // Both copies are committed at once, and the stand-in is released when the
     // real copy completes, before any wait: BG3 never waits for this thread's
@@ -504,7 +486,6 @@ static void waitUntilMediaTime(CFTimeInterval target) {
         if (task.minimum>0) steps=std::max(steps,(int)ceil(task.minimum/frameStep-1e-3));
         double generatedMinimum=(steps/2-0.5)*frameStep;
         double realMinimum=(steps-steps/2-0.5)*frameStep;
-        _preferSingleStandIn=!spaced;
         dispatch_semaphore_t generatedReady=spaced ? dispatch_semaphore_create(0) : nil;
         dispatch_semaphore_t realReady=spaced ? dispatch_semaphore_create(0) : nil;
         id<CAMetalDrawable> generatedDrawable=nil;

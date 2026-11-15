@@ -46,7 +46,8 @@
 // The presenter that owns `drawable` if it is a stand-in, otherwise nil.
 + (BG3MFXFramePresenter *)presenterForStandIn:(id)drawable;
 // Like -[CAMetalLayer nextDrawable]: blocks (up to one second) while `limit`
-// stand-ins (BG3's buffering, clamped to 2...3) are still waiting to be shown,
+// stand-ins (BG3's buffering, clamped to 2...3, less one for the drawable on
+// screen) are still waiting to be shown,
 // then returns nil.
 - (id<CAMetalDrawable>)nextStandInForLayer:(CAMetalLayer *)layer limit:(NSUInteger)limit;
 - (BOOL)ownsTexture:(id<MTLTexture>)texture;

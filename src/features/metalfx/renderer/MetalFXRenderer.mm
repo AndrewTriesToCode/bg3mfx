@@ -1110,8 +1110,8 @@ static id layerNextDrawable(id self, SEL cmd) {
           framePresenter.failureHandler=^(NSError *e){declineFrameGeneration(e.localizedDescription ?: @"Metal could not present a generated frame.");};
       }
       presenter=framePresenter; }
-    // BG3's requested buffering limits its stand-ins (two for double-buffered
-    // vsync) while the real layer stays at three for the presenter.
+    // BG3's requested buffering limits its stand-ins (one waiting for
+    // double-buffered vsync) while the real layer stays at three for the presenter.
     return [presenter nextStandInForLayer:layer
         limit:[objc_getAssociatedObject(layer,&bg3DrawableCountKey) unsignedIntegerValue]];
 }

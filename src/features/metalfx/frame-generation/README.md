@@ -7,7 +7,9 @@ upscaling controls. It is off by default and combines with Off, FSR, Spatial,
 or Temporal. The interpolator uses scene color, depth, motion, and camera data
 to generate an image between rendered frames; BG3 continues to compose the UI
 on the real frame. BG3's drawable path is paired with a worker that presents
-generated and rendered images.
+generated and rendered images. BG3's VSync buffering still applies, counting the
+frame on screen: Double lets one rendered frame wait to be shown, for lower
+latency, and Triple two.
 
 Interpolation and presentation live in
 [`FrameInterpolation.mm`](../../../../src/features/metalfx/frame-generation/FrameInterpolation.mm), with

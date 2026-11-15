@@ -215,9 +215,9 @@ int main(int argc,char **argv) { @autoreleasepool {
     [NSThread sleepForTimeInterval:.35];
     if(int status=frame(3,false,248))return status;
     if(int status=frame(4,false))return status;
-    // The last choice left Frame Generation active. The presenter may allow two
-    // or three in-flight stand-ins depending on its pacing mode, but must keep
-    // the count bounded at three; the real layer stays at three.
+    // The last choice left Frame Generation active. BG3's buffering, less the
+    // drawable on screen, bounds the stand-ins: one when double-buffered, two
+    // when triple-buffered.
     @autoreleasepool {
         for(NSUInteger count:{2u,3u}){
             layer.maximumDrawableCount=count;
@@ -227,7 +227,7 @@ int main(int argc,char **argv) { @autoreleasepool {
                 CFTimeInterval start=CACurrentMediaTime();
                 id drawable=[layer nextDrawable];
                 if(!drawable){
-                    if(held.count<2 || held.count>3 || CACurrentMediaTime()-start<0.9){
+                    if(held.count!=count-1 || CACurrentMediaTime()-start<0.9){
                         fprintf(stderr,"Frame Generation stopped at an invalid stand-in count (buffering %lu, held %lu)\n",
                             (unsigned long)count,(unsigned long)held.count);return 16;}
                     blocked=true;
@@ -236,7 +236,7 @@ int main(int argc,char **argv) { @autoreleasepool {
                 [held addObject:drawable];
             }
             if(!blocked){
-                fprintf(stderr,"Frame Generation exceeded its three-stand-in limit (buffering %lu, held %lu)\n",
+                fprintf(stderr,"Frame Generation exceeded its stand-in limit (buffering %lu, held %lu)\n",
                     (unsigned long)count,(unsigned long)held.count);return 16;}
         }
         layer.maximumDrawableCount=2;

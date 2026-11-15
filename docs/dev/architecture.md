@@ -155,10 +155,9 @@ clears the tag.
 
 Presentation follows Apple's present-thread model. While Frame Generation is on, a
 `CAMetalLayer nextDrawable` hook gives BG3 stand-in drawables backed by three
-pooled textures; BG3 renders, composes UI, and "presents" into them unchanged,
-and waits briefly for a preferred slot. On paced paths it prefers one stand-in
-for lower latency, then borrows one bounded overflow slot if the previous slot
-has not finished copying. BG3 presents before encoding `CombineUI`, so the
+pooled textures; BG3 renders, composes UI, and "presents" into them unchanged.
+BG3's buffering, less the drawable on screen, limits the stand-ins waiting to
+be shown: one when double-buffered, for lower latency, otherwise two. BG3 presents before encoding `CombineUI`, so the
 stand-in present is resolved at `commit`, which also signals a shared event.
 The worker in `FrameInterpolation.*` acquires real
 drawables itself and waits for that event on the GPU. It spaces the generated
@@ -173,11 +172,7 @@ and real images about half of BG3's smoothed frame interval apart:
 `afterMinimumDuration:` rounds up to whole screen steps, so each minimum is set
 half a step under its count of steps: half the interval rounded up past the frame
 time and let the presenter fall behind. It would also cap the vsync-off fast
-case. On the paced paths (the first two rows) BG3 prefers one stand-in, then can
-borrow one overflow slot after a short grace wait; this lets a nearly-finished
-copy release the low-latency slot while avoiding a long render-thread stall.
-The fast vsync-off path keeps BG3's own buffering and allows at most one
-additional stand-in up to a total of three. The
+case. The
 refresh interval is read on the main thread from the
 layer's window. The stand-in is released when the real copy completes, before
 any wait, and the worker skips the wait when BG3's next frame is already
