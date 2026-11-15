@@ -28,7 +28,21 @@ Spatial keeps the native anti-aliasing option enabled unless Frame Generation is
 on. While Temporal or Frame Generation is on, the menu selects the Anti-Aliasing
 entry labelled "TAA" through its own callback, dims the control, and saves the
 player's previous choice (`BG3MFXSavedAntiAliasing`) to restore when neither is
-on. Temporal keeps BG3's TAA
+on. With Temporal the combo shows **MetalFX AA** instead (an entry metalfx
+appends; BG3's own setting is TAA underneath), dimmed. Picking MetalFX AA with the
+Upscaling Type Off runs Temporal at 1x scale (hidden quality 5, area 1) on BG3's
+FSR setup while the type still shows Off (`BG3MFXMetalFXAA`), and the dimmed
+Upscaling Quality shows BG3's Off entry. The entry is offered only with the
+type Off or Temporal; FSR and Spatial leave it out of the list. Picking another
+Anti-Aliasing option (through the combo's callback or on Apply) or another
+Upscaling Type ends it (FSR and Spatial return to the player's previous
+choice); leaving Temporal for Off returns to it if it was the saved choice.
+BG3's Upscaling Type callback runs `RefreshUIAntiAliasing`, which rebuilds the
+combo, reinstalls BG3's own selection callback and shows BG3's setting.
+custom-menu hooks it (`BG3MFXMenuOnAntiAliasingRefreshed`): metalfx appends the
+entry (for the type being applied, which metalfx records before calling BG3's
+callback; Spatial runs it as FSR) and takes the callback inside the refresh,
+before the menu is notified once, and then shows MetalFX AA again. Temporal keeps BG3's TAA
 input production but skips the TAA draw only on exact targets previously seen
 feeding the upscaling stage. Inventory and other auxiliary views retain native
 TAA. A newly discovered upscaled target keeps native AA for its discovery frame;
@@ -583,7 +597,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   surface grid draws (`SurfaceGridDraw`) and subsurface scattering widths
   (`SubsurfaceDraw`) while reducing.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, thread idling `0x9c0`, uniform
-  slices `0xa00`, viewport reduction `0xa40`, SSR history `0xa70`, SSR valid `0xaa0`, SSAO blur `0xac0`, custom pipeline bundles `0xad8` (offsets from
+  slices `0xa00`, viewport reduction `0xa40`, SSR history `0xa70`, SSR valid `0xaa0`, SSAO blur `0xac0`, custom pipeline bundles `0xad8`, improved display `0xb08`, script fixes `0xb38`, custom menu `0xb68` (offsets from
   `0x100004000`). Each install checks its range is still zero.
 - `src/features/metal-hooks/MetalHooks.mm`: Metal hooks; `src/features/metalfx/renderer/MetalFXRenderer.mm`: exact texture
   association and pass replacement.

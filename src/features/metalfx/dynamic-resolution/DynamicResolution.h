@@ -27,8 +27,11 @@ float BG3MFXDynamicResolutionArea(void);
 // size / rendered content size, per axis).
 void BG3MFXDynamicResolutionSetScaleLimits(float minimumScale, float maximumScale);
 
-// The Upscaling Quality value of Ultra Performance.
-inline constexpr int BG3MFXUltraPerformanceQuality = 4;
+// The Upscaling Quality value of Ultra Performance, and the hidden one MetalFX AA
+// uses: MetalFX Temporal at 1x scale, which BG3 also renders at full size, with
+// the area left at 1.
+inline constexpr int BG3MFXUltraPerformanceQuality = 4, BG3MFXMetalFXAAQuality = 5;
+// Qualities that run the reduced-resolution machinery (dynamic Temporal scalers).
 inline bool BG3MFXReducedQualityValue(int quality) {
-    return quality == BG3MFXUltraPerformanceQuality;
+    return quality == BG3MFXUltraPerformanceQuality || quality == BG3MFXMetalFXAAQuality;
 }

@@ -10,9 +10,14 @@
 #include <cmath>
 
 // MetalFX's Video options: the MetalFX Spatial and Temporal Upscaling Types,
-// the Frame Generation checkbox, and Temporal's Ultra Performance quality. BG3's settings code accepts
+// the Frame Generation checkbox, Temporal's Ultra Performance quality and the
+// MetalFX AA Anti-Aliasing entry. BG3's settings code accepts
 // only Off and FSR as upscaling types, so a MetalFX type runs BG3's FSR setup
 // for its quality and render resolution and is tracked separately here.
+// MetalFX AA is MetalFX Temporal at 1x scale: with the Upscaling Type Off it runs
+// that FSR setup at the hidden full-size quality, and while a Temporal upscaler
+// is selected the Anti-Aliasing combo shows it, dimmed. BG3's own Anti-Aliasing
+// setting stays TAA underneath, whose inputs MetalFX uses.
 
 namespace Native = BG3MFXBuild::Menu;
 namespace Layout = BG3MFXBuild::Menu::Layout;
@@ -26,10 +31,25 @@ std::atomic<int> selectedScalingMode{0};
 std::atomic<bool> frameGenerationChecked{false};
 bool metalFXValue(int value) { return value == 2 || value == 3; }
 bool temporalValue(int value) { return value == 3; }
+// The Upscaling Type BG3's native type callback is applying, or -1. That
+// callback rebuilds the Anti-Aliasing combo before selectedScalingMode changes,
+// and runs MetalFX Spatial and Temporal as its FSR type.
+int nativeTypeTarget = -1;
+// MetalFX AA is offered with the Upscaling Type Off or MetalFX Temporal.
+bool aaOffered(int mode) { return mode == 0 || mode == 3; }
 NSString *const frameGenerationPreference = @"BG3MFXFrameGenerationEnabled";
 // The player's Anti-Aliasing choice while MetalFX holds it at TAA.
 NSString *const savedAntiAliasingPreference = @"BG3MFXSavedAntiAliasing";
 std::atomic<int> startupQuality{0};
+// MetalFX AA chosen with the Upscaling Type Off: Temporal at 1x on BG3's FSR
+// setup (the runtime mode is 3, the menu's type stays Off).
+std::atomic<bool> aaOnlyActive{false};
+NSString *const metalFXAAPreference = @"BG3MFXMetalFXAA";
+// The Anti-Aliasing combo's MetalFX AA value (-1 until added), the player's last
+// other choice, BG3's callback for it, and a guard for the menu's own changes.
+int aaMetalFXValue = -1, lastAAChoice = -1;
+BG3MFXMenuCallback originalAACall;
+bool syncingAA;
 // Earlier builds stored Frame Generation as a Temporal-only checkbox under this
 // key, then as Upscaling Type values 4 (Temporal + FG) and 5 (Spatial + FG).
 NSString *const legacyFrameGenerationPreference = @"BG3MFXFrameGeneration";
@@ -70,31 +90,94 @@ bool restoreSharpness(void *manager, float value) {
     if (void *slider = BG3MFXMenuFind(manager, -1, upscaleSharpnessID)) BG3MFXMenuShowSliderValue(slider, value * 100);
     return changed;
 }
+void addMetalFXAA(void *manager);
+void enterAAOnly(void *manager);
+void leaveAAOnly(void *manager, int mode, BG3MFXMenuApply apply = nullptr);
+// Shows `value` in the Anti-Aliasing combo. MetalFX AA is not a BG3 value: BG3's
+// setting is set to TAA through its own callback and the entry is only shown.
+void setAA(void *aa, int value, int taa) {
+    syncingAA = true;
+    if (value == aaMetalFXValue) {
+        if (taa >= 0 && BG3MFXMenuComboSelection(aa) != taa) BG3MFXMenuSelectCombo(aa, taa);
+        BG3MFXMenuShowComboSelection(aa, value);
+    } else BG3MFXMenuSelectCombo(aa, value);
+    syncingAA = false;
+}
+// MetalFX AA keeps BG3's type at FSR (quality 5) while the menu shows Off. Show
+// the Upscaling Quality as RefreshUIUpscaleMode does for Off: its one Off entry,
+// dimmed (so Apply skips it). Only the list changes, not the settings.
+void showQualityOff(void *manager) {
+    void *quality = BG3MFXMenuFind(manager, 3, upscaleQualityID);
+    if (!quality || ([BG3MFXMenuComboValues(quality) isEqualToArray:@[@0]] && BG3MFXMenuComboSelection(quality) == 0)) {
+        BG3MFXMenuSetEnabled(quality, false);
+        return;
+    }
+    uint8_t &type = field<uint8_t>(manager, Layout::NativeUpscalingType);
+    uint8_t native = type;
+    type = 0;
+    at<void (*)(void *)>(Native::RefreshQuality)(manager);
+    type = native;
+}
 void updateDependentControls(void *manager, int mode) {
     // Upscaling Sharpness drives FSR's RCAS pass, which MetalFX replaces; dim it
     // there. BG3 enables it for its FSR type, which the MetalFX types run as.
-    if (metalFXValue(mode)) BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, upscaleSharpnessID), false);
+    if (metalFXValue(mode) || aaOnlyActive.load()) BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, upscaleSharpnessID), false);
     // MetalFX Temporal and Frame Generation use the depth, motion and camera
-    // data of BG3's TAA pass (Temporal then replaces its draw). While either is
-    // on, select TAA and dim the control; afterwards restore the player's choice.
+    // data of BG3's TAA pass (Temporal then replaces its draw). With Temporal the
+    // combo shows MetalFX AA and is dimmed; with Frame Generation alone it shows
+    // TAA and is dimmed; afterwards the player's choice is restored.
     void *aa = BG3MFXMenuFind(manager, 3, antiAliasingID);
     if (!aa) return;
+    // Any Upscaling Type but Off ends MetalFX AA. Temporal keeps showing it and
+    // returns to it when left for Off; FSR and Spatial do not offer it and go
+    // back to the player's earlier choice. (The type's native callback already
+    // showed BG3's TAA.)
+    bool endedAAOnly = aaOnlyActive.load() && mode != 0;
+    if (endedAAOnly) leaveAAOnly(manager, mode);
+    if (aaOffered(mode)) addMetalFXAA(manager);
+    else if (aaMetalFXValue >= 0 && BG3MFXMenuRemoveComboValue(aa, aaMetalFXValue)) BG3MFXMenuComboItemsChanged(aa);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    bool requiresTAA = temporalValue(mode) || (frameGenerationChecked.load() && frameGenerationSupported());
-    int current = BG3MFXMenuComboSelection(aa), taa = taaValue(aa);
     NSArray<NSNumber *> *values = BG3MFXMenuComboValues(aa);
-    if (requiresTAA && taa >= 0 && current != taa) {
-        if (![defaults objectForKey:savedAntiAliasingPreference]) [defaults setInteger:current forKey:savedAntiAliasingPreference];
-        BG3MFXMenuSelectCombo(aa, taa);
-    } else if (!requiresTAA && [defaults objectForKey:savedAntiAliasingPreference]) {
-        int saved = (int)[defaults integerForKey:savedAntiAliasingPreference];
+    int current = BG3MFXMenuComboSelection(aa), taa = taaValue(aa);
+    int metal = aaMetalFXValue >= 0 && [values containsObject:@(aaMetalFXValue)] ? aaMetalFXValue : -1;
+    auto isMetal = [](int value) { return aaMetalFXValue >= 0 && value == aaMetalFXValue; };
+    bool temporal = temporalValue(mode);
+    bool frameGeneration = frameGenerationChecked.load() && frameGenerationSupported();
+    id saved = [defaults objectForKey:savedAntiAliasingPreference];
+    int fallback = lastAAChoice >= 0 && !isMetal(lastAAChoice) ? lastAAChoice : taa;
+    int desired = current;
+    if (temporal) {
+        desired = metal >= 0 ? metal : taa;
+        if (!saved && (endedAAOnly || !isMetal(current))) [defaults setInteger:endedAAOnly ? aaMetalFXValue : current forKey:savedAntiAliasingPreference];
+    } else if (aaOnlyActive.load()) {
+        desired = metal;
+    } else if (saved && (!frameGeneration || isMetal([saved intValue]))) {
+        desired = [saved intValue];
         [defaults removeObjectForKey:savedAntiAliasingPreference];
-        if (saved != current && [values containsObject:@(saved)]) {
-            BG3MFXMenuSelectCombo(aa, saved);
-        }
+    } else if (frameGeneration && current != taa) {
+        desired = taa;
+        if (!saved) [defaults setInteger:current forKey:savedAntiAliasingPreference];
     }
-    if (requiresTAA && taa < 0) BG3MFXMenuProblem(@"No TAA Anti-Aliasing option found");
-    BG3MFXMenuSetEnabled(aa, !requiresTAA && values.count > 1);
+    if (endedAAOnly && !temporal) desired = fallback;
+    // MetalFX AA needs the Upscaling Type Off (or Temporal).
+    if (isMetal(desired) && (mode != 0 || metal < 0) && !temporal) desired = fallback;
+    if (metal >= 0 && desired == metal && mode == 0 && !aaOnlyActive.load()) {
+        // A restored choice of MetalFX AA. BG3's type callback rebuilds the list.
+        enterAAOnly(manager);
+        if (!aaOnlyActive.load()) desired = fallback;
+        values = BG3MFXMenuComboValues(aa);
+        current = BG3MFXMenuComboSelection(aa);
+    }
+    if (desired != current && [values containsObject:@(desired)]) setAA(aa, desired, taa);
+    if (taa < 0 && (temporal || frameGeneration)) BG3MFXMenuProblem(@"No TAA Anti-Aliasing option found");
+    int shown = BG3MFXMenuComboSelection(aa);
+    bool enabled = !(temporal || (frameGeneration && shown != metal)) && values.count > 1;
+    BG3MFXMenuSetEnabled(aa, enabled);
+    if (enabled && shown != metal) lastAAChoice = shown;
+    if (aaOnlyActive.load()) {
+        showQualityOff(manager);
+        BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, upscaleSharpnessID), false);
+    }
 }
 void frameGenerationChanged(void *, const void *item) {
     if (!item || BG3MFXMenuItemID(const_cast<void *>(item)) != frameGenerationID) return;
@@ -124,7 +207,7 @@ int customQuality(void *manager, int mode) {
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:qualityPreference];
     int value = saved ? [saved intValue] : (field<uint8_t>(manager, Layout::NativeUpscalingType) == 1 ? field<uint8_t>(manager, Layout::NativeQuality) : 2);
     // Other types keep the saved choice for Temporal but use Balanced.
-    if (BG3MFXReducedQualityValue(value)) return reducedOffered(mode) ? value : 2;
+    if (value == BG3MFXUltraPerformanceQuality) return reducedOffered(mode) ? value : 2;
     return value >= 0 && value <= 3 ? value : 2;
 }
 // The native type callback rebuilds the quality list with BG3's four
@@ -162,6 +245,56 @@ void restoreCustomQuality(void *manager, int mode, int value, bool refresh) {
     }
     at<void (*)(void *)>(Native::RefreshQuality)(manager);
 }
+// BG3's native Upscaling Type callback, applying the menu's type `target`.
+void callNativeType(void *storage, const void *item, int target) {
+    int previous = nativeTypeTarget;
+    nativeTypeTarget = target;
+    originalUpscaleCall(storage, item);
+    nativeTypeTarget = previous;
+}
+// MetalFX AA with the Upscaling Type Off: BG3's FSR setup at the hidden
+// full-size quality, which MetalFX Temporal replaces; the type combo keeps
+// showing Off.
+void enterAAOnly(void *manager) {
+    void *upscale = BG3MFXMenuFind(manager, 3, upscaleTypeID);
+    if (!upscale || !originalUpscaleCall || BG3MFXMenuItemManager(upscale) != manager) {
+        BG3MFXMenuProblem(@"Cannot start MetalFX AA: unsupported native upscaling callback.");
+        return;
+    }
+    float sharpness = currentSharpness(manager);
+    BG3MFXMenuSetComboSelection(upscale, 1);
+    callNativeType(BG3MFXMenuCallbackStorage(upscale), upscale, 0);
+    restoreCustomQuality(manager, 0, BG3MFXMetalFXAAQuality, false);
+    restoreSharpness(manager, sharpness);
+    BG3MFXMenuSetComboSelection(upscale, 0);
+    publishSettings(manager);
+    aaOnlyActive.store(true);
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setBool:YES forKey:metalFXAAPreference];
+    [defaults synchronize];
+    BG3MFXMetalFXSelectionChanged(true);
+}
+// `mode` is the Upscaling Type now: 0 means BG3's FSR setup must be turned off
+// again, through the type's native callback or, during Apply, through `apply`;
+// otherwise the type that replaced Off has already set BG3's.
+void leaveAAOnly(void *manager, int mode, BG3MFXMenuApply apply) {
+    aaOnlyActive.store(false);
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults removeObjectForKey:metalFXAAPreference];
+    [defaults synchronize];
+    void *upscale = BG3MFXMenuFind(manager, 3, upscaleTypeID);
+    if (mode == 0) {
+        float sharpness = currentSharpness(manager);
+        if (upscale) BG3MFXMenuSetComboSelection(upscale, 0);
+        if (upscale && apply) apply(manager, upscale);
+        else if (upscale && originalUpscaleCall && BG3MFXMenuItemManager(upscale) == manager)
+            callNativeType(BG3MFXMenuCallbackStorage(upscale), upscale, 0);
+        else BG3MFXMenuProblem(@"Cannot end MetalFX AA: unsupported native upscaling callback.");
+        restoreSharpness(manager, sharpness);
+        publishSettings(manager);
+    }
+    BG3MFXMetalFXSelectionChanged(true);
+}
 void qualityChanged(void *storage, const void *item) {
     int value = item ? BG3MFXMenuComboSelection(item) : -1;
     int mode = selectedScalingMode.load();
@@ -170,7 +303,7 @@ void qualityChanged(void *storage, const void *item) {
     if (originalQualityCall) originalQualityCall(storage, item);
     if (!manager) return;
     if (metalFXValue(mode) && restoreSharpness(manager, sharpness)) publishSettings(manager);
-    if (metalFXValue(mode) && ((value >= 0 && value <= 3) || (BG3MFXReducedQualityValue(value) && reducedOffered(mode)))) {
+    if (metalFXValue(mode) && ((value >= 0 && value <= 3) || (value == BG3MFXUltraPerformanceQuality && reducedOffered(mode)))) {
         [NSUserDefaults.standardUserDefaults setInteger:value forKey:qualityPreference];
     }
     updateDependentControls(manager, mode);
@@ -180,7 +313,34 @@ void qualityChanged(void *storage, const void *item) {
 void applyCombo(void *manager, const void *item, BG3MFXMenuApply next) {
     void *mutableItem = const_cast<void *>(item);
     bool upscale = item && BG3MFXMenuItemType(mutableItem) == 3 && BG3MFXMenuItemID(mutableItem) == upscaleTypeID;
+    bool aa = item && BG3MFXMenuItemType(mutableItem) == 3 && BG3MFXMenuItemID(mutableItem) == antiAliasingID;
+    if (aa) {
+        int aaValue = BG3MFXMenuComboSelection(item), taa = taaValue(mutableItem);
+        bool metal = aaMetalFXValue >= 0 && aaValue == aaMetalFXValue;
+        // BG3 only knows TAA; MetalFX AA is shown over it.
+        if (metal && taa >= 0) BG3MFXMenuSetComboSelection(mutableItem, taa);
+        if (!metal || taa >= 0) next(manager, item);
+        if (metal) {
+            BG3MFXMenuShowComboSelection(mutableItem, aaValue);
+            return;
+        }
+        // Another option ends MetalFX AA, as its selection callback does.
+        if (aaOnlyActive.load()) leaveAAOnly(manager, selectedScalingMode.load(), next);
+        updateDependentControls(manager, selectedScalingMode.load());
+        return;
+    }
     int value = upscale ? BG3MFXMenuComboSelection(item) : -1;
+    if (upscale && value == 0 && aaOnlyActive.load()) {
+        // MetalFX AA keeps BG3's FSR setup while the type shows Off.
+        float keep = currentSharpness(manager);
+        BG3MFXMenuSetComboSelection(mutableItem, 1);
+        next(manager, item);
+        restoreCustomQuality(manager, 0, BG3MFXMetalFXAAQuality, false);
+        restoreSharpness(manager, keep);
+        BG3MFXMenuSetComboSelection(mutableItem, 0);
+        updateDependentControls(manager, 0);
+        return;
+    }
     bool custom = metalFXValue(value);
     int quality = custom ? customQuality(manager, value) : -1;
     float sharpness = currentSharpness(manager);
@@ -205,6 +365,11 @@ void upscaleChanged(void *storage, const void *item) {
         BG3MFXFail([NSString stringWithFormat:@"The Upscaling Type menu reported an unknown value (%d).", value], nil, nil);
         return;
     }
+    if (value == 0 && aaOnlyActive.load()) {
+        // MetalFX AA runs on BG3's FSR setup with the type showing Off.
+        BG3MFXMenuSetComboSelection(mutableItem, 0);
+        return;
+    }
     // BG3's settings system only understands Off (0) and FSR (1). For the
     // MetalFX choices, apply the game's normal FSR quality/resolution setup,
     // then restore the menu's custom value and track it independently. The
@@ -213,7 +378,7 @@ void upscaleChanged(void *storage, const void *item) {
     int quality = metalFXValue(value) ? customQuality(manager, value) : -1;
     float sharpness = currentSharpness(manager);
     BG3MFXMenuSetComboSelection(mutableItem, metalFXValue(value) ? 1 : value);
-    originalUpscaleCall(storage, item);
+    callNativeType(storage, item, value);
     if (quality >= 0) restoreCustomQuality(manager, value, quality, true);
     // Changing the type is not a sharpness choice, even to or from FSR.
     bool sharpnessRestored = restoreSharpness(manager, sharpness);
@@ -229,6 +394,80 @@ void upscaleChanged(void *storage, const void *item) {
     // the next process cannot revive a previously saved MetalFX selection.
     [NSUserDefaults.standardUserDefaults synchronize];
     BG3MFXMetalFXSelectionChanged(previous != value);
+}
+
+// The Anti-Aliasing combo's selection callback: MetalFX AA is shown over BG3's TAA.
+void aaChanged(void *storage, const void *item) {
+    if (!originalAACall || !storage || !item) { if (originalAACall) originalAACall(storage, item); return; }
+    void *mutableItem = const_cast<void *>(item);
+    int value = BG3MFXMenuComboSelection(item);
+    void *manager = BG3MFXMenuStorageManager(storage);
+    if (syncingAA || aaMetalFXValue < 0 || value != aaMetalFXValue) {
+        originalAACall(storage, item);
+        if (!syncingAA && manager) {
+            // The player chose a real option: forget the saved one and end
+            // MetalFX AA (BG3 has just stored the choice, which the type's
+            // callback then shows).
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:savedAntiAliasingPreference];
+            if (aaOnlyActive.load()) leaveAAOnly(manager, selectedScalingMode.load());
+            updateDependentControls(manager, selectedScalingMode.load());
+        }
+        return;
+    }
+    // MetalFX AA chosen (offered with the type Off, or dimmed with Temporal).
+    // BG3's own setting becomes TAA; the entry stays shown.
+    int taa = taaValue(mutableItem);
+    if (taa < 0) { BG3MFXMenuProblem(@"No TAA Anti-Aliasing option found"); return; }
+    syncingAA = true;
+    BG3MFXMenuSetComboSelection(mutableItem, taa);
+    originalAACall(storage, item);
+    BG3MFXMenuShowComboSelection(mutableItem, value);
+    syncingAA = false;
+    if (!manager) return;
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:savedAntiAliasingPreference];
+    if (selectedScalingMode.load() == 0 && !aaOnlyActive.load()) enterAAOnly(manager);
+    // The type callback showed BG3's TAA; this shows MetalFX AA again.
+    updateDependentControls(manager, selectedScalingMode.load());
+}
+// Adds the MetalFX AA entry to the Anti-Aliasing combo when `offer` (telling
+// the menu when `notify`) and takes the combo's callback.
+void completeAA(void *aa, bool notify, bool offer) {
+    NSArray<NSNumber *> *values = BG3MFXMenuComboValues(aa);
+    if (taaValue(aa) < 0) return;
+    if (offer && (aaMetalFXValue < 0 || ![values containsObject:@(aaMetalFXValue)])) {
+        int highest = 0;
+        for (NSNumber *v in values) highest = std::max(highest, v.intValue);
+        BG3MFXMenuText name, description;
+        if (BG3MFXMenuMakeText(name, "h00000000g0000g0000g0000g00000000f017", "MetalFX AA") &&
+            BG3MFXMenuMakeText(description, "h00000000g0000g0000g0000g00000000f018",
+                "Anti-aliasing with MetalFX Temporal at native resolution, with no upscaling. Selected automatically, and dimmed, while an upscaler that uses MetalFX Temporal is on.")) {
+            BG3MFXMenuAppendComboValue(aa, highest + 1, name, description);
+            aaMetalFXValue = highest + 1;
+        } else BG3MFXMenuProblem(@"Could not register the MetalFX AA text.");
+        BG3MFXMenuDestroyText(name); BG3MFXMenuDestroyText(description);
+        if (notify) BG3MFXMenuComboItemsChanged(aa);
+    }
+    BG3MFXMenuCallback call = BG3MFXMenuSelectionCallback(aa);
+    if (call != aaChanged) originalAACall = call;
+    if (originalAACall) BG3MFXMenuSetSelectionCallback(aa, aaChanged);
+}
+void addMetalFXAA(void *manager) {
+    if (void *aa = BG3MFXMenuFind(manager, 3, antiAliasingID)) completeAA(aa, true, true);
+}
+// BG3's RefreshUIAntiAliasing (menu build, Reset, every Upscaling Type change)
+// rebuilds BG3's list, installs BG3's own callback again and shows BG3's
+// setting; custom-menu runs this before the menu hears of it. The entry is left
+// out while the type being applied is FSR or Spatial.
+void antiAliasingRefreshed(void *manager, void *aa) {
+    int mode = nativeTypeTarget;
+    if (mode < 0) {
+        // Outside a type change (menu build, Reset): BG3's own FSR type is not
+        // tracked by selectedScalingMode until the menu is built. MetalFX AA
+        // also runs as BG3's FSR, with the menu at Off.
+        mode = selectedScalingMode.load();
+        if (mode == 0 && !aaOnlyActive.load() && field<uint8_t>(manager, Layout::NativeUpscalingType) == 1) mode = 1;
+    }
+    completeAA(aa, false, aaOffered(mode));
 }
 
 void addFrameGeneration(void *manager) {
@@ -289,11 +528,21 @@ void menuBuilt(void *manager) {
     int storedMode = savedScaling ? (int)[savedScaling integerValue] : -1;
     int nativeMode = field<uint8_t>(manager, Layout::NativeUpscalingType) == 1 ? 1 : 0;
     int mode = metalFXValue(storedMode) ? storedMode : nativeMode;
+    // MetalFX AA runs on BG3's FSR setup while the type shows Off.
+    if (aaOnlyActive.load() && !metalFXValue(storedMode)) {
+        mode = 0;
+        BG3MFXMenuSetComboSelection(upscale, 0);
+    } else if (aaOnlyActive.load()) {
+        // A MetalFX type was saved: MetalFX AA is not restored with it.
+        aaOnlyActive.store(false);
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:metalFXAAPreference];
+    }
     if (quality) {
         BG3MFXMenuCallback qualityCall = BG3MFXMenuSelectionCallback(quality);
         if (qualityCall != qualityChanged) originalQualityCall = qualityCall;
         if (originalQualityCall) BG3MFXMenuSetSelectionCallback(quality, qualityChanged);
     }
+    addMetalFXAA(manager);
     // Restore through the same native callback as an interactive selection.
     // Merely changing +0xf7 left the quality ComboItems disabled and never
     // activated the render-resolution setting.
@@ -317,6 +566,7 @@ void BG3MFXInstallMetalFXOptions(intptr_t gameSlide) {
     slide = gameSlide;
     BG3MFXMenuOnBuilt(menuBuilt);
     BG3MFXMenuWrapApplyCombo(applyCombo);
+    BG3MFXMenuOnAntiAliasingRefreshed(antiAliasingRefreshed);
 }
 
 // The native settings file persists the FSR resolution/quality setup used by
@@ -340,6 +590,11 @@ void BG3MFXRestoreMetalFXChoices(void) {
     [defaults synchronize];
     if (!metalFXValue(startupMode)) startupMode = 0;
     selectedScalingMode.store(startupMode);
+    // MetalFX AA with the type Off: BG3's FSR setup at the hidden quality 5.
+    if (startupMode == 0 && [defaults boolForKey:metalFXAAPreference]) {
+        aaOnlyActive.store(true);
+        startupQuality.store(BG3MFXMetalFXAAQuality);
+    } else [defaults removeObjectForKey:metalFXAAPreference];
     // Dynamic's minimum frame rate and thermal guard no longer exist.
     [defaults removeObjectForKey:@"BG3MFXDynamicMinimumFrameRate"];
     [defaults removeObjectForKey:@"BG3MFXDynamicThermalGuard"];
@@ -349,16 +604,17 @@ void BG3MFXRestoreMetalFXChoices(void) {
         [defaults setInteger:BG3MFXUltraPerformanceQuality forKey:qualityPreference];
         savedQuality = @(BG3MFXUltraPerformanceQuality);
     }
-    if (savedQuality && BG3MFXReducedQualityValue([savedQuality intValue])) startupQuality.store([savedQuality intValue]);
+    if (savedQuality && [savedQuality intValue] == BG3MFXUltraPerformanceQuality && !aaOnlyActive.load()) startupQuality.store([savedQuality intValue]);
     frameGenerationChecked.store([defaults boolForKey:frameGenerationPreference]);
 }
 
-int BG3MFXSelectedScalingMode(void) { return selectedScalingMode.load(); }
+// MetalFX AA with the type Off runs MetalFX Temporal (3).
+int BG3MFXSelectedScalingMode(void) { return aaOnlyActive.load() ? 3 : selectedScalingMode.load(); }
 BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported(); }
 
 void BG3MFXPublishStartupReducedQuality(void) {
     int quality = startupQuality.load();
-    if (!quality || BG3MFXMenuOptionsBuilt() || !reducedOffered(selectedScalingMode.load())) return;
+    if (!quality || BG3MFXMenuOptionsBuilt() || !(reducedOffered(selectedScalingMode.load()) || aaOnlyActive.load())) return;
     void *settings = *at<void **>(BG3MFXBuild::Temporal::Settings);
     if (!settings || field<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) == quality) return;
     // Once a second at most, in case BG3 loads its quality again later.
@@ -387,8 +643,10 @@ void BG3MFXPublishStartupReducedQuality(void) {
 BOOL BG3MFXFallBackToFSR(void) {
     if (!BG3MFXMenuActive()) return NO;
     selectedScalingMode.store(1);
+    aaOnlyActive.store(false);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     [defaults removeObjectForKey:scalingPreference];
+    [defaults removeObjectForKey:metalFXAAPreference];
     [defaults synchronize];
     return YES;
 }

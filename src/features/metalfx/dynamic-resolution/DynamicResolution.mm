@@ -73,6 +73,8 @@ float targetArea(uint8_t *frame) {
         ++settledFrames;
         return 1;
     }
+    // MetalFX AA is Temporal at 1x: the full area.
+    if (read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) == BG3MFXMetalFXAAQuality) return 1;
     // The rendered region is output / the largest scale (plus a pixel of margin)
     // per axis, within the render targets and the range MetalFX accepts.
     float scale = largest;

@@ -4,6 +4,7 @@
 #import "features/custom-menu/RefreshRepair.h"
 #import "features/custom-menu/FullscreenFit.h"
 #include "common/Feature.h"
+#include "common/native/CodePatch.h"
 #import "common/Notice.h"
 #include <mach/mach.h>
 #include <atomic>
@@ -30,6 +31,9 @@ void (*built[MaxBuilt])(void *);
 size_t builtCount;
 void (*wrappers[MaxWrappers])(void *, const void *, BG3MFXMenuApply);
 size_t wrapperCount;
+void (*antiAliasingRefreshed)(void *, void *);
+void (*originalRefreshAntiAliasing)(void *);
+constexpr uint16_t antiAliasingID = 98;
 
 template<class T> T at(uintptr_t address) { return reinterpret_cast<T>(address + slide); }
 template<class T> T &field(const void *object, size_t offset) {
@@ -69,6 +73,35 @@ void menuInit(void *manager) {
     for (size_t i = 0; i < builtCount; ++i) built[i](manager);
 }
 
+// BG3 notifies the menu with its own list while it rebuilds; values appended
+// and notified right afterwards were lost (observed: the entry vanished and
+// the selection showed blank). Silence BG3's notifications, let the feature
+// finish the combo, then notify once.
+void refreshAntiAliasingHook(void *manager) {
+    void *combo = BG3MFXMenuFind(manager, 3, antiAliasingID);
+    if (!combo) { originalRefreshAntiAliasing(manager); return; }
+    int32_t &items = field<int32_t>(combo, Layout::ComboItemsObserverCount);
+    int32_t &enabled = field<int32_t>(combo, Layout::EnabledObserverCount);
+    int32_t &selection = field<int32_t>(combo, Layout::SelectionObserverCount);
+    int32_t counts[] = {items, enabled, selection};
+    items = enabled = selection = 0;
+    originalRefreshAntiAliasing(manager);
+    items = counts[0]; enabled = counts[1]; selection = counts[2];
+    antiAliasingRefreshed(manager, combo);
+    notify(combo, Layout::ComboItemsObservers, Layout::ComboItemsObserverCount);
+    notify(combo, Layout::EnabledObservers, Layout::EnabledObserverCount);
+    notify(combo, Layout::SelectionObservers, Layout::SelectionObserverCount, BG3MFXMenuComboSelection(combo));
+}
+void hookRefreshAntiAliasing() {
+    uintptr_t island = BG3MFXBuild::HeaderPadding + slide + BG3MFXBuild::Islands::CustomMenu.offset;
+    originalRefreshAntiAliasing = reinterpret_cast<void (*)(void *)>(island + BG3MFXEntryOriginalOffset);
+    if (const char *failure = BG3MFXHookEntry(Native::RefreshAntiAliasing + slide, Native::RefreshAntiAliasingFirst,
+                                              island, reinterpret_cast<void *>(refreshAntiAliasingHook))) {
+        antiAliasingRefreshed = nullptr;
+        BG3MFXMenuProblem([NSString stringWithFormat:@"Could not hook BG3's Anti-Aliasing refresh: %s.", failure]);
+    }
+}
+
 void errorOut(NSError **error, NSString *message) {
     if (error) *error = [NSError errorWithDomain:@"BG3MFXCustomMenu" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
 }
@@ -101,6 +134,7 @@ BOOL activateCustomMenu(const BG3MFXFeatureContext &, NSError **error) {
     table[Layout::ApplyComboSlot] = reinterpret_cast<void *>(applyLevel<0>);
     vm_protect(mach_task_self(), page, vm_page_size, FALSE, VM_PROT_READ);
     active = true;
+    if (antiAliasingRefreshed) hookRefreshAntiAliasing();
     return YES;
 }
 }
@@ -136,6 +170,9 @@ void BG3MFXMenuOnBuilt(void (*callback)(void *)) {
 }
 void BG3MFXMenuWrapApplyCombo(void (*wrapper)(void *, const void *, BG3MFXMenuApply)) {
     if (!active && wrapperCount < MaxWrappers) wrappers[wrapperCount++] = wrapper;
+}
+void BG3MFXMenuOnAntiAliasingRefreshed(void (*refreshed)(void *, void *)) {
+    if (!active) antiAliasingRefreshed = refreshed;
 }
 void *BG3MFXMenuManager(void) { return optionsManager; }
 bool BG3MFXMenuOptionsBuilt(void) { return optionsBuilt.load(); }
@@ -225,6 +262,21 @@ NSString *BG3MFXMenuComboLabel(void *combo, size_t index) {
 }
 void BG3MFXMenuAppendComboValue(void *combo, int value, const BG3MFXMenuText &name, const BG3MFXMenuText &description) {
     at<void (*)(void *, int, const Text *, const Text *)>(Native::AppendComboValue)(combo, value, &text(name), &text(description));
+}
+bool BG3MFXMenuRemoveComboValue(void *combo, int value) {
+    uint32_t &count = field<uint32_t>(combo, Layout::ComboCount);
+    char *array = field<char *>(combo, Layout::ComboItems);
+    if (!array || count > 16) return false;
+    for (uint32_t i = 0; i < count; ++i) {
+        char *item = array + i * Layout::ComboItemStride;
+        if (field<int32_t>(item, Layout::ComboItemValue) != value) continue;
+        at<void (*)(void *)>(Native::DestroyText)(item + Layout::ComboItemName);
+        at<void (*)(void *)>(Native::DestroyText)(item + Layout::ComboItemDescription);
+        memmove(item, item + Layout::ComboItemStride, (count - i - 1) * Layout::ComboItemStride);
+        --count;
+        return true;
+    }
+    return false;
 }
 void BG3MFXMenuComboItemsChanged(void *combo) { notify(combo, Layout::ComboItemsObservers, Layout::ComboItemsObserverCount); }
 int BG3MFXMenuComboSelection(const void *combo) { return field<int32_t>(combo, Layout::ComboSelection); }
