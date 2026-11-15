@@ -19,7 +19,7 @@ Before BG3's `main`, root:
    feature requires it; nothing is enabled unless requested. An
    explicit `BG3MFX_FEATURE_<NAME>=0` keeps a feature off even then, and the
    features that require it are skipped: the player launcher sets every flag
-   to 1, so a player's 0 must win;
+   but script-fixes to 1, so a player's 0 must win;
 4. installs the enabled features, each after everything it requires, ties
    in name order;
 5. activates them in the same order, once every feature has installed.

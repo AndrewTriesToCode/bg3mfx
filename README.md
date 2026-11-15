@@ -52,6 +52,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **Render Thread Optimizations** | Skips repeated texture and pipeline commands to reduce graphics-driver work. |
 | **Lua System Call Elimination** | Removes signal-mask and alternate-stack system calls from protected Lua calls. |
 | **Reduced Locking** | Gives each worker its own share of the frame's draw-constant memory instead of taking a shared lock for every draw. |
+| **Animation Optimizations** | Replaces the game's slowest animation math with optimized versions that give identical results. |
 
 ### Other
 
@@ -63,6 +64,27 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **Borderless Refresh Rate Fix** | Fixes a base game bug that limits a borderless window to the refresh rate chosen for fullscreen. |
 | **Borderless Notch Fix** | Fixes a base game bug that starts borderless mode on a MacBook with a notch with the bottom of the picture off screen until the resolution is changed. |
 | **Character Creation Crash Fix** | Fixes a base game bug that can freeze or crash the game when entering character creation at certain screen resolutions. |
+
+### Optional: Script Fixes
+
+Off unless you turn it on, because it changes gameplay. **Script Fixes**
+corrects bugs in the game's own spell and AI scripts:
+
+- NPCs can use weapon actions such as Topple and Lacerate, which a scripting bug blocked for every NPC. Expect tougher fights.
+- Reapplying Heat Metal makes its Constitution save, so a failed save disarms the target.
+- Omen statuses roll at their intended odds (1 in 6 to 1 in 2) instead of always 1 in 2.
+- Greater Invisibility skips its Stealth check only when an invisibility spell is cast.
+- Two Animate Dead zombie spells check that the zombie can stand where it's raised.
+- Gortash prefers buffing himself, and mind flayers judge their hit chances as intended.
+
+It also speeds up three often-used spell conditions without changing their
+results. Files that another mod replaces are left alone. Script Fixes hasn't
+been tested in a full playthrough yet. To turn it on, start the game from
+Terminal with:
+
+```sh
+BG3MFX_FEATURE_SCRIPT_FIXES=1 bg3mfx
+```
 
 ## How it works
 
@@ -111,7 +133,7 @@ Baldur's Gate 3 starts with features available. In the game, go to
 
 - Turn on **Show Metal HUD** (Options → Video → General) to see your frame rate.
 - Temporal Upscaling is more resource intensive than spatial but produces much better image quality.
-- Dynamic Temporal Upscaling works really well when you select the highest resolution and you minimum FPS, and let the upscaler do its magic.
+- Dynamic Temporal Upscaling works really well when you select the highest resolution and your minimum FPS, and let the upscaler do its magic.
 - At lower game resolution higher quality upscaling is needed to get a good result. At higher resolutions even the performance quality option can produce good results.
 - **Frame Generation** works best on a high refresh rate display, such as a
   MacBook Pro's 120 Hz ProMotion screen, with **VSync on**. Set the game's
@@ -156,7 +178,7 @@ To turn off an upscaler, set **Upscaling Type** to **Off** in Options → Video.
 Untick **MetalFX Frame Generation** or **Show Metal HUD** to turn off those
 options.
 
-`bg3mfx` turns every feature on. To turn one off, set its variable to `0` in
+`bg3mfx` turns every feature on except Script Fixes (see [above](#optional-script-fixes)). To turn one off, set its variable to `0` in
 the environment used to launch `bg3mfx`:
 
 | Feature | Environment variable |
@@ -170,6 +192,7 @@ the environment used to launch `bg3mfx`:
 | **Character Creation Crash Fix** | `BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=0` |
 | **Ambient Occlusion Blur Fix** | `BG3MFX_FEATURE_SSAO_BLUR_FIX=0` |
 | **Improved Display** | `BG3MFX_FEATURE_IMPROVED_DISPLAY=0` |
+| **Animation Optimizations** | `BG3MFX_FEATURE_ANIMATION_OPTIMIZATIONS=0` |
 | **Metal HUD** | `BG3MFX_FEATURE_METAL_HUD=0` removes the Show Metal HUD option. |
 | **Snap to Native FPS** | `BG3MFX_FEATURE_MAX_FRAME_RATE=0` removes the option. |
 

@@ -371,8 +371,9 @@ installs them in dependency order. Every feature installs before any
 activates, so a provider (custom-render-stages) patches BG3 only once its
 dependents have registered with it. A feature that patches the executable
 installs only on the supported build, and a skipped feature skips its
-dependents, each reporting why through `BG3MFXFail`. The player launcher sets every player-facing feature; a player
-can set one to 0 to turn it off. `tools/launch/bg3mfx.py` sets only the
+dependents, each reporting why through `BG3MFXFail`. The player launcher sets every player-facing feature except script-fixes,
+which it forwards only when the player sets it; a player can set one to 0 to
+turn it off. `tools/launch/bg3mfx.py` sets only the
 features named with `--feature`, so a live test exercises one at a time.
 `BG3MFX_FEATURE_METALFX` covers MetalFX Spatial, Temporal (with its jitter
 hooks and Dynamic resolution), Frame Generation and the FSR_Tonemap skip. No

@@ -3,8 +3,10 @@
 Technical name: `script-fixes`.
 
 Opt-in with `BG3MFX_FEATURE_SCRIPT_FIXES=1` (development launches:
-`--feature script-fixes`). The `bg3mfx` launcher does not set it yet. Native:
-it hooks two BG3 functions, so it needs the supported build.
+`--feature script-fixes`). The `bg3mfx` launcher does not set it, because it
+changes gameplay; it forwards the variable when the player sets it
+(`BG3MFX_FEATURE_SCRIPT_FIXES=1 bg3mfx`). Native: it hooks two BG3 functions,
+so it needs the supported build.
 
 ## Behavior
 
