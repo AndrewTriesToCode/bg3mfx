@@ -11,16 +11,15 @@ ARM64 executable.
 Adds the MetalFX options to Options → Video:
 
 - **MetalFX Spatial** and **MetalFX Temporal**, two more Upscaling Types.
-- **Dynamic**, an Upscaling Quality offered with Temporal, together with its
-  Upscaler Target Minimum FPS slider and Dynamic Upscaler Thermal Guard
-  checkbox.
+- **Ultra Performance**, an Upscaling Quality offered with Temporal that renders
+  the smallest region the device allows (1/9 of the pixels on the M5 Pro).
 - **MetalFX Frame Generation**, a checkbox shown on devices that support it.
 
 The parts:
 
 - [Spatial upscaling](spatial-upscaling/README.md)
 - [Temporal upscaling](temporal-upscaling/README.md), with its jitter
-- [Dynamic resolution](dynamic-resolution/README.md)
+- [Reduced resolution](dynamic-resolution/README.md)
 - [Frame generation](frame-generation/README.md)
 
 ## Implementation
@@ -31,9 +30,9 @@ folder. Its install puts in each part, in order:
 1. Temporal's native jitter ([`TemporalJitter.mm`](temporal-upscaling/TemporalJitter.mm)).
    If it cannot install it shows "MetalFX could not start" and the install
    fails, so root skips metalfx.
-2. Dynamic resolution ([`DynamicResolution.mm`](dynamic-resolution/DynamicResolution.mm)),
+2. Reduced resolution ([`DynamicResolution.mm`](dynamic-resolution/DynamicResolution.mm)),
    optional: if it cannot install, metalfx reports it through `BG3MFXFail` and
-   carries on without Dynamic.
+   carries on without Ultra Performance.
 3. The renderer ([`MetalFXRenderer.mm`](renderer/MetalFXRenderer.mm)), below.
 4. The options, registered with custom-menu.
 
@@ -67,7 +66,7 @@ drawables. metal-hooks calls it at:
 
 From those it tracks the scene through TAA and post-processing, replaces FSR
 and RCAS with the MetalFX scalers, skips FSR_Tonemap, composes and presents
-Frame Generation's pairs, and applies Dynamic resolution's draw corrections.
+Frame Generation's pairs, and applies reduced resolution's draw corrections.
 Hook-overhead probe (synthetic, offscreen, 20,000 draws): with metalfx on,
 the move left the cost per draw the same or slightly lower than before it
 (about 144–150 vs 147–155 ns in scaling mode 3).

@@ -40,10 +40,10 @@ int main() {
     };
     unsigned counts[]={14,18,24,32};
     for(unsigned q=0;q<4;++q) { put(settings,0x98,uint8_t(q)); if(!check(counts[q],true)) return 1; }
-    // Dynamic: phases follow the rendered area, from 8 at native size.
-    {
-        put(settings,0x98,uint8_t(BG3MFXDynamicQuality));
-        for(float a:{1.0f,0.5f,0.25f,0.1114f}) { area=a; if(!check(std::max(8u,unsigned(std::ceil(8/a))),true)) return 15; }
+    // Ultra Performance: ceil(8 / area) phases (8-128) at the area this frame renders.
+    for(int quality:{BG3MFXUltraPerformanceQuality}) {
+        put(settings,0x98,uint8_t(quality));
+        for(float a:{1.0f,0.5f,0.3f,0.25f,0.1114f}) { area=a; if(!check(std::clamp(unsigned(std::ceil(8/a)),8u,128u),true)) return 15; }
     }
     area=1;
     for(mode=0;mode<3;++mode) if(!check(8,false)) return 2;

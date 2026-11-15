@@ -7,7 +7,8 @@ metalfx (`MetalFXOptions.mm`) appends the “MetalFX Spatial” and “MetalFX T
 Upscaling Type combo. These implement **MetalFX Spatial Upscaling** and
 **MetalFX Temporal Upscaling**. The native Off and AMD FSR 1.0 entries remain
 owned by BG3. The native quality combo supplies Ultra Quality, Quality,
-Balanced, and Performance.
+Balanced, and Performance; with MetalFX Temporal, metalfx adds Ultra Performance
+after them.
 
 BG3's settings code accepts only Off and FSR as upscaling types. Selecting a
 MetalFX type temporarily invokes BG3's FSR setup callback to retain its quality
@@ -89,7 +90,8 @@ on inspected BG3 shader conventions. History is reset when the selected scaling
 mode changes or input resources become invalid. `TemporalJitter.mm` substitutes
 Halton (2,3) samples at three guarded native loads: projection, camera constants,
 and velocity history. Only Temporal views with an enabled native FSR stage use
-14/18/24/32 phases for Ultra Quality/Quality/Balanced/Performance. A frame-local
+14/18/24/32 phases for Ultra Quality/Quality/Balanced/Performance, and
+ceil(8 / area) phases (8-128) for Ultra Performance. A frame-local
 choice keeps all three consumers consistent during settings changes. BG3's
 previous projection/jitter storage remains responsible for motion compensation;
 the shared eight-sample table is unchanged for other views and modes.
@@ -371,7 +373,7 @@ which it forwards only when the player sets it; a player can set one to 0 to
 turn it off. `tools/launch/bg3mfx.py` sets only the
 features named with `--feature`, so a live test exercises one at a time.
 `BG3MFX_FEATURE_METALFX` covers MetalFX Spatial, Temporal (with its jitter
-hooks and Dynamic resolution), Frame Generation and the FSR_Tonemap skip. No
+hooks and reduced resolution), Frame Generation and the FSR_Tonemap skip. No
 feature enables itself. The Video menu is patched
 only for a feature that adds options to it (metal-hud, metalfx).
 
@@ -399,7 +401,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   respond to the first click after a fullscreen settings change.
 - `src/features/metalfx/MetalFX.mm`: the metalfx feature (native; requires
   custom-menu and metal-hooks), the only feature under `metalfx/`. Its
-  install puts in Temporal's jitter, Dynamic resolution (optional), the
+  install puts in Temporal's jitter, reduced resolution (optional), the
   renderer and the options; its activation hooks `CAMetalLayer` for the
   renderer and restores the saved choices. In the test runtime
   (`BG3MFX_STANDALONE_TEST_HOOKS`) it is not native, requires only
@@ -410,16 +412,16 @@ only for a feature that adds options to it (metal-hud, metalfx).
   preservation. If it cannot install it shows "MetalFX could not start" and
   metalfx's install fails.
 - `src/features/metalfx/dynamic-resolution/DynamicResolution.*`: part of
-  metalfx, optional: when it cannot install, MetalFX starts without Dynamic.
+  metalfx, optional: when it cannot install, MetalFX starts without Ultra Performance.
 - `src/features/metalfx/renderer/MetalFXRenderer.mm`: part of metalfx. It is metal-hooks'
   renderer extension (`MetalHooksInternal.h`): scene tracking, the Spatial and
   Temporal dispatch that replaces FSR, the FSR_Tonemap skip, Frame
-  Generation's composition, presentation and stand-in drawables, and Dynamic
+  Generation's composition, presentation and stand-in drawables, and reduced
   resolution's renderer corrections. metal-hooks calls it at command buffer
   and encoder creation, pipeline creation and bind, the draws of the
   pipelines it recognizes, dispatch, encoder end, present and commit.
 - `src/features/metalfx/MetalFXOptions.mm`: the MetalFX Upscaling Types,
-  Frame Generation, Dynamic quality and its controls, and mode persistence.
+  Frame Generation, the Ultra Performance quality, and mode persistence.
   Selection changes reach the renderer through
   `BG3MFXMetalFXSelectionChanged`.
 - `src/features/metal-hud/MetalHUD.mm`: the metal-hud feature (requires
@@ -563,20 +565,23 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `CompareSetAndBindConstantBuffer<PPSAO_Blur::blur>` to record op 0x07 with
   the ring slot it just wrote, through the `SSAOBlur` island, instead of op
   0x08, whose replay binds the frame's last write for both passes.
-- `src/features/metalfx/dynamic-resolution/DynamicResolution.*`: the Dynamic Upscaling
-  Quality (4: keeps the Upscaler Target Minimum FPS slider as a minimum (limited by the refresh rate and Max Frame Rate), at native resolution when it can; the Dynamic Upscaler Thermal Guard checkbox also lowers a ceiling on the area while `NSProcessInfo` reports a thermal state above nominal; MetalFX Temporal only, with or without Frame Generation; installed by
-  metalfx). Before each on-screen frame
-  records it sets BG3's unused render-viewport reduction (`RenderFrame` +0x4368)
-  from a GPU-busy controller and recalculates the frame's and views' viewports,
-  so render-resolution passes draw a sub-rectangle of the same targets. The area
-  spans the device's MetalFX Temporal input content scale range. The TAA
-  capture accepts the reduced viewport, a dynamic-resolution scaler upscales
-  just that region, and `MetalFXRenderer.mm`'s commit hook reports BG3's command-buffer
-  GPU intervals to the controller. It also patches the volumetric fog history's previous
-  viewport loads, the auto-exposure scene UV load, the SSR history viewport, an SSR history discard after each area change, and loads of the full view rectangle for forward lighting clamps, bloom and DOF radii and the projection jitter divisor; `MetalFXRenderer.mm` gives the fog composite a viewport-mapped vertex
-  shader (`viewportFogDescriptor`, whenever the feature is installed) and
-  corrects surface grid draws (`SurfaceGridDraw`) and subsurface scattering
-  widths (`SubsurfaceDraw`) while reducing.
+- `src/features/metalfx/dynamic-resolution/DynamicResolution.*`: the Ultra
+  Performance (4) Upscaling Quality, a fixed reduced render area (the device's
+  largest MetalFX Temporal input scale, 3x per axis and 72 jitter phases on the
+  M5 Pro), MetalFX Temporal only, with or without Frame Generation; installed by
+  metalfx. Before each on-screen frame records it sets BG3's unused
+  render-viewport reduction (`RenderFrame` +0x4368) to the area and recalculates
+  the frame's and views' viewports, so render-resolution passes draw a
+  sub-rectangle of the same targets. The TAA capture accepts the reduced
+  viewport and a dynamic-input-content scaler upscales just that region. It also
+  patches the volumetric fog history's previous viewport loads, the
+  auto-exposure scene UV load, the SSR history viewport, an SSR history discard
+  after each area change, and loads of the full view rectangle for forward
+  lighting clamps, bloom and DOF radii and the projection jitter divisor;
+  `MetalFXRenderer.mm` gives the fog composite a viewport-mapped vertex shader
+  (`viewportFogDescriptor`, whenever the feature is installed) and corrects
+  surface grid draws (`SurfaceGridDraw`) and subsurface scattering widths
+  (`SubsurfaceDraw`) while reducing.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, thread idling `0x9c0`, uniform
   slices `0xa00`, viewport reduction `0xa40`, SSR history `0xa70`, SSR valid `0xaa0`, SSAO blur `0xac0`, custom pipeline bundles `0xad8` (offsets from
   `0x100004000`). Each install checks its range is still zero.

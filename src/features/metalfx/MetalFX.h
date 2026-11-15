@@ -2,7 +2,7 @@
 #import <Foundation/Foundation.h>
 
 // The metalfx feature: MetalFX Spatial and Temporal upscaling (with
-// Temporal's jitter and Dynamic resolution), Frame Generation and the
+// Temporal's jitter and reduced resolution), Frame Generation and the
 // FSR_Tonemap skip, with their Video options (MetalFXOptions.mm). Requires
 // custom-menu and metal-hooks; its renderer work (renderer/MetalFXRenderer.mm)
 // is metal-hooks' renderer extension.
@@ -16,14 +16,10 @@ BOOL BG3MFXFrameGenerationEnabled(void);
 BOOL BG3MFXFallBackToFSR(void);
 // Render thread, before each frame: BG3 starts with its own quality (at most
 // Ultra Quality). Until Video options are first built and restore the saved
-// Dynamic quality themselves, publish it to the renderer from the main thread
-// as the menu does, so BG3 also resizes its render targets.
-void BG3MFXPublishStartupDynamicQuality(void);
-// The "Upscaler Target Minimum FPS" slider: Dynamic's target in rendered frames
-// per second, like Max Frame Rate (10-240, 60 until set).
-int BG3MFXDynamicMinimumFrameRate(void);
-// The "Dynamic Upscaler Thermal Guard" checkbox (off until set).
-BOOL BG3MFXDynamicThermalGuard(void);
+// Ultra Performance quality themselves, publish it to the
+// renderer from the main thread as the menu does, so BG3 also resizes its render
+// targets.
+void BG3MFXPublishStartupReducedQuality(void);
 // The parts the feature's install puts in. Temporal's native jitter
 // (temporal-upscaling/TemporalJitter.mm); NO with `error` when it cannot.
 BOOL BG3MFXInstallTemporalJitter(intptr_t slide, NSError **error);

@@ -24,7 +24,7 @@
                    outputHeight:(NSUInteger)outputHeight dynamicResolution:(BOOL)dynamicResolution
                           error:(NSError **)error {
     if (!(self = [super init])) return nil;
-    // A dynamic-resolution scaler may take full-size inputs (the Dynamic
+    // A dynamic-resolution scaler may take full-size inputs (the Ultra Performance
     // qualities render at native size and shrink a region of it per frame).
     bool smaller = dynamicResolution ? outputWidth >= width && outputHeight >= height : outputWidth > width && outputHeight > height;
     if (!device || !width || !height || !smaller ||

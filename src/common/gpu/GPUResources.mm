@@ -8,7 +8,6 @@
 static std::atomic<NSUInteger> poolAllocations{0};
 extern "C" NSUInteger BG3MFXTexturePoolAllocations(void) { return poolAllocations.load(); }
 #endif
-extern "C" void (*BG3MFXGPUWorkHook)(double, double) = nullptr;
 extern "C" BOOL (*BG3MFXMetal4CommitHooked)(id<MTLCommandBuffer>) = nullptr;
 
 static NSError *resourceError(NSString *reason) {
@@ -207,7 +206,6 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
     auto options=[MTL4CommitOptions new];
     [options addFeedbackHandler:^(id<MTL4CommitFeedback> feedback) {
         if (feedback.error && report) report(feedback.error);
-        if (auto hook=BG3MFXGPUWorkHook) hook(feedback.GPUStartTime,feedback.GPUEndTime);
         [flight removeAllObjects];
         [slot.allocator reset];
         std::lock_guard<std::mutex> lock(bridge->_mutex); [bridge->_free addObject:slot];

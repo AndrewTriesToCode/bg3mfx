@@ -20,7 +20,7 @@
 // metalfx's renderer work, as metal-hooks' renderer extension
 // (MetalHooksInternal.h): the MetalFX Spatial and Temporal scaler dispatch
 // that replaces BG3's FSR, the scene tracking that feeds them, Frame
-// Generation's composition and presentation, Dynamic resolution's renderer
+// Generation's composition and presentation, reduced resolution's renderer
 // corrections and the FSR_Tonemap skip.
 
 using namespace metalhooks;
@@ -31,7 +31,7 @@ enum PipelineKind : uint8_t {
     PipelineOther, PipelineTAA, PipelineLinearizeDepth, PipelineVelocity,
     PipelinePostColor, PipelineToneMapLUT, PipelineCombineUI, PipelineSceneOverlay,
 };
-// BG3MFXPipelineInfo::rendererFlags: Dynamic resolution corrections (see
+// BG3MFXPipelineInfo::rendererFlags: reduced resolution corrections (see
 // SurfaceGridDraw and SubsurfaceDraw).
 enum : uint8_t { FlagSurfaceGrid = 1, FlagSubsurface = 2 };
 // Associated objects this renderer sets on an encoder.
@@ -42,7 +42,7 @@ enum : uint16_t {
 // The scene's camera (11), temporal (8) and viewport (9) constants, and the
 // composition's vertices and constants (0).
 constexpr uint32_t ConstantSlots = 1u << 0 | 1u << 8 | 1u << 9 | 1u << 11;
-// Dynamic resolution: the vertex EngineParams (index 21) surface grid draws read.
+// Reduced resolution: the vertex EngineParams (index 21) surface grid draws read.
 constexpr NSUInteger SurfaceEngineIndex = 21;
 char bufferScalingModeKey;
 char frameGenerationModeKey, compositorSizeKey, frameCompositionKey, generatedPairKey;
@@ -336,10 +336,6 @@ static BOOL temporalParameters(NSDictionary *inputs, BG3MFXFrameParameters *para
     *parameters = p;
     return YES;
 }
-// Dynamic resolution counts our Metal 4 MetalFX submissions as GPU work too.
-static void metal4GPUWork(double start, double end) {
-    if (BG3MFXDynamicResolutionMeasuring()) BG3MFXDynamicResolutionGPUWork(start,end);
-}
 static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, id<MTLTexture> destination) {
     id<MTLTexture> color = inputs[@"color"], depth = inputs[@"depth"], motion = inputs[@"motion"];
     if (!color || !depth || !motion || !destination) {
@@ -358,7 +354,6 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
     NSError *error = nil;
     if (!upscaler) {
         BOOL dynamicResolution = BG3MFXDynamicResolutionSelected();
-        if (dynamicResolution) BG3MFXGPUWorkHook = metal4GPUWork;
         if (dynamicResolution)
             BG3MFXDynamicResolutionSetScaleLimits([MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:buffer.device],
                 [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:buffer.device]);
@@ -437,9 +432,9 @@ static BOOL copyTemporalAAColor(id<MTLCommandBuffer> buffer, NSDictionary *input
 // BG3 pairs DeferredFog_* with DefaultVS, whose texCoord spans the render
 // viewport, but indexes the volumetric fog in texture UV. Other post passes use
 // PPDefaultVS, which maps texCoord through _Viewport (buffer 9, already bound
-// for the fog draw). Dynamic resolution shrinks the viewport, so give the fog
+// for the fog draw). Reduced resolution shrinks the viewport, so give the fog
 // composite that mapping (identical at full size); the output member keeps
-// DefaultVS's linkage name. Dynamic resolution installs at library load,
+// DefaultVS's linkage name. Reduced resolution installs at library load,
 // before BG3 creates its device.
 static MTLRenderPipelineDescriptor *viewportFogDescriptor(id<MTLDevice> device, MTLRenderPipelineDescriptor *desc) {
     if (!BG3MFXDynamicResolutionInstalled() || ![desc.vertexFunction.name isEqualToString:@"DefaultVS"] ||
@@ -632,7 +627,7 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
     // Split-screen, cropped, and scaled viewport support requires separate work.
     NSDictionary *content = @{};
     if (vp[0] != 1 || vp[1] != 1 || vp[2] != 0 || vp[3] != 0 || size[0] != source.width || size[1] != source.height) {
-        // Dynamic resolution renders a smaller region at the origin of the
+        // Reduced resolution renders a smaller region at the origin of the
         // same targets; Temporal scales just that region.
         const uint32_t *minimum = size + 2;
         if (!BG3MFXDynamicResolutionInstalled() || spatialSeed || vp[2] != 0 || vp[3] != 0 || minimum[0] || minimum[1] ||
@@ -1046,11 +1041,6 @@ static PresentAction present(id self, SEL cmd, id drawable, double minimum) {
     return PresentForward;
 }
 static void commit(id<MTLCommandBuffer> self, SEL) {
-    // Dynamic resolution follows how busy BG3's command buffers keep the GPU.
-    if (BG3MFXDynamicResolutionMeasuring() && ![BG3MFXFramePresenter isPresentationThread])
-        [self addCompletedHandler:^(id<MTLCommandBuffer> done){
-            BG3MFXDynamicResolutionGPUWork(done.GPUStartTime,done.GPUEndTime);
-        }];
     NSDictionary *request=objc_getAssociatedObject(self,&deferredPresentKey);
     NSDictionary *pair=objc_getAssociatedObject(self,&generatedPairKey);
     objc_setAssociatedObject(self,&deferredPresentKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -1315,7 +1305,7 @@ namespace {
 BOOL installRenderer(NSError **error) {
     RendererExtension extension = {};
     extension.constantSlots = ConstantSlots;
-    // Dynamic resolution installs later, with metalfx; its corrections check.
+    // Reduced resolution installs later, with metalfx; its corrections check.
     extension.vertexBufferSlot = SurfaceEngineIndex;
     extension.commandBufferCreated = commandBufferCreated;
     extension.prepareRenderPass = prepareRenderPass;

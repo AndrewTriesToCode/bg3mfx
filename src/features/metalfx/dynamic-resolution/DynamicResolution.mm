@@ -2,15 +2,11 @@
 #import "features/metalfx/dynamic-resolution/DynamicResolution.h"
 #import "features/metalfx/MetalFX.h"
 #include "common/native/CodePatch.h"
-#import <AppKit/AppKit.h>
-#import <QuartzCore/QuartzCore.h>
 #include <libkern/OSCacheControl.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
-#include <mutex>
 #include <vector>
 
 extern "C" BOOL BG3MFXTemporalFailed(void);
@@ -36,32 +32,11 @@ void (*recalculateViewports)(void *);
 uintptr_t metalFrameVTable, settingsGlobal;
 std::atomic<bool> installed{false};
 std::atomic<float> appliedArea{1};
-std::atomic<bool> measuring{false};
 // MetalFX's supported content scale range for BG3's device; 0 until known.
 std::atomic<float> minimumScale{0}, maximumScale{0};
 // Read by the SSR valid island as a byte: nonzero makes SSR discard its history.
 std::atomic<uint8_t> ssrDiscard{0};
 static_assert(sizeof ssrDiscard == 1, "the SSR island loads one byte");
-
-// GPU execution intervals of BG3's command buffers and our Metal 4
-// submissions. Completions from different queues and handler threads arrive
-// out of order, so each window sorts its intervals and takes their union.
-std::mutex gpuLock;
-std::vector<std::pair<double, double>> gpuIntervals, takenIntervals;
-// Render thread only: the end of the time already counted, so an interval
-// spanning two windows is not counted twice.
-double gpuCounted;
-double takeGPUBusy() {
-    takenIntervals.clear();
-    { std::lock_guard<std::mutex> hold(gpuLock); gpuIntervals.swap(takenIntervals); }
-    std::sort(takenIntervals.begin(), takenIntervals.end());
-    double busy = 0;
-    for (const auto &interval : takenIntervals) {
-        double from = std::max(interval.first, gpuCounted);
-        if (interval.second > from) { busy += interval.second - from; gpuCounted = interval.second; }
-    }
-    return busy;
-}
 
 // Render thread only.
 int32_t settledSizes[4];
@@ -72,109 +47,8 @@ unsigned settledFrames;
 unsigned ssrDiscardFrames;
 // Frames recorded with unchanged sizes and upscaler selection before reducing.
 constexpr unsigned SettleFrames = 60;
-// The controller's area, kept while Dynamic is not reducing.
-float controlledArea = 1;
-double windowStart;
-unsigned windowFrames;
-// Utilization averaged over recent windows (half from the latest), so one
-// noisy window does not move the area. Negative until the first window.
-double smoothed = -1;
-
-// The target frame rate is a minimum. Over each window the controller counts
-// the frame rate and compares the GPU's busy time with the time that passed.
-// Below the target while the GPU is busier than GPUBound, it shrinks the area
-// by the shortfall; otherwise (at or above the target, or with the GPU not the
-// limit) it grows back toward full resolution, but for a while not back to an
-// area that missed.
-constexpr double Window = 0.25;
-constexpr double GPUBound = 0.95;
-constexpr double MaximumShrink = 0.80, MaximumGrowth = 1.15;
-// A frame rate (averaged like utilization) below this fraction of the target
-// misses it. A miss shrinks by the shortfall and a margin, to land on the
-// target rather than just under it.
-constexpr double Missed = 0.98, MissedShrinkMargin = 0.97;
-double smoothedFPS = -1;
-// After a miss, growth stops short of the missed area for this long.
-constexpr double MissedSeconds = 10, MissedMargin = 0.95;
-double missedAt = -MissedSeconds;
-float missedArea = 1;
-// Longer frames are loading screens, menus or hitches, not a GPU load to follow.
-constexpr double LongestFrame = 0.1;
-
 template<class T> T read(const void *p, size_t offset) {
     T value; memcpy(&value, static_cast<const char *>(p) + offset, sizeof value); return value;
-}
-
-// The rendered frame rate Dynamic aims for: the Upscaler Target Minimum FPS,
-// unless BG3's frame cap (when on) or the refresh rate is lower. Like the cap,
-// the minimum counts rendered frames; Frame Generation shows two per rendered
-// frame, so half the refresh rate is the most it can render to the screen.
-double targetFrameRate(const void *settings) {
-    namespace Temporal = BG3MFXBuild::Temporal::Layout;
-    double target = BG3MFXDynamicMinimumFrameRate();
-    int32_t numerator = read<int32_t>(settings, Temporal::SettingsRefreshNumerator);
-    int32_t denominator = read<int32_t>(settings, Temporal::SettingsRefreshDenominator);
-    if (numerator > 0 && denominator > 0)
-        target = std::min(target, double(numerator) / denominator / (BG3MFXFrameGenerationEnabled() ? 2 : 1));
-    uint16_t cap = read<uint16_t>(settings, Temporal::SettingsFrameCap);
-    if (read<uint8_t>(settings, Temporal::SettingsFrameCapEnabled) && cap) target = std::min(target, double(cap));
-    return target;
-}
-
-// Thermal Guard: a ceiling on the area. While macOS reports any thermal state
-// above nominal, it falls to ThermalCut of the current area every
-// ThermalCutSeconds, down to MetalFX's floor; at nominal it rises by
-// ThermalRecovery every ThermalRecoverySeconds. Lowering the area only raises
-// the frame rate, so the target frame rate still holds.
-constexpr double ThermalCut = 0.8, ThermalCutSeconds = 5;
-constexpr double ThermalRecovery = 1.1, ThermalRecoverySeconds = 15;
-float thermalCeiling = 1;
-double thermalSteppedAt = -ThermalRecoverySeconds;
-
-float thermalLimit(float area, float lowest) {
-    double now = CACurrentMediaTime();
-    NSProcessInfoThermalState state = NSProcessInfo.processInfo.thermalState;
-    float ceiling = thermalCeiling;
-    if (state > NSProcessInfoThermalStateNominal) {
-        if (now - thermalSteppedAt >= ThermalCutSeconds) {
-            ceiling = std::max(lowest, float(std::min(ceiling, area) * ThermalCut));
-            thermalSteppedAt = now;
-        }
-    } else if (ceiling < 1 && now - thermalSteppedAt >= ThermalRecoverySeconds) {
-        ceiling = std::min(1.0f, float(ceiling * ThermalRecovery));
-        thermalSteppedAt = now;
-    }
-    thermalCeiling = ceiling;
-    return std::min(area, ceiling);
-}
-
-float controllerArea(double target) {
-    double now = CACurrentMediaTime();
-    if (!measuring.exchange(true) || !windowStart) {
-        takeGPUBusy(); windowStart = now; windowFrames = 0; smoothed = smoothedFPS = -1;
-        return controlledArea;
-    }
-    ++windowFrames;
-    double elapsed = now - windowStart;
-    if (elapsed < Window) return controlledArea;
-    double busy = takeGPUBusy(), measured = busy / elapsed;
-    unsigned frames = windowFrames;
-    windowStart = now; windowFrames = 0;
-    // BG3 slows to 30 fps in the background.
-    if (frames < 3 || elapsed / frames > LongestFrame || !NSApp.isActive) return controlledArea;
-    smoothed = smoothed < 0 ? measured : (smoothed + measured) / 2;
-    double fps = frames / elapsed;
-    smoothedFPS = smoothedFPS < 0 ? fps : (smoothedFPS + fps) / 2;
-    double utilization = smoothed;
-    double step = MaximumGrowth;
-    if (target > 0 && smoothedFPS < Missed * target && utilization > GPUBound) {
-        step = std::max(MaximumShrink, MissedShrinkMargin * smoothedFPS / target);
-        missedAt = now; missedArea = controlledArea;
-    } else if (now - missedAt < MissedSeconds) {
-        step = std::min(step, std::max(1.0, MissedMargin * missedArea / controlledArea));
-    }
-    controlledArea = std::min(1.0f, float(controlledArea * step));
-    return controlledArea;
 }
 
 float targetArea(uint8_t *frame) {
@@ -182,7 +56,7 @@ float targetArea(uint8_t *frame) {
     memcpy(sizes, frame + Layout::RenderSize, 8); memcpy(sizes + 2, frame + Layout::OutputSize, 8);
     const int32_t *render = sizes, *output = sizes + 2;
     void *settings = *reinterpret_cast<void **>(settingsGlobal);
-    BG3MFXPublishStartupDynamicQuality();
+    BG3MFXPublishStartupReducedQuality();
     bool selected = BG3MFXDynamicResolutionSelected();
     float smallest = minimumScale.load(), largest = maximumScale.load();
     bool eligible = selected && largest > smallest && smallest > 0 && BG3MFXSelectedScalingMode() == 3 && !BG3MFXTemporalFailed() &&
@@ -197,18 +71,14 @@ float targetArea(uint8_t *frame) {
     }
     if (!eligible || settledFrames < SettleFrames) {
         ++settledFrames;
-        measuring = false; windowStart = 0;
         return 1;
     }
-    // The rendered region spans output / largest (plus a pixel of margin) to
-    // output / smallest per axis, within the render targets.
-    float axis = std::max((output[0] / largest + 1) / render[0], (output[1] / largest + 1) / render[1]);
+    // The rendered region is output / the largest scale (plus a pixel of margin)
+    // per axis, within the render targets and the range MetalFX accepts.
+    float scale = largest;
+    float axis = std::max((output[0] / scale + 1) / render[0], (output[1] / scale + 1) / render[1]);
     float top = std::min({1.0f, output[0] / (smallest * render[0]), output[1] / (smallest * render[1])});
-    float highest = top * top, lowest = std::min(highest, axis * axis);
-    controlledArea = std::min(highest, std::max(controllerArea(targetFrameRate(settings)), lowest));
-    if (BG3MFXDynamicThermalGuard())
-        controlledArea = thermalLimit(controlledArea, lowest);
-    return controlledArea;
+    return std::min(top * top, axis * axis);
 }
 
 void startRecordingHook(uint8_t *frame) {
@@ -245,18 +115,11 @@ BOOL BG3MFXDynamicResolutionInstalled(void) { return installed.load(); }
 BOOL BG3MFXDynamicResolutionSelected(void) {
     if (!installed.load()) return NO;
     void *settings = *reinterpret_cast<void **>(settingsGlobal);
-    return settings && BG3MFXDynamicQualityValue(read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality));
+    return settings && BG3MFXReducedQualityValue(read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality));
 }
 float BG3MFXDynamicResolutionArea(void) { return appliedArea.load(); }
 void BG3MFXDynamicResolutionSetScaleLimits(float smallest, float largest) {
     minimumScale = std::max(smallest, 1.0f); maximumScale = largest;
-}
-BOOL BG3MFXDynamicResolutionMeasuring(void) { return measuring.load(std::memory_order_relaxed); }
-void BG3MFXDynamicResolutionGPUWork(double start, double end) {
-    if (!(end > start)) return;
-    std::lock_guard<std::mutex> hold(gpuLock);
-    // Bounded if the render thread stops taking them.
-    if (gpuIntervals.size() < 4096) gpuIntervals.emplace_back(start, end);
 }
 
 static BOOL installDynamic(intptr_t slide, NSError **error) {

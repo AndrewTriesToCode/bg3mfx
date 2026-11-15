@@ -47,10 +47,6 @@ extern "C" BOOL (*_Nullable BG3MFXMetal4CommitHooked)(id<MTLCommandBuffer> buffe
 // work bridges recorded into it. A no-op for buffers without any.
 extern "C" void BG3MFXMetal4BridgeCommitted(id<MTLCommandBuffer> buffer);
 
-// Every build: GPU start and end of each Metal 4 bridge submission (MetalFX
-// work on its own queue), for dynamic resolution's GPU-busy measurement.
-extern "C" void (*_Nullable BG3MFXGPUWorkHook)(double start, double end);
-
 NS_ASSUME_NONNULL_END
 
 // Total textures ever allocated by pools in this process (regression checks).

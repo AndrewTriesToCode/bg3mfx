@@ -71,9 +71,9 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
             unsigned quality=settings ? read<uint8_t>(settings,Layout::SettingsQuality) : 2;
             static const unsigned phases[]={14,18,24,32};
             if (quality<4) { c.phases=phases[quality]; c.own=true; }
-            // Dynamic: about eight samples per output pixel at the area this
-            // frame renders (the area is set before the frame records).
-            else if (BG3MFXDynamicQualityValue(quality)) {
+            // Ultra Performance: about eight samples per output pixel at the
+            // area this frame renders (the area is set before the frame records).
+            else if (BG3MFXReducedQualityValue(quality)) {
                 float area=BG3MFXDynamicResolutionArea();
                 c.phases=area>0 ? std::clamp(unsigned(std::ceil(8/area)),8u,128u) : 8;
                 c.own=true;

@@ -10,8 +10,7 @@
 #include <cmath>
 
 // MetalFX's Video options: the MetalFX Spatial and Temporal Upscaling Types,
-// the Frame Generation checkbox, and Temporal's Dynamic quality with its
-// minimum frame rate slider and thermal guard. BG3's settings code accepts
+// the Frame Generation checkbox, and Temporal's Ultra Performance quality. BG3's settings code accepts
 // only Off and FSR as upscaling types, so a MetalFX type runs BG3's FSR setup
 // for its quality and render resolution and is tracked separately here.
 
@@ -38,23 +37,6 @@ NSString *const scalingPreference = @"BG3MFXUpscalingType";
 NSString *const qualityPreference = @"BG3MFXUpscalingQuality";
 constexpr uint16_t upscaleTypeID = 99, upscaleQualityID = 100, upscaleSharpnessID = 101, antiAliasingID = 98, vsyncID = 82;
 constexpr uint16_t frameGenerationID = 0x7f02;
-// Sliders under Upscaling Quality, enabled with the Dynamic qualities: the
-// Upscaler Target Minimum FPS (the Max Frame Rate slider's range).
-struct DynamicSlider {
-    uint16_t id; NSString *preference; int lowest, highest;
-    std::atomic<int> value;
-};
-DynamicSlider dynamicSliders[] = {
-    {0x7f03, @"BG3MFXDynamicMinimumFrameRate", 10, 240, {60}},
-};
-DynamicSlider &dynamicMinimum = dynamicSliders[0];
-// The Dynamic Upscaler Thermal Guard checkbox, below the sliders and enabled
-// with them. Before it, Thermal Guard was the Upscaling Quality value 5.
-constexpr uint16_t thermalGuardID = 0x7f05;
-NSString *const thermalGuardPreference = @"BG3MFXDynamicThermalGuard";
-std::atomic<bool> thermalGuardChecked{false};
-constexpr int legacyThermalQuality = 5;
-
 template<class T> T at(uintptr_t address) { return reinterpret_cast<T>(address + slide); }
 template<class T> T &field(const void *object, size_t offset) {
     return *reinterpret_cast<T *>(static_cast<char *>(const_cast<void *>(object)) + offset);
@@ -92,9 +74,6 @@ void updateDependentControls(void *manager, int mode) {
     // Upscaling Sharpness drives FSR's RCAS pass, which MetalFX replaces; dim it
     // there. BG3 enables it for its FSR type, which the MetalFX types run as.
     if (metalFXValue(mode)) BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, upscaleSharpnessID), false);
-    bool dynamic = temporalValue(mode) && BG3MFXDynamicQualityValue(field<uint8_t>(manager, Layout::NativeQuality));
-    for (const DynamicSlider &slider : dynamicSliders) BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, slider.id), dynamic);
-    BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, thermalGuardID), dynamic);
     // MetalFX Temporal and Frame Generation use the depth, motion and camera
     // data of BG3's TAA pass (Temporal then replaces its draw). While either is
     // on, select TAA and dim the control; afterwards restore the player's choice.
@@ -127,46 +106,40 @@ void frameGenerationChanged(void *, const void *item) {
     BG3MFXMetalFXSelectionChanged(false);
     if (void *manager = BG3MFXMenuManager()) updateDependentControls(manager, selectedScalingMode.load());
 }
-void thermalGuardChanged(void *, const void *item) {
-    if (!item || BG3MFXMenuItemID(const_cast<void *>(item)) != thermalGuardID) return;
-    bool enabled = BG3MFXMenuTickBoxValue(item);
-    thermalGuardChecked.store(enabled);
-    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:thermalGuardPreference];
-    [NSUserDefaults.standardUserDefaults synchronize];
+// Ultra Performance is an Upscaling Quality of MetalFX Temporal only. BG3 renders any quality above Ultra Quality at full size; the
+// reduced-resolution hook then renders a fixed smaller region
+// (src/features/metalfx/dynamic-resolution/).
+// Only where MetalFX Temporal can render a smaller region than the targets:
+// with a device maximum no larger than the minimum scale the area would stay 1.
+bool reductionSupported() {
+    static bool supported = [] {
+        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        return device && [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:device] >
+            std::max(1.0f, [MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:device]);
+    }();
+    return supported;
 }
-void dynamicSliderChanged(void *, const void *item) {
-    if (!item) return;
-    uint16_t id = BG3MFXMenuItemID(const_cast<void *>(item));
-    for (DynamicSlider &slider : dynamicSliders) if (slider.id == id) {
-        int value = std::clamp((int)std::lround(BG3MFXMenuSliderValue(item)), slider.lowest, slider.highest);
-        slider.value.store(value);
-        [NSUserDefaults.standardUserDefaults setInteger:value forKey:slider.preference];
-        [NSUserDefaults.standardUserDefaults synchronize];
-    }
-}
-// Dynamic is an Upscaling Quality of MetalFX Temporal only. BG3 renders any
-// quality above Ultra Quality at full size; dynamic resolution then reduces it
-// per frame (src/features/metalfx/dynamic-resolution/).
-bool dynamicOffered(int mode) { return temporalValue(mode) && BG3MFXDynamicResolutionInstalled(); }
+bool reducedOffered(int mode) { return temporalValue(mode) && BG3MFXDynamicResolutionInstalled() && reductionSupported(); }
 int customQuality(void *manager, int mode) {
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:qualityPreference];
     int value = saved ? [saved intValue] : (field<uint8_t>(manager, Layout::NativeUpscalingType) == 1 ? field<uint8_t>(manager, Layout::NativeQuality) : 2);
-    // Other types keep the saved Dynamic choice for Temporal but use Balanced.
-    if (BG3MFXDynamicQualityValue(value)) return dynamicOffered(mode) ? value : 2;
+    // Other types keep the saved choice for Temporal but use Balanced.
+    if (BG3MFXReducedQualityValue(value)) return reducedOffered(mode) ? value : 2;
     return value >= 0 && value <= 3 ? value : 2;
 }
 // The native type callback rebuilds the quality list with BG3's four
-// qualities; add Dynamic after them while MetalFX Temporal is selected.
+// qualities; add Ultra Performance after them while MetalFX Temporal is selected.
 constexpr uint32_t offeredQualityCount = 5;
-void offerDynamicQuality(void *manager, int mode) {
-    if (!dynamicOffered(mode)) return;
+void offerReducedQualities(void *manager, int mode) {
+    if (!reducedOffered(mode)) return;
     void *quality = BG3MFXMenuFind(manager, 3, upscaleQualityID);
     if (!quality || ![BG3MFXMenuComboValues(quality) isEqualToArray:@[@0, @1, @2, @3]]) return;
     BG3MFXMenuText name, description;
-    if (BG3MFXMenuMakeText(name, "h00000000g0000g0000g0000g00000000f00d", "Dynamic") &&
+    if (BG3MFXMenuMakeText(name, "h00000000g0000g0000g0000g00000000f00d", "Ultra Performance") &&
         BG3MFXMenuMakeText(description, "h00000000g0000g0000g0000g00000000f00e",
-            "Renders at native resolution while the frame rate is at or above the Upscaler Target Minimum FPS set below, and otherwise lowers the render resolution every frame as far as needed, down to the lowest MetalFX Temporal supports on this Mac."))
-        BG3MFXMenuAppendComboValue(quality, BG3MFXDynamicQuality, name, description);
+            "Renders at the lowest resolution MetalFX Temporal supports on this Mac (3x less per axis, 1/9 of the pixels) and upscales it. The most frame rate, at the lowest image quality."))
+        BG3MFXMenuAppendComboValue(quality, BG3MFXUltraPerformanceQuality, name, description);
+    else BG3MFXMenuProblem(@"Could not register the Ultra Performance text.");
     BG3MFXMenuDestroyText(name); BG3MFXMenuDestroyText(description);
     // An open menu shows the list it was given: send the items-changed
     // notification RefreshUIUpscaleMode sends after rebuilding it.
@@ -177,13 +150,13 @@ void restoreCustomQuality(void *manager, int mode, int value, bool refresh) {
     // quality through BG3's setter, including the actual render-resolution state.
     at<void (*)(void *, int)>(Native::SetQuality)(static_cast<char *>(manager) + Layout::SettingsStorage, value);
     if (!refresh) return;
-    offerDynamicQuality(manager, mode);
+    offerReducedQualities(manager, mode);
     // The native type callback already rebuilt the quality list. Rebuilding it
     // again while its UI change is being handled can leave the displayed value
     // blank. Update only the selection, using RefreshUIUpscaleMode's observed
     // SelectedChanged notification ABI.
     void *quality = BG3MFXMenuFind(manager, 3, upscaleQualityID);
-    if (quality && BG3MFXMenuComboValues(quality).count == (dynamicOffered(mode) ? offeredQualityCount : 4u)) {
+    if (quality && BG3MFXMenuComboValues(quality).count == (reducedOffered(mode) ? offeredQualityCount : 4u)) {
         BG3MFXMenuShowComboSelection(quality, value);
         return;
     }
@@ -197,7 +170,7 @@ void qualityChanged(void *storage, const void *item) {
     if (originalQualityCall) originalQualityCall(storage, item);
     if (!manager) return;
     if (metalFXValue(mode) && restoreSharpness(manager, sharpness)) publishSettings(manager);
-    if (metalFXValue(mode) && ((value >= 0 && value <= 3) || (BG3MFXDynamicQualityValue(value) && dynamicOffered(mode)))) {
+    if (metalFXValue(mode) && ((value >= 0 && value <= 3) || (BG3MFXReducedQualityValue(value) && reducedOffered(mode)))) {
         [NSUserDefaults.standardUserDefaults setInteger:value forKey:qualityPreference];
     }
     updateDependentControls(manager, mode);
@@ -258,19 +231,6 @@ void upscaleChanged(void *storage, const void *item) {
     BG3MFXMetalFXSelectionChanged(previous != value);
 }
 
-// Moves the manager's last item, `item`, to just after the first item with
-// `id` (a combo for Upscaling Quality).
-void placeAfter(void *manager, void *item, uint16_t id) {
-    size_t count = BG3MFXMenuItemCount(manager);
-    if (!item || !count || BG3MFXMenuItem(manager, count - 1) != item) return;
-    for (size_t i = 0; i + 2 < count; ++i) {
-        void *candidate = BG3MFXMenuItem(manager, i);
-        if (BG3MFXMenuItemID(candidate) == id && (id != upscaleQualityID || BG3MFXMenuItemType(candidate) == 3)) {
-            BG3MFXMenuMoveLast(manager, i + 1);
-            return;
-        }
-    }
-}
 void addFrameGeneration(void *manager) {
     BG3MFXMenuText name, description;
     if (BG3MFXMenuMakeText(name, "h00000000g0000g0000g0000g00000000f00b", "MetalFX Frame Generation") &&
@@ -294,30 +254,6 @@ void addFrameGeneration(void *manager) {
         }
     } else BG3MFXMenuProblem(@"Could not register the Frame Generation text.");
     BG3MFXMenuDestroyText(name); BG3MFXMenuDestroyText(description);
-}
-void addDynamicControls(void *manager) {
-    BG3MFXMenuText minimumName, minimumDescription, thermalName, thermalDescription;
-    bool ok = BG3MFXMenuMakeText(minimumName, "h00000000g0000g0000g0000g00000000f011", "Upscaler Target Minimum FPS") &&
-        BG3MFXMenuMakeText(minimumDescription, "h00000000g0000g0000g0000g00000000f012",
-            "The lowest frame rate Dynamic upscaling quality accepts before lowering the render resolution, when the GPU limits it. Like Max Frame Rate, it counts rendered frames, before Frame Generation. Max Frame Rate and VSync still limit the frame rate.") &&
-        BG3MFXMenuMakeText(thermalName, "h00000000g0000g0000g0000g00000000f015", "Dynamic Upscaler Thermal Guard") &&
-        BG3MFXMenuMakeText(thermalDescription, "h00000000g0000g0000g0000g00000000f016",
-            "With Dynamic upscaling quality, also lowers the render resolution step by step while macOS reports the Mac running warm, then slowly restores it once the Mac has cooled.");
-    if (ok) {
-        const BG3MFXMenuText *names[] = {&minimumName}, *descriptions[] = {&minimumDescription};
-        // Each goes right below Upscaling Quality, then the one before it.
-        uint16_t above = upscaleQualityID;
-        for (size_t s = 0; s < sizeof dynamicSliders / sizeof *dynamicSliders; ++s) {
-            DynamicSlider &slider = dynamicSliders[s];
-            void *item = BG3MFXMenuAddSlider(manager, slider.id, *names[s], *descriptions[s], float(slider.value.load()),
-                                             float(slider.lowest), float(slider.highest), dynamicSliderChanged);
-            placeAfter(manager, item, above);
-            above = slider.id;
-        }
-        placeAfter(manager, BG3MFXMenuAddTickBox(manager, thermalGuardID, thermalName, thermalDescription,
-                                                 thermalGuardChecked.load(), thermalGuardChanged), above);
-    } else BG3MFXMenuProblem(@"Could not register the Dynamic upscaling text.");
-    for (BG3MFXMenuText *t : {&minimumName, &minimumDescription, &thermalName, &thermalDescription}) BG3MFXMenuDestroyText(*t);
 }
 void menuBuilt(void *manager) {
     void *upscale = BG3MFXMenuFind(manager, 3, upscaleTypeID), *quality = BG3MFXMenuFind(manager, 3, upscaleQualityID);
@@ -374,10 +310,6 @@ void menuBuilt(void *manager) {
     }
     bool frameGeneration = frameGenerationSupported();
     if (frameGeneration) addFrameGeneration(manager);
-    if (BG3MFXDynamicResolutionInstalled()) {
-        addDynamicControls(manager);
-        updateDependentControls(manager, selectedScalingMode.load());
-    }
 }
 }
 
@@ -408,29 +340,25 @@ void BG3MFXRestoreMetalFXChoices(void) {
     [defaults synchronize];
     if (!metalFXValue(startupMode)) startupMode = 0;
     selectedScalingMode.store(startupMode);
+    // Dynamic's minimum frame rate and thermal guard no longer exist.
+    [defaults removeObjectForKey:@"BG3MFXDynamicMinimumFrameRate"];
+    [defaults removeObjectForKey:@"BG3MFXDynamicThermalGuard"];
     id savedQuality = [defaults objectForKey:qualityPreference];
-    if (savedQuality && [savedQuality intValue] == legacyThermalQuality) {
-        [defaults setInteger:BG3MFXDynamicQuality forKey:qualityPreference];
-        [defaults setBool:YES forKey:thermalGuardPreference];
-        [defaults synchronize];
-        savedQuality = @(BG3MFXDynamicQuality);
+    // The unreleased Max Performance quality 5 is now Ultra Performance.
+    if (savedQuality && [savedQuality intValue] == 5) {
+        [defaults setInteger:BG3MFXUltraPerformanceQuality forKey:qualityPreference];
+        savedQuality = @(BG3MFXUltraPerformanceQuality);
     }
-    thermalGuardChecked.store([defaults boolForKey:thermalGuardPreference]);
-    if (savedQuality && BG3MFXDynamicQualityValue([savedQuality intValue])) startupQuality.store([savedQuality intValue]);
-    for (DynamicSlider &slider : dynamicSliders)
-        if (id saved = [defaults objectForKey:slider.preference])
-            slider.value.store(std::clamp([saved intValue], slider.lowest, slider.highest));
+    if (savedQuality && BG3MFXReducedQualityValue([savedQuality intValue])) startupQuality.store([savedQuality intValue]);
     frameGenerationChecked.store([defaults boolForKey:frameGenerationPreference]);
 }
 
 int BG3MFXSelectedScalingMode(void) { return selectedScalingMode.load(); }
-int BG3MFXDynamicMinimumFrameRate(void) { return dynamicMinimum.value.load(); }
-BOOL BG3MFXDynamicThermalGuard(void) { return thermalGuardChecked.load(); }
 BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported(); }
 
-void BG3MFXPublishStartupDynamicQuality(void) {
+void BG3MFXPublishStartupReducedQuality(void) {
     int quality = startupQuality.load();
-    if (!quality || BG3MFXMenuOptionsBuilt() || !dynamicOffered(selectedScalingMode.load())) return;
+    if (!quality || BG3MFXMenuOptionsBuilt() || !reducedOffered(selectedScalingMode.load())) return;
     void *settings = *at<void **>(BG3MFXBuild::Temporal::Settings);
     if (!settings || field<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) == quality) return;
     // Once a second at most, in case BG3 loads its quality again later.
