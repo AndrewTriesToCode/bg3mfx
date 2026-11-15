@@ -65,10 +65,10 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **Borderless Notch Fix** | Fixes a base game bug that starts borderless mode on a MacBook with a notch with the bottom of the picture off screen until the resolution is changed. |
 | **Character Creation Crash Fix** | Fixes a base game bug that can freeze or crash the game when entering character creation at certain screen resolutions. |
 
-### Optional: Script Fixes
+### Script Fixes
 
-Off unless you turn it on, because it changes gameplay. **Script Fixes**
-corrects bugs in the game's own spell and AI scripts:
+**Script Fixes** corrects bugs in the game's own spell and AI
+scripts. It changes gameplay:
 
 - NPCs can use weapon actions such as Topple and Lacerate, which a scripting bug blocked for every NPC. Expect tougher fights.
 - Reapplying Heat Metal makes its Constitution save, so a failed save disarms the target.
@@ -79,11 +79,11 @@ corrects bugs in the game's own spell and AI scripts:
 
 It also speeds up three often-used spell conditions without changing their
 results. Files that another mod replaces are left alone. Script Fixes hasn't
-been tested in a full playthrough yet. To turn it on, start the game from
+been tested in a full playthrough yet. To turn it off, start the game from
 Terminal with:
 
 ```sh
-BG3MFX_FEATURE_SCRIPT_FIXES=1 bg3mfx
+BG3MFX_FEATURE_SCRIPT_FIXES=0 bg3mfx
 ```
 
 ## How it works
@@ -178,7 +178,7 @@ To turn off an upscaler, set **Upscaling Type** to **Off** in Options → Video.
 Untick **MetalFX Frame Generation** or **Show Metal HUD** to turn off those
 options.
 
-`bg3mfx` turns every feature on except Script Fixes (see [above](#optional-script-fixes)). To turn one off, set its variable to `0` in
+`bg3mfx` turns every feature on. To turn one off, set its variable to `0` in
 the environment used to launch `bg3mfx`:
 
 | Feature | Environment variable |
@@ -195,6 +195,7 @@ the environment used to launch `bg3mfx`:
 | **Animation Optimizations** | `BG3MFX_FEATURE_ANIMATION_OPTIMIZATIONS=0` |
 | **Metal HUD** | `BG3MFX_FEATURE_METAL_HUD=0` removes the Show Metal HUD option. |
 | **Snap to Native FPS** | `BG3MFX_FEATURE_MAX_FRAME_RATE=0` removes the option. |
+| **Script Fixes** | `BG3MFX_FEATURE_SCRIPT_FIXES=0` |
 
 ## Uninstall
 
