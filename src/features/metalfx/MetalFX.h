@@ -7,6 +7,10 @@
 // custom-menu and metal-hooks; its renderer work (renderer/MetalFXRenderer.mm)
 // is metal-hooks' renderer extension.
 
+// The hidden Upscaling Quality MetalFX AA runs BG3's FSR setup at: BG3 renders at
+// full size and a plain 1:1 MetalFX Temporal scaler replaces TAA.
+inline constexpr int BG3MFXMetalFXAAQuality = 5;
+
 // The Upscaling Type: 0 Off, 1 FSR, 2 Spatial, 3 Temporal.
 int BG3MFXSelectedScalingMode(void);
 // The "MetalFX Frame Generation" checkbox, on a device that supports it.

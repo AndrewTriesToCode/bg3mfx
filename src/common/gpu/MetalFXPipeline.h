@@ -16,7 +16,7 @@ typedef struct {
     float motionScaleX, motionScaleY;
     BOOL depthReversed, reset;
     // Rendered region at the inputs' origin; 0 means the whole input texture.
-    // A smaller Temporal region needs a scaler created with dynamic resolution.
+    // A smaller Temporal region needs a scaler created with reduced content (Ultra Performance).
     NSUInteger contentWidth, contentHeight;
 } BG3MFXFrameParameters;
 
@@ -55,7 +55,7 @@ typedef struct {
                           motionFormat:(MTLPixelFormat)motionFormat
                           outputFormat:(MTLPixelFormat)outputFormat
                                  error:(NSError **)error;
-// Temporal only: with `dynamicResolution`, each frame may render a smaller
+// Temporal only: with `reducedContent`, each frame may render a smaller
 // region (parameters.contentWidth/Height) of the same inputs, down to the
 // device's largest supported scale, and history carries across changes.
 - (nullable instancetype)initWithDevice:(id<MTLDevice>)device
@@ -69,7 +69,7 @@ typedef struct {
                            depthFormat:(MTLPixelFormat)depthFormat
                           motionFormat:(MTLPixelFormat)motionFormat
                           outputFormat:(MTLPixelFormat)outputFormat
-                     dynamicResolution:(BOOL)dynamicResolution
+                     reducedContent:(BOOL)reducedContent
                                  error:(NSError **)error;
 - (nullable BG3MFXFrame *)encodeColor:(id<MTLTexture>)color
                                depth:(nullable id<MTLTexture>)depth

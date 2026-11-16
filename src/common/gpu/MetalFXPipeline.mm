@@ -25,7 +25,7 @@ static void failure(NSError **error, NSString *message) {
     BG3MFXTexturePool *_outputs;
     id<MTL4FXSpatialScaler> _spatial;
     NSUInteger _inputWidth, _inputHeight, _outputWidth, _outputHeight;
-    // Smallest content region a dynamic-resolution Temporal scaler accepts;
+    // Smallest content region a reduced-content Temporal scaler accepts;
     // 0 when every frame must render the whole input.
     NSUInteger _minimumContentWidth, _minimumContentHeight;
     MTLPixelFormat _outputFormat;
@@ -50,7 +50,7 @@ static void failure(NSError **error, NSString *message) {
                   motionFormat:(MTLPixelFormat)motionFormat outputFormat:(MTLPixelFormat)outputFormat error:(NSError **)error {
     return [self initWithDevice:device mode:mode colorProcessingMode:colorProcessingMode inputWidth:width
         inputHeight:height outputWidth:outputWidth outputHeight:outputHeight colorFormat:colorFormat
-        depthFormat:depthFormat motionFormat:motionFormat outputFormat:outputFormat dynamicResolution:NO error:error];
+        depthFormat:depthFormat motionFormat:motionFormat outputFormat:outputFormat reducedContent:NO error:error];
 }
 
 - (instancetype)initWithDevice:(id<MTLDevice>)device mode:(BG3MFXScalingMode)mode
@@ -59,7 +59,7 @@ static void failure(NSError **error, NSString *message) {
                    outputWidth:(NSUInteger)outputWidth outputHeight:(NSUInteger)outputHeight
                    colorFormat:(MTLPixelFormat)colorFormat depthFormat:(MTLPixelFormat)depthFormat
                   motionFormat:(MTLPixelFormat)motionFormat outputFormat:(MTLPixelFormat)outputFormat
-             dynamicResolution:(BOOL)dynamicResolution error:(NSError **)error {
+             reducedContent:(BOOL)reducedContent error:(NSError **)error {
     self = [super init];
     if (!self) return nil;
     if (!device || (mode != BG3MFXScalingModeTemporal && mode != BG3MFXScalingModeSpatial)) {
@@ -99,7 +99,7 @@ static void failure(NSError **error, NSString *message) {
         descriptor.motionTextureFormat = motionFormat; descriptor.outputTextureFormat = outputFormat;
         descriptor.autoExposureEnabled = NO;
         descriptor.requiresSynchronousInitialization = YES;
-        if (dynamicResolution) {
+        if (reducedContent) {
             // Scale is output / rendered content: the full input is the
             // smallest, the device limit the largest.
             float fullScale = (float)std::max((double)outputWidth / width, (double)outputHeight / height);

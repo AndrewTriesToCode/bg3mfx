@@ -55,12 +55,12 @@ static BG3MFXTexturePool *fgPool(id<MTLDevice> device, NSUInteger w, NSUInteger 
 }
 - (instancetype)initWithDevice:(id<MTLDevice>)device scene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth
                         motion:(id<MTLTexture>)motion error:(NSError **)error {
-    return [self initWithDevice:device scene:scene depth:depth motion:motion dynamicContent:NO error:error];
+    return [self initWithDevice:device scene:scene depth:depth motion:motion reducedContent:NO error:error];
 }
 - (instancetype)initWithDevice:(id<MTLDevice>)device scene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth
-                        motion:(id<MTLTexture>)motion dynamicContent:(BOOL)dynamicContent error:(NSError **)error {
+                        motion:(id<MTLTexture>)motion reducedContent:(BOOL)reducedContent error:(NSError **)error {
     return [self initWithDevice:device width:depth.width height:depth.height outputWidth:scene.width outputHeight:scene.height
-                          scene:scene depth:dynamicContent ? nil : depth motion:dynamicContent ? nil : motion error:error];
+                          scene:scene depth:reducedContent ? nil : depth motion:reducedContent ? nil : motion error:error];
 }
 static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (t.usage&required)==required; }
 // Creates the effect for the given input formats. Without our own color copy
@@ -154,7 +154,7 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
         (_directMotion && !fgUsable(motion,_effect.motionTextureUsage))) {
         if (error) *error=fgError(@"Frame generation inputs changed format or usage."); return nil;
     }
-    // Dynamic resolution: depth and motion hold a smaller region at the origin.
+    // Ultra Performance: depth and motion hold a smaller region at the origin.
     NSUInteger regionW=p.contentWidth && p.contentWidth<=_w ? p.contentWidth : _w;
     NSUInteger regionH=p.contentHeight && p.contentHeight<=_h ? p.contentHeight : _h;
     bool reduced=regionW<_w || regionH<_h;

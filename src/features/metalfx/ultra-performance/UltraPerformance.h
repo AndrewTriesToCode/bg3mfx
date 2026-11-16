@@ -16,22 +16,17 @@
 // reduced region. Requires the UUID-checked ARM64 executable. Part of the
 // metalfx feature, which installs it; if it cannot install, metalfx reports it
 // and does not offer these qualities.
-BOOL BG3MFXInstallDynamicResolution(intptr_t slide, NSError **error);
-BOOL BG3MFXDynamicResolutionInstalled(void);
-// BG3's settings select a reduced quality, so Temporal scalers need dynamic
-// input content.
-BOOL BG3MFXDynamicResolutionSelected(void);
+BOOL BG3MFXInstallUltraPerformance(intptr_t slide, NSError **error);
+BOOL BG3MFXUltraPerformanceInstalled(void);
+// BG3's settings select Ultra Performance, so its Temporal scaler takes a
+// reduced content region.
+BOOL BG3MFXUltraPerformanceSelected(void);
 // The area most recently applied to a render frame; 1 when not reducing.
-float BG3MFXDynamicResolutionArea(void);
+float BG3MFXUltraPerformanceArea(void);
 // The Temporal scaler device's supported input content scale range (output
 // size / rendered content size, per axis).
-void BG3MFXDynamicResolutionSetScaleLimits(float minimumScale, float maximumScale);
+void BG3MFXUltraPerformanceSetScaleLimits(float minimumScale, float maximumScale);
 
-// The Upscaling Quality value of Ultra Performance, and the hidden one MetalFX AA
-// uses: MetalFX Temporal at 1x scale, which BG3 also renders at full size, with
-// the area left at 1.
-inline constexpr int BG3MFXUltraPerformanceQuality = 4, BG3MFXMetalFXAAQuality = 5;
-// Qualities that run the reduced-resolution machinery (dynamic Temporal scalers).
-inline bool BG3MFXReducedQualityValue(int quality) {
-    return quality == BG3MFXUltraPerformanceQuality || quality == BG3MFXMetalFXAAQuality;
-}
+// The Upscaling Quality value of Ultra Performance, the only one that runs the
+// reduced-resolution machinery (MetalFX AA renders at full size).
+inline constexpr int BG3MFXUltraPerformanceQuality = 4;

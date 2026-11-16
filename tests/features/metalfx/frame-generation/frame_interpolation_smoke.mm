@@ -50,7 +50,7 @@ int main() { @autoreleasepool {
         if(frame) {const __fp16 *v=(const __fp16 *)read.contents;for(int i=0;i<256*256*4;++i) if(!std::isfinite(float(v[i])))return 5;
             const float expected[]={.3,.5,.7};for(int j=0;j<3;++j)if(fabs(float(v[(128*256+128)*4+j])-expected[j])>.04)return 6;}
     }
-    // Dynamic resolution: a reduced region at the origin of the same inputs.
+    // Ultra Performance: a reduced region at the origin of the same inputs.
     // Read in place, it is refused; converted, it is stretched to full size.
     {
         auto cb=[queue commandBuffer]; BG3MFXFrameParameters p={};p.depthReversed=YES;p.motionScaleX=p.motionScaleY=-1;
@@ -63,7 +63,7 @@ int main() { @autoreleasepool {
         }
     }
     if (direct) {
-        auto dynamic=[[BG3MFXFrameInterpolation alloc] initWithDevice:device scene:scene depth:depth motion:motion dynamicContent:YES error:&error];
+        auto dynamic=[[BG3MFXFrameInterpolation alloc] initWithDevice:device scene:scene depth:depth motion:motion reducedContent:YES error:&error];
         if (!dynamic || dynamic.directDepth || dynamic.directMotion) return 13;
     }
     [effect resetHistory];

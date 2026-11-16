@@ -2,7 +2,7 @@
 #import "common/Notice.h"
 #import "features/metalfx/MetalFX.h"
 #import "features/custom-menu/CustomMenu.h"
-#import "features/metalfx/dynamic-resolution/DynamicResolution.h"
+#import "features/metalfx/ultra-performance/UltraPerformance.h"
 #import <MetalFX/MetalFX.h>
 #import <QuartzCore/QuartzCore.h>
 #include <algorithm>
@@ -230,7 +230,7 @@ void frameGenerationChanged(void *, const void *item) {
 }
 // Ultra Performance is an Upscaling Quality of MetalFX Temporal only. BG3 renders any quality above Ultra Quality at full size; the
 // reduced-resolution hook then renders a fixed smaller region
-// (src/features/metalfx/dynamic-resolution/).
+// (src/features/metalfx/ultra-performance/).
 // Only where MetalFX Temporal can render a smaller region than the targets:
 // with a device maximum no larger than the minimum scale the area would stay 1.
 bool reductionSupported() {
@@ -241,7 +241,7 @@ bool reductionSupported() {
     }();
     return supported;
 }
-bool reducedOffered(int mode) { return temporalValue(mode) && BG3MFXDynamicResolutionInstalled() && reductionSupported(); }
+bool reducedOffered(int mode) { return temporalValue(mode) && BG3MFXUltraPerformanceInstalled() && reductionSupported(); }
 int customQuality(void *manager, int mode) {
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:qualityPreference];
     int value = saved ? [saved intValue] : (field<uint8_t>(manager, Layout::NativeUpscalingType) == 1 ? field<uint8_t>(manager, Layout::NativeQuality) : 2);

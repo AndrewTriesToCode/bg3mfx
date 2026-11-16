@@ -429,7 +429,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   metalfx: Temporal's jitter, guarded sample selection and ARM64
   preservation. If it cannot install it shows "MetalFX could not start" and
   metalfx's install fails.
-- `src/features/metalfx/dynamic-resolution/DynamicResolution.*`: part of
+- `src/features/metalfx/ultra-performance/UltraPerformance.*`: part of
   metalfx, optional: when it cannot install, MetalFX starts without Ultra Performance.
 - `src/features/metalfx/renderer/MetalFXRenderer.mm`: part of metalfx. It is metal-hooks'
   renderer extension (`MetalHooksInternal.h`): scene tracking, the Spatial and
@@ -590,7 +590,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `CompareSetAndBindConstantBuffer<PPSAO_Blur::blur>` to record op 0x07 with
   the ring slot it just wrote, through the `SSAOBlur` island, instead of op
   0x08, whose replay binds the frame's last write for both passes.
-- `src/features/metalfx/dynamic-resolution/DynamicResolution.*`: the Ultra
+- `src/features/metalfx/ultra-performance/UltraPerformance.*`: the Ultra
   Performance (4) Upscaling Quality, a fixed reduced render area (the device's
   largest MetalFX Temporal input scale, 3x per axis and 72 jitter phases on the
   M5 Pro), MetalFX Temporal only, with or without Frame Generation; installed by
@@ -598,7 +598,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   render-viewport reduction (`RenderFrame` +0x4368) to the area and recalculates
   the frame's and views' viewports, so render-resolution passes draw a
   sub-rectangle of the same targets. The TAA capture accepts the reduced
-  viewport and a dynamic-input-content scaler upscales just that region. It also
+  viewport and a reduced-content scaler upscales just that region. It also
   patches the volumetric fog history's previous viewport loads, the
   auto-exposure scene UV load, the SSR history viewport, an SSR history discard
   after each area change, and loads of the full view rectangle for forward

@@ -45,7 +45,7 @@ $(BIN_DIR)/temporal-quality-smoke: tests/features/metalfx/temporal-upscaling/tem
 $(BIN_DIR)/metal4-bridge-smoke: tests/common/metal4_bridge_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm src/common/gpu/MetalFXPipeline.h src/common/gpu/GPUResources.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -o $@
 
-$(BIN_DIR)/temporal-jitter-smoke: tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S src/features/metalfx/temporal-upscaling/TemporalJitter.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S src/features/metalfx/dynamic-resolution/DynamicResolution.h src/common/native/CodePatch.mm src/common/native/CodePatch.h src/features/metalfx/MetalFX.h src/common/native/SupportedBuild.h src/common/Feature.h src/common/Notice.h | $(BIN_DIR)
+$(BIN_DIR)/temporal-jitter-smoke: tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S src/features/metalfx/temporal-upscaling/TemporalJitter.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S src/features/metalfx/ultra-performance/UltraPerformance.h src/common/native/CodePatch.mm src/common/native/CodePatch.h src/features/metalfx/MetalFX.h src/common/native/SupportedBuild.h src/common/Feature.h src/common/Notice.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S -framework Foundation -o $@
 
 $(BIN_DIR)/metalfx-smoke: tests/common/metalfx_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm src/common/gpu/MetalFXPipeline.h src/common/gpu/GPUResources.h | $(BIN_DIR)
@@ -74,7 +74,7 @@ RUNTIME_SOURCES = \
 	src/features/script-fixes/ScriptFixes.mm \
 	src/features/animation-optimizations/AnimationOptimizations.mm \
 	src/features/ssao-blur-fix/SSAOBlurFix.mm \
-	src/features/metalfx/dynamic-resolution/DynamicResolution.mm \
+	src/features/metalfx/ultra-performance/UltraPerformance.mm \
 	src/features/improved-shadows/ImprovedShadows.mm \
 	src/features/improved-shadows/ShadowMask.mm \
 	src/features/improved-shadows/PointLightShadowFix.mm \
@@ -118,7 +118,7 @@ RUNTIME_HEADERS = \
 	src/features/animation-optimizations/AnimationOptimizations.h \
 	src/features/animation-optimizations/GrannyKernels.h \
 	src/features/ssao-blur-fix/SSAOBlurFix.h \
-	src/features/metalfx/dynamic-resolution/DynamicResolution.h \
+	src/features/metalfx/ultra-performance/UltraPerformance.h \
 	src/features/improved-shadows/ShadowMask.h \
 	src/features/improved-shadows/ImprovedShadowsShader.h \
 	src/features/improved-shadows/PointLightShadowFix.h \

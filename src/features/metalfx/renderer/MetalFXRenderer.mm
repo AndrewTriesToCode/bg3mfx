@@ -11,7 +11,7 @@
 #import "common/gpu/GPUResources.h"
 #import "common/gpu/MetalFXPipeline.h"
 #import "features/metalfx/MetalFX.h"
-#import "features/metalfx/dynamic-resolution/DynamicResolution.h"
+#import "features/metalfx/ultra-performance/UltraPerformance.h"
 #import "features/metalfx/frame-generation/FrameInterpolation.h"
 #import "features/metalfx/spatial-upscaling/SpatialUpscaler.h"
 #import "features/metalfx/temporal-upscaling/TemporalUpscaler.h"
@@ -353,18 +353,18 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
     BOOL nativeAAWarmup = [inputs[@"nativeTAAPreserved"] boolValue];
     parameters.reset |= nativeAAWarmup || temporalResetPending.exchange(false);
     NSString *key = scalerKey(buffer.device,color.width,color.height,destination.width,destination.height);
-    if (BG3MFXDynamicResolutionSelected()) key = [key stringByAppendingString:@" dynamic"];
+    if (BG3MFXUltraPerformanceSelected()) key = [key stringByAppendingString:@" reduced"];
     BG3MFXTemporalUpscaler *upscaler;
     { std::lock_guard<std::recursive_mutex> lock(guard()); upscaler = temporalUpscalerCache()[key]; }
     NSError *error = nil;
     if (!upscaler) {
-        BOOL dynamicResolution = BG3MFXDynamicResolutionSelected();
-        if (dynamicResolution)
-            BG3MFXDynamicResolutionSetScaleLimits([MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:buffer.device],
+        BOOL reducedContent = BG3MFXUltraPerformanceSelected();
+        if (reducedContent)
+            BG3MFXUltraPerformanceSetScaleLimits([MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:buffer.device],
                 [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:buffer.device]);
         upscaler = [[BG3MFXTemporalUpscaler alloc] initWithDevice:buffer.device inputWidth:color.width
             inputHeight:color.height outputWidth:destination.width outputHeight:destination.height
-            dynamicResolution:dynamicResolution error:&error];
+            reducedContent:reducedContent error:&error];
         if (upscaler) {
             upscaler.gpuFailureHandler=^(NSError *gpuError) {
                 failTemporal(gpuError.localizedDescription ?: @"Metal 4 could not complete temporal scaling commands.");
@@ -442,7 +442,7 @@ static BOOL copyTemporalAAColor(id<MTLCommandBuffer> buffer, NSDictionary *input
 // DefaultVS's linkage name. Reduced resolution installs at library load,
 // before BG3 creates its device.
 static MTLRenderPipelineDescriptor *viewportFogDescriptor(id<MTLDevice> device, MTLRenderPipelineDescriptor *desc) {
-    if (!BG3MFXDynamicResolutionInstalled() || ![desc.vertexFunction.name isEqualToString:@"DefaultVS"] ||
+    if (!BG3MFXUltraPerformanceInstalled() || ![desc.vertexFunction.name isEqualToString:@"DefaultVS"] ||
         ![desc.fragmentFunction.name hasPrefix:@"DeferredFog_"]) return desc;
     static id<MTLFunction> vertex;
     static dispatch_once_t once;
@@ -463,8 +463,8 @@ static MTLRenderPipelineDescriptor *viewportFogDescriptor(id<MTLDevice> device, 
     copy.vertexFunction = vertex;
     return copy;
 }
-static void classifyDynamicResolution(BG3MFXPipelineInfo *info, MTLRenderPipelineDescriptor *desc) {
-    if (!BG3MFXDynamicResolutionInstalled()) return;
+static void classifyReducedViewport(BG3MFXPipelineInfo *info, MTLRenderPipelineDescriptor *desc) {
+    if (!BG3MFXUltraPerformanceInstalled()) return;
     if ([desc.vertexFunction.name hasPrefix:@"Shared_Surface_VFX_Surface_"]) info->rendererFlags |= FlagSurfaceGrid;
     if ([desc.fragmentFunction.name hasPrefix:@"PPSSSS_"]) info->rendererFlags |= FlagSubsurface;
 }
@@ -483,14 +483,14 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
     id<MTLTexture> depth=inputs[@"depth"], motion=inputs[@"motion"];
     BG3MFXFrameParameters parameters={}; NSString *reason=nil;
     if(!temporalParameters(inputs,&parameters,&reason)) { declineFrameGeneration(reason); return; }
-    BOOL dynamicContent=BG3MFXDynamicResolutionSelected();
+    BOOL reducedContent=BG3MFXUltraPerformanceSelected();
     NSString *configuration=[NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu:%d:%lu:%lu/%lu:%lu/%lu:%lu/%lu:%d",(__bridge void *)buffer.device,
         depth.width,depth.height,scene.width,scene.height,[objc_getAssociatedObject(buffer,&bufferScalingModeKey) intValue],target.pixelFormat,
-        scene.pixelFormat,scene.usage,depth.pixelFormat,depth.usage,motion.pixelFormat,motion.usage,dynamicContent];
+        scene.pixelFormat,scene.usage,depth.pixelFormat,depth.usage,motion.pixelFormat,motion.usage,reducedContent];
     NSError *error=nil;
     if(![configuration isEqualToString:frameConfiguration]) {
         frameInterpolator=[[BG3MFXFrameInterpolation alloc] initWithDevice:buffer.device scene:scene depth:depth motion:motion
-            dynamicContent:dynamicContent error:&error];
+            reducedContent:reducedContent error:&error];
         if(!frameInterpolator) {declineFrameGeneration(error.localizedDescription ?: @"Could not initialize frame generation.");return;}
         frameInterpolator.failureHandler=^(NSError *e){declineFrameGeneration(e.localizedDescription ?: @"Metal could not complete frame generation.");};
         frameConfiguration=configuration;previousFrameTime=0;
@@ -635,7 +635,7 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
         // Reduced resolution renders a smaller region at the origin of the
         // same targets; Temporal scales just that region.
         const uint32_t *minimum = size + 2;
-        if (!BG3MFXDynamicResolutionInstalled() || spatialSeed || vp[2] != 0 || vp[3] != 0 || minimum[0] || minimum[1] ||
+        if (!BG3MFXUltraPerformanceInstalled() || spatialSeed || vp[2] != 0 || vp[3] != 0 || minimum[0] || minimum[1] ||
             !size[0] || !size[1] || size[0] > source.width || size[1] > source.height) return;
         content = @{@"contentWidth": @(size[0]), @"contentHeight": @(size[1])};
     }
@@ -1279,14 +1279,14 @@ static void renderPipelineCreated(MTLRenderPipelineDescriptor *desc, id state, M
     // Pipelines keep their fragment name only when this renderer reads it.
     if (!info->description && recognizedFragment(fragment)) info->description = @{@"fragment":fragment};
     info->kind = classifyPipeline(fragment);
-    classifyDynamicResolution(info, desc);
+    classifyReducedViewport(info, desc);
 }
 static bool recognizedCompute(NSString *name) {
     return [name isEqualToString:@"FSR"] || [name isEqualToString:@"FSR_RCAS"] || [name isEqualToString:@"CAS"];
 }
 static bool pipelineBound(id, BG3MFXEncoderState *s, BG3MFXPipelineInfo *info, NSDictionary *description) {
     if (s->deferredStore && ![description[@"fragment"] isEqualToString:@"FSR_Tonemap"]) s->storeNeeded = true;
-    bool reduced = info && (info->rendererFlags & (FlagSurfaceGrid | FlagSubsurface)) && s->colorTarget && BG3MFXDynamicResolutionArea() < 1;
+    bool reduced = info && (info->rendererFlags & (FlagSurfaceGrid | FlagSubsurface)) && s->colorTarget && BG3MFXUltraPerformanceArea() < 1;
     s->surfaceGrid = reduced && (info->rendererFlags & FlagSurfaceGrid);
     s->subsurface = reduced && (info->rendererFlags & FlagSubsurface);
     return s->surfaceGrid || s->subsurface;

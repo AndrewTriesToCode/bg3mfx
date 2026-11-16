@@ -1,12 +1,12 @@
 #include "common/Feature.h"
 #import "common/Notice.h"
 #import "features/metalfx/MetalFX.h"
-#import "features/metalfx/dynamic-resolution/DynamicResolution.h"
+#import "features/metalfx/ultra-performance/UltraPerformance.h"
 
 // The metalfx feature: MetalFX Spatial and Temporal upscaling, Temporal's
 // jitter and reduced resolution, Frame Generation and the FSR_Tonemap skip,
 // with their Video options. Its install puts in each part: Temporal's native
-// jitter (temporal-upscaling/), reduced resolution (dynamic-resolution/), the
+// jitter (temporal-upscaling/), reduced resolution (ultra-performance/), the
 // renderer as metal-hooks' renderer extension (renderer/) and the options.
 //
 // The test runtime (BG3MFX_STANDALONE_TEST_HOOKS) runs outside BG3, where the
@@ -25,10 +25,10 @@ BOOL installMetalFX(const BG3MFXFeatureContext &context, NSError **error) {
     }
     // Reduced resolution is optional: without it MetalFX starts and does not offer
     // Ultra Performance.
-    NSError *dynamicError = nil;
-    if (!BG3MFXInstallDynamicResolution(context.slide, &dynamicError))
+    NSError *installError = nil;
+    if (!BG3MFXInstallUltraPerformance(context.slide, &installError))
         BG3MFXFail([@"Ultra Performance is unavailable: " stringByAppendingString:
-            dynamicError.localizedDescription ?: @"its installation failed."], nil, nil);
+            installError.localizedDescription ?: @"its installation failed."], nil, nil);
     if (!BG3MFXInstallMetalFXRenderer(error)) return NO;
     BG3MFXInstallMetalFXOptions(context.slide);
     return YES;

@@ -16,17 +16,17 @@
                     inputHeight:(NSUInteger)height outputWidth:(NSUInteger)outputWidth
                    outputHeight:(NSUInteger)outputHeight error:(NSError **)error {
     return [self initWithDevice:device inputWidth:width inputHeight:height outputWidth:outputWidth
-        outputHeight:outputHeight dynamicResolution:NO error:error];
+        outputHeight:outputHeight reducedContent:NO error:error];
 }
 
 - (instancetype)initWithDevice:(id<MTLDevice>)device inputWidth:(NSUInteger)width
                     inputHeight:(NSUInteger)height outputWidth:(NSUInteger)outputWidth
-                   outputHeight:(NSUInteger)outputHeight dynamicResolution:(BOOL)dynamicResolution
+                   outputHeight:(NSUInteger)outputHeight reducedContent:(BOOL)reducedContent
                           error:(NSError **)error {
     if (!(self = [super init])) return nil;
-    // A dynamic-resolution scaler may take full-size inputs (the Ultra Performance
-    // qualities render at native size and shrink a region of it per frame).
-    bool smaller = dynamicResolution ? outputWidth >= width && outputHeight >= height : outputWidth > width && outputHeight > height;
+    // Inputs may be output-sized: MetalFX AA runs a plain 1:1 scaler, and Ultra
+    // Performance renders at native size and shrinks a region of it.
+    bool smaller = outputWidth >= width && outputHeight >= height;
     if (!device || !width || !height || !smaller ||
         (double)outputWidth / width > 3.0 || (double)outputHeight / height > 3.0) {
         if (error) *error = [NSError errorWithDomain:@"BG3MFXTemporalUpscaler" code:1
@@ -56,7 +56,7 @@
         colorProcessingMode:MTLFXSpatialScalerColorProcessingModeHDR inputWidth:width inputHeight:height
         outputWidth:outputWidth outputHeight:outputHeight colorFormat:MTLPixelFormatRG11B10Float
         depthFormat:MTLPixelFormatDepth32Float_Stencil8 motionFormat:MTLPixelFormatRG16Float
-        outputFormat:MTLPixelFormatRG11B10Float dynamicResolution:dynamicResolution error:error];
+        outputFormat:MTLPixelFormatRG11B10Float reducedContent:reducedContent error:error];
     return _scaler ? self : nil;
 }
 

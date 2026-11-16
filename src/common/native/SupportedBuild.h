@@ -147,7 +147,7 @@ inline constexpr size_t OpWord = 1, BufferWord = 5;
 inline constexpr uint32_t OpPatched = 0x528000f5; // mov w21, #0x7
 inline constexpr uint32_t BindIsland[] = {0xb9402a89, 0x12000529, 0xf8695a89, 0xf9000409, 0xd65f03c0};
 }
-// Dynamic resolution (src/features/metalfx/dynamic-resolution/): BG3's render viewport reduction.
+// Ultra Performance's viewport reduction (src/features/metalfx/ultra-performance/): BG3's render viewport reduction.
 namespace ViewportReduction {
 inline constexpr uintptr_t StartRecordingFirst = 0x1060dbd3c;
 inline constexpr uintptr_t StartRecordingSecond = 0x1060dbe80;

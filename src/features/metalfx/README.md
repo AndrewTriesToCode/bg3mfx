@@ -28,7 +28,7 @@ The parts:
 
 - [Spatial upscaling](spatial-upscaling/README.md)
 - [Temporal upscaling](temporal-upscaling/README.md), with its jitter
-- [Reduced resolution](dynamic-resolution/README.md)
+- [Ultra Performance](ultra-performance/README.md)
 - [Frame generation](frame-generation/README.md)
 
 ## Implementation
@@ -39,7 +39,7 @@ folder. Its install puts in each part, in order:
 1. Temporal's native jitter ([`TemporalJitter.mm`](temporal-upscaling/TemporalJitter.mm)).
    If it cannot install it shows "MetalFX could not start" and the install
    fails, so root skips metalfx.
-2. Reduced resolution ([`DynamicResolution.mm`](dynamic-resolution/DynamicResolution.mm)),
+2. Ultra Performance ([`UltraPerformance.mm`](ultra-performance/UltraPerformance.mm)),
    optional: if it cannot install, metalfx reports it through `BG3MFXFail` and
    carries on without Ultra Performance.
 3. The renderer ([`MetalFXRenderer.mm`](renderer/MetalFXRenderer.mm)), below.

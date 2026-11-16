@@ -81,7 +81,7 @@ camera), with shadow passes 10 to 5 per frame.
 BG3's sun shadow mask draws dotted lines and diamond patches on terrain, and
 darkens slopes facing away from the sun. Both get worse at low render
 resolution and grazing views, so they are most visible with upscaling and
-Dynamic resolution. They happen in BG3 without bg3mfx.
+reduced render resolution. They happen in BG3 without bg3mfx.
 
 bg3mfx replaces BG3's shadow mask shaders with its own, using the G-buffer's
 per-pixel normal:

@@ -2,7 +2,7 @@
 #import "common/Notice.h"
 #include "common/native/CodePatch.h"
 #import "features/metalfx/MetalFX.h"
-#import "features/metalfx/dynamic-resolution/DynamicResolution.h"
+#import "features/metalfx/ultra-performance/UltraPerformance.h"
 #include <algorithm>
 #include <mach/mach.h>
 #include <mach-o/loader.h>
@@ -73,8 +73,9 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
             if (quality<4) { c.phases=phases[quality]; c.own=true; }
             // Ultra Performance: about eight samples per output pixel at the
             // area this frame renders (the area is set before the frame records).
-            else if (BG3MFXReducedQualityValue(quality)) {
-                float area=BG3MFXDynamicResolutionArea();
+            else if (quality==BG3MFXMetalFXAAQuality) { c.phases=8; c.own=true; }
+            else if (quality==BG3MFXUltraPerformanceQuality) {
+                float area=BG3MFXUltraPerformanceArea();
                 c.phases=area>0 ? std::clamp(unsigned(std::ceil(8/area)),8u,128u) : 8;
                 c.own=true;
             }

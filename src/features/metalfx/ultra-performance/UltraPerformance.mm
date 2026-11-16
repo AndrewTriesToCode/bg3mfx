@@ -1,5 +1,5 @@
 #include "common/native/SupportedBuild.h"
-#import "features/metalfx/dynamic-resolution/DynamicResolution.h"
+#import "features/metalfx/ultra-performance/UltraPerformance.h"
 #import "features/metalfx/MetalFX.h"
 #include "common/native/CodePatch.h"
 #include <libkern/OSCacheControl.h>
@@ -57,7 +57,7 @@ float targetArea(uint8_t *frame) {
     const int32_t *render = sizes, *output = sizes + 2;
     void *settings = *reinterpret_cast<void **>(settingsGlobal);
     BG3MFXPublishStartupReducedQuality();
-    bool selected = BG3MFXDynamicResolutionSelected();
+    bool selected = BG3MFXUltraPerformanceSelected();
     float smallest = minimumScale.load(), largest = maximumScale.load();
     bool eligible = selected && largest > smallest && smallest > 0 && BG3MFXSelectedScalingMode() == 3 && !BG3MFXTemporalFailed() &&
         settings && read<uint8_t>(settings, Layout::SettingsUpscaling) == 1 &&
@@ -73,8 +73,6 @@ float targetArea(uint8_t *frame) {
         ++settledFrames;
         return 1;
     }
-    // MetalFX AA is Temporal at 1x: the full area.
-    if (read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) == BG3MFXMetalFXAAQuality) return 1;
     // The rendered region is output / the largest scale (plus a pixel of margin)
     // per axis, within the render targets and the range MetalFX accepts.
     float scale = largest;
@@ -113,20 +111,20 @@ uintptr_t branchTarget(uintptr_t site, uint32_t word) {
 
 }
 
-BOOL BG3MFXDynamicResolutionInstalled(void) { return installed.load(); }
-BOOL BG3MFXDynamicResolutionSelected(void) {
+BOOL BG3MFXUltraPerformanceInstalled(void) { return installed.load(); }
+BOOL BG3MFXUltraPerformanceSelected(void) {
     if (!installed.load()) return NO;
     void *settings = *reinterpret_cast<void **>(settingsGlobal);
-    return settings && BG3MFXReducedQualityValue(read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality));
+    return settings && read<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) == BG3MFXUltraPerformanceQuality;
 }
-float BG3MFXDynamicResolutionArea(void) { return appliedArea.load(); }
-void BG3MFXDynamicResolutionSetScaleLimits(float smallest, float largest) {
+float BG3MFXUltraPerformanceArea(void) { return appliedArea.load(); }
+void BG3MFXUltraPerformanceSetScaleLimits(float smallest, float largest) {
     minimumScale = std::max(smallest, 1.0f); maximumScale = largest;
 }
 
-static BOOL installDynamic(intptr_t slide, NSError **error) {
+static BOOL installUltraPerformance(intptr_t slide, NSError **error) {
     auto fail = [&](NSString *message) {
-        if (error) *error = [NSError errorWithDomain:@"BG3MFXDynamicResolution" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
+        if (error) *error = [NSError errorWithDomain:@"BG3MFXUltraPerformance" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
         return NO;
     };
     for (unsigned i = 0; i < Sites; ++i) {
@@ -227,9 +225,9 @@ static BOOL installDynamic(intptr_t slide, NSError **error) {
         const uint32_t toValidIsland = 0x14000000 | (BG3MFXBranch(ssrValid, ssrValidIsland) & 0x03ffffff);
         memcpy(reinterpret_cast<void *>(ssrValid), &toValidIsland, 4);
     });
-    if (result != BG3MFXCodePatchResult::Patched) return fail(@"Could not install dynamic resolution.");
+    if (result != BG3MFXCodePatchResult::Patched) return fail(@"Could not install Ultra Performance.");
     installed = true;
     return YES;
 }
 
-BOOL BG3MFXInstallDynamicResolution(intptr_t slide, NSError **error) { return installDynamic(slide, error); }
+BOOL BG3MFXInstallUltraPerformance(intptr_t slide, NSError **error) { return installUltraPerformance(slide, error); }

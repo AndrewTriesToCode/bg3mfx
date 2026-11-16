@@ -1,4 +1,4 @@
-# Reduced Resolution
+# Ultra Performance
 
 Part of the [metalfx](../README.md) feature (`BG3MFX_FEATURE_METALFX`).
 
@@ -40,8 +40,7 @@ Ultra Performance.
 
 ## Implementation
 
-- [`DynamicResolution.mm`](DynamicResolution.mm) (the file keeps the name of
-  the earlier Dynamic quality) hooks both
+- [`UltraPerformance.mm`](UltraPerformance.mm) hooks both
   `rf::RenderFrame::StartRecording` calls in `ls::RenderThread::Update`. These
   run on the render thread before any view records.
 - For an on-screen frame, the hook writes the fixed area to BG3's own render
@@ -57,7 +56,7 @@ Ultra Performance.
     and the projection jitter divisor.
 - [`MetalFXRenderer.mm`](../renderer/MetalFXRenderer.mm) does the following:
   - accepts the reduced TAA viewport as the Temporal content region;
-  - creates Temporal scalers with dynamic input content using `inputContentPropertiesEnabled`;
+  - creates Ultra Performance's Temporal scaler with `inputContentPropertiesEnabled`, so it accepts a smaller region of full-size inputs. MetalFX AA (hidden quality 5) renders at full size and uses a plain 1:1 scaler instead;
   - gives the fog composite a viewport-mapped vertex shader;
   - corrects surface grid (blood, water) and subsurface scattering draws while
     reducing.

@@ -7,7 +7,7 @@
 static int mode=3;
 int BG3MFXSelectedScalingMode(void) { return mode; }
 static float area=1;
-float BG3MFXDynamicResolutionArea(void) { return area; }
+float BG3MFXUltraPerformanceArea(void) { return area; }
 void BG3MFXFail(NSString *, NSString *, NSString *) {}
 extern "C" void BG3MFXTestJitterProjection(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterCamera(void *,void *,void *,void *);
@@ -115,5 +115,5 @@ int main() {
     if(!run(BG3MFXTestJitterProjection,BG3MFXTestJitterProjectionResume,BG3MFXJitterProjection,view.data(),3)) return 6;
     if(!run(BG3MFXTestJitterCamera,BG3MFXTestJitterCameraResume,BG3MFXJitterCamera,view.data(),1)) return 7;
     if(!run(BG3MFXTestJitterVelocity,BG3MFXTestJitterVelocityResume,BG3MFXJitterVelocity,velocity.data(),0)) return 8;
-    printf("Native jitter: 14/18/24/32-phase and Dynamic area-based wrap, same-frame consistency, native/auxiliary isolation, and all three ARM64 register-preserving wrappers passed.\n");
+    printf("Native jitter: 14/18/24/32-phase and Ultra Performance area-based wrap, same-frame consistency, native/auxiliary isolation, and all three ARM64 register-preserving wrappers passed.\n");
 }
