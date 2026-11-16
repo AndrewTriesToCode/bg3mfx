@@ -7,7 +7,10 @@ upscaling controls. It is off by default and combines with Off, FSR, Spatial,
 or Temporal. The interpolator uses scene color, depth, motion, and camera data
 to generate an image between rendered frames; BG3 continues to compose the UI
 on the real frame. BG3's drawable path is paired with a worker that presents
-generated and rendered images. BG3's VSync buffering still applies, counting the
+generated and rendered images. It requires BG3's VSync set to Double or Triple
+Buffering: with VSync Off the checkbox is dimmed, and while it is ticked, choosing VSync
+Off snaps back to the previous Double or Triple. A tick saved with VSync Off (an earlier
+version allowed it) is inactive until Options opens, then cleared. BG3's VSync buffering still applies, counting the
 frame on screen: Double lets one rendered frame wait to be shown, for lower
 latency, and Triple two.
 
@@ -21,7 +24,7 @@ resources are in [`GPUResources.mm`](../../../../src/common/gpu/GPUResources.mm)
 At 3840×2160 on the 120 Hz MacBook display, HUD logs recorded
 Temporal alone at about 58–59 fps with VSync off, and Temporal + Frame
 Generation at about 85 displayed fps (about 42–43 rendered fps) with VSync
-Triple. Since VSync differs, this is not a matched FPS comparison; it shows
+Triple. (Frame Generation now always runs with VSync on.) Since VSync differs, this is not a matched FPS comparison; it shows
 displayed throughput for that run, not a higher game render rate or a measured
 latency improvement. Later pacing is user-reported as
 working well on the 120 Hz MacBook display, but displayed pacing has not been

@@ -14,6 +14,9 @@
 // MetalFX AA Anti-Aliasing entry. BG3's settings code accepts
 // only Off and FSR as upscaling types, so a MetalFX type runs BG3's FSR setup
 // for its quality and render resolution and is tracked separately here.
+// Frame Generation requires BG3's VSync (Double or Triple Buffering): the
+// checkbox is dimmed while VSync is Off, and while it is ticked choosing VSync Off
+// snaps back to the previous Double or Triple.
 // MetalFX AA is MetalFX Temporal at 1x scale: with the Upscaling Type Off it runs
 // that FSR setup at the hidden full-size quality, and while a Temporal upscaler
 // is selected the Anti-Aliasing combo shows it, dimmed. BG3's own Anti-Aliasing
@@ -24,7 +27,11 @@ namespace Layout = BG3MFXBuild::Menu::Layout;
 
 namespace {
 intptr_t slide;
-BG3MFXMenuCallback originalUpscaleCall, originalQualityCall;
+BG3MFXMenuCallback originalUpscaleCall, originalQualityCall, originalVSyncCall;
+// The last VSync combo value that was on (1 Double, 2 Triple).
+int lastVSyncOn = 1;
+// -1: BG3's own setting; 0 or 1: a standalone test harness's VSync.
+std::atomic<int> standaloneVSync{-1};
 // Upscaling Type menu value: 0 Off, 1 FSR, 2 Spatial, 3 Temporal. Frame
 // Generation is a separate checkbox that combines with any of them.
 std::atomic<int> selectedScalingMode{0};
@@ -60,6 +67,15 @@ constexpr uint16_t frameGenerationID = 0x7f02;
 template<class T> T at(uintptr_t address) { return reinterpret_cast<T>(address + slide); }
 template<class T> T &field(const void *object, size_t offset) {
     return *reinterpret_cast<T *>(static_cast<char *>(const_cast<void *>(object)) + offset);
+}
+bool menuVSyncOn(void *manager) { return field<uint8_t>(manager, Layout::VSync) != 0; }
+// BG3's live VSync, for the renderer. Outside BG3 (no slide) it is a harness's.
+bool bg3VSyncOn() {
+    int standalone = standaloneVSync.load();
+    if (standalone >= 0) return standalone != 0;
+    if (!slide) return true;
+    void *settings = *at<void **>(BG3MFXBuild::Temporal::Settings);
+    return !settings || field<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsVSync) != 0;
 }
 void publishSettings(void *manager) { at<void (*)(void *, bool)>(Native::PublishSettings)(manager, false); }
 bool frameGenerationSupported() {
@@ -179,6 +195,26 @@ void updateDependentControls(void *manager, int mode) {
         BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, upscaleSharpnessID), false);
     }
 }
+// Frame Generation needs VSync: dim its checkbox while VSync is Off. While it is
+// ticked, VSync Off is refused (removing the entry blanks BG3's dropdown).
+void syncFrameGenerationVSync(void *manager) {
+    if (!frameGenerationSupported()) return;
+    BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, frameGenerationID), menuVSyncOn(manager));
+}
+void vsyncChanged(void *storage, const void *item) {
+    void *manager = BG3MFXMenuStorageManager(storage);
+    void *combo = const_cast<void *>(item);
+    int value = item ? BG3MFXMenuComboSelection(item) : -1;
+    if (value == 0 && frameGenerationChecked.load() && frameGenerationSupported() && combo) {
+        BG3MFXMenuSetComboSelection(combo, lastVSyncOn);
+        if (originalVSyncCall) originalVSyncCall(storage, item);
+        BG3MFXMenuShowComboSelection(combo, lastVSyncOn);
+        return;
+    }
+    if (value == 1 || value == 2) lastVSyncOn = value;
+    if (originalVSyncCall) originalVSyncCall(storage, item);
+    if (manager) syncFrameGenerationVSync(manager);
+}
 void frameGenerationChanged(void *, const void *item) {
     if (!item || BG3MFXMenuItemID(const_cast<void *>(item)) != frameGenerationID) return;
     bool enabled = BG3MFXMenuTickBoxValue(item);
@@ -187,7 +223,10 @@ void frameGenerationChanged(void *, const void *item) {
     // BG3 can quit right after a change; keep the next launch consistent.
     [NSUserDefaults.standardUserDefaults synchronize];
     BG3MFXMetalFXSelectionChanged(false);
-    if (void *manager = BG3MFXMenuManager()) updateDependentControls(manager, selectedScalingMode.load());
+    if (void *manager = BG3MFXMenuManager()) {
+        syncFrameGenerationVSync(manager);
+        updateDependentControls(manager, selectedScalingMode.load());
+    }
 }
 // Ultra Performance is an Upscaling Quality of MetalFX Temporal only. BG3 renders any quality above Ultra Quality at full size; the
 // reduced-resolution hook then renders a fixed smaller region
@@ -314,6 +353,11 @@ void applyCombo(void *manager, const void *item, BG3MFXMenuApply next) {
     void *mutableItem = const_cast<void *>(item);
     bool upscale = item && BG3MFXMenuItemType(mutableItem) == 3 && BG3MFXMenuItemID(mutableItem) == upscaleTypeID;
     bool aa = item && BG3MFXMenuItemType(mutableItem) == 3 && BG3MFXMenuItemID(mutableItem) == antiAliasingID;
+    if (item && BG3MFXMenuItemType(mutableItem) == 3 && BG3MFXMenuItemID(mutableItem) == vsyncID) {
+        next(manager, item);
+        syncFrameGenerationVSync(manager);
+        return;
+    }
     if (aa) {
         int aaValue = BG3MFXMenuComboSelection(item), taa = taaValue(mutableItem);
         bool metal = aaMetalFXValue >= 0 && aaValue == aaMetalFXValue;
@@ -474,7 +518,7 @@ void addFrameGeneration(void *manager) {
     BG3MFXMenuText name, description;
     if (BG3MFXMenuMakeText(name, "h00000000g0000g0000g0000g00000000f00b", "MetalFX Frame Generation") &&
         BG3MFXMenuMakeText(description, "h00000000g0000g0000g0000g00000000f00c",
-            "Adds a MetalFX-generated frame between rendered frames, with any Upscaling Type. Uses the game's TAA depth and motion data. The FPS limiter controls rendered frames.")) {
+            "Adds a MetalFX-generated frame between rendered frames, with any Upscaling Type. Uses the game's TAA depth and motion data. The FPS limiter controls rendered frames. Requires VSync (Double or Triple Buffering): unavailable while VSync is Off, and VSync cannot be set to Off while it is on.")) {
         void *item = BG3MFXMenuAddTickBox(manager, frameGenerationID, name, description, frameGenerationChecked.load(), frameGenerationChanged);
         // Right below VSync (combo 82, EVSyncMode), which also governs
         // presentation; without it, after the upscaling controls (Upscaling
@@ -542,6 +586,22 @@ void menuBuilt(void *manager) {
         if (qualityCall != qualityChanged) originalQualityCall = qualityCall;
         if (originalQualityCall) BG3MFXMenuSetSelectionCallback(quality, qualityChanged);
     }
+    // Frame Generation needs VSync: a tick saved with VSync Off (an earlier
+    // version allowed it) is cleared.
+    if (frameGenerationChecked.load() && frameGenerationSupported() && !menuVSyncOn(manager)) {
+        frameGenerationChecked.store(false);
+        [NSUserDefaults.standardUserDefaults setBool:NO forKey:frameGenerationPreference];
+        [NSUserDefaults.standardUserDefaults synchronize];
+        BG3MFXMetalFXSelectionChanged(false);
+    }
+    if (void *vsync = BG3MFXMenuFind(manager, 3, vsyncID)) {
+        BG3MFXMenuCallback call = BG3MFXMenuSelectionCallback(vsync);
+        if (call != vsyncChanged) originalVSyncCall = call;
+        int shown = BG3MFXMenuComboSelection(vsync);
+        if (shown == 1 || shown == 2) lastVSyncOn = shown;
+        if (originalVSyncCall) BG3MFXMenuSetSelectionCallback(vsync, vsyncChanged);
+        else BG3MFXMenuProblem(@"Missing VSync selection callback");
+    }
     addMetalFXAA(manager);
     // Restore through the same native callback as an interactive selection.
     // Merely changing +0xf7 left the quality ComboItems disabled and never
@@ -558,7 +618,10 @@ void menuBuilt(void *manager) {
         updateDependentControls(manager, mode);
     }
     bool frameGeneration = frameGenerationSupported();
-    if (frameGeneration) addFrameGeneration(manager);
+    if (frameGeneration) {
+        addFrameGeneration(manager);
+        syncFrameGenerationVSync(manager);
+    }
 }
 }
 
@@ -610,7 +673,10 @@ void BG3MFXRestoreMetalFXChoices(void) {
 
 // MetalFX AA with the type Off runs MetalFX Temporal (3).
 int BG3MFXSelectedScalingMode(void) { return aaOnlyActive.load() ? 3 : selectedScalingMode.load(); }
-BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported(); }
+// Frame Generation needs BG3's VSync, checked live: a saved tick with VSync Off
+// stays inactive until Options is opened, and a VSync change that bypasses the
+// menu (a reverted display setting) ends it at once.
+BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported() && bg3VSyncOn(); }
 
 void BG3MFXPublishStartupReducedQuality(void) {
     int quality = startupQuality.load();
@@ -662,6 +728,11 @@ extern "C" BOOL BG3MFXSetStandaloneScalingMode(int mode) {
 extern "C" BOOL BG3MFXSetStandaloneFrameGeneration(BOOL enabled) {
     if (BG3MFXMenuActive() || [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return NO;
     frameGenerationChecked.store(enabled);
+    return YES;
+}
+extern "C" BOOL BG3MFXSetStandaloneVSync(BOOL on) {
+    if (BG3MFXMenuActive() || [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.larian.bg3"]) return NO;
+    standaloneVSync.store(on ? 1 : 0);
     return YES;
 }
 #endif

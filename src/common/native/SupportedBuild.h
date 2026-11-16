@@ -420,6 +420,9 @@ inline constexpr size_t SliderValue = 0xb8;
 inline constexpr size_t SliderObservers = 0xa8;
 inline constexpr size_t SliderObserverCount = 0xb4;
 inline constexpr size_t SettingsStorage = 0x60;
+// VSync (SettingsStorage + 0x28): ApplyComboBox of combo 82 writes the halfword
+// 0 (Off), 0x0001 (Double) or 0x0101 (Triple, +0x89).
+inline constexpr size_t VSync = 0x88;
 // PublishSettings(manager, bool) copies the storage's first 0xa8 bytes (two
 // ls::STDStrings at +0x60 and +0x70 by copy construction) and reads +0x131.
 inline constexpr size_t PublishedSettingsBytes = 0xa8, PublishedManagerBytes = 0x140;
@@ -446,6 +449,7 @@ inline constexpr size_t SettingsSharpness = 0x9c;
 // (+0x28) with triple buffering (+0x29), and the frame cap's toggle (byte) and
 // frames per second (uint16).
 inline constexpr size_t SettingsRefreshNumerator = 0x18, SettingsRefreshDenominator = 0x1c;
+inline constexpr size_t SettingsVSync = 0x28;
 inline constexpr size_t SettingsFrameCapEnabled = 0x5b, SettingsFrameCap = 0x5c;
 inline constexpr size_t ClassifierMethodSlot = 0x10;
 inline constexpr size_t VTable = 0, FrameIndex = 8, FrameIndexOffset = 12;

@@ -26,11 +26,12 @@ int main(int argc,char **argv) { @autoreleasepool {
     // checkbox clear; 4-7 are Temporal, Spatial, Off and FSR with it checked.
     auto modeFor=[](int choice){ static const int modes[]={3,2,0,1}; return choice<4 ? choice : modes[choice-4]; };
     auto select=[&](int choice)->BOOL{ return setMode && setFrameGeneration && setMode(modeFor(choice)) && setFrameGeneration(choice>=4); };
+    auto setVSync=(BOOL(*)(BOOL))dlsym(lib,"BG3MFXSetStandaloneVSync");
     auto pair=(NSDictionary *(*)(id<MTLCommandBuffer>))dlsym(lib,"BG3MFXStandaloneGeneratedPair");
     auto presented=(NSUInteger(*)(void))dlsym(lib,"BG3MFXStandalonePresentedPairs");
     auto allocations=(NSUInteger(*)(void))dlsym(lib,"BG3MFXTexturePoolAllocations");
     auto interpolators=(NSUInteger(*)(void))dlsym(lib,"BG3MFXStandaloneFrameInterpolatorsCreated");
-    if(!setMode || !setFrameGeneration || !pair || !presented || !allocations || !interpolators)return 3;
+    if(!setMode || !setFrameGeneration || !setVSync || !pair || !presented || !allocations || !interpolators)return 3;
     Class standIn=NSClassFromString(@"BG3MFXStandInDrawable");NSUInteger warm=0;int fgFrames=0;
     // When set, the next frame's TAA binds BG3's 16x16 reset velocity texture.
     bool resetFrame=false;
@@ -243,6 +244,14 @@ int main(int argc,char **argv) { @autoreleasepool {
     }
     if(!select(3))return 6;
     @autoreleasepool { if(![layer nextDrawable] || layer.maximumDrawableCount!=2){fprintf(stderr,"BG3's latest buffering was not restored\n");return 18;} }
+    // Frame Generation requires BG3's VSync: with it Off the game runs on real
+    // drawables and BG3's buffering, and pairing resumes once VSync is on.
+    if(!select(4) || !setVSync(0))return 6;
+    @autoreleasepool { id d=[layer nextDrawable];
+        if(!d || [d isKindOfClass:standIn] || layer.maximumDrawableCount!=2){fprintf(stderr,"Frame Generation ran with VSync off\n");return 24;} }
+    if(!setVSync(1))return 6;
+    if(int status=frame(4,false)){fprintf(stderr,"Frame Generation did not resume with VSync on\n");return status;}
+    puts("Frame Generation stayed off with VSync off and resumed with VSync on.");
     // A composition Frame Generation cannot replay turns it off for the rest of
     // the selection: the game keeps running on real drawables. Reselecting retries.
     if(int status=frame(4,true))return status;

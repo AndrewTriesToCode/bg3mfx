@@ -137,8 +137,8 @@ frame presentation, patching, or distribution responsibilities.
 ## Frame Generation
 
 Frame Generation is the "MetalFX Frame Generation" checkbox (item `0x7f02`),
-added right below VSync (after the upscaling controls if VSync is missing),
-only on supported devices, and saved as `BG3MFXFrameGenerationEnabled`. It combines with every Upscaling Type, which
+added right below VSync, and requires it on (combo 82: 0 Off, 1 Double, 2 Triple; manager +0x88/+0x89, live settings +0x28/+0x29). `MetalFXOptions.mm` dims the checkbox while VSync is Off, wraps the VSync combo's callback so choosing Off while it is ticked snaps back to the last Double or Triple (removing the entry blanked BG3's dropdown), and `BG3MFXFrameGenerationEnabled` also reads the live VSync, so a VSync-off state never pairs frames. The VSync-off presentation rows below are only a defensive path. The checkbox is placed after the upscaling controls if VSync is missing,
+appears only on supported devices, and saved as `BG3MFXFrameGenerationEnabled`. It combines with every Upscaling Type, which
 is back to BG3's Off and FSR plus MetalFX Spatial and Temporal (values 0–3).
 Startup migrates earlier settings: Upscaling Type values 4 (Temporal + Frame
 Generation) and 5 (Spatial + Frame Generation) become Temporal or Spatial with
