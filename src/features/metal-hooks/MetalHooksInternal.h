@@ -79,16 +79,10 @@ enum EncoderAssociation : uint16_t {
     MTLViewport viewport;
     MTLScissorRect scissor;
     // The renderer extension's per-encoder flags.
-    // Dynamic resolution: a surface grid or subsurface blur pipeline is bound
-    // while the viewport is reduced.
-    bool surfaceGrid, subsurface;
     // FSR_Tonemap skip: this pass's store action is chosen at endEncoding.
     bool deferredStore, tonemapSkipped, storeNeeded;
     // A pipeline whose draws the draw replacement claimed is bound.
     bool replaceDraws;
-    // The vertex buffer bound at the extension's watched slot.
-    __unsafe_unretained id<MTLBuffer> watchedBuffer;
-    NSUInteger watchedOffset;
     // Bind dedup: fragment textures this encoder has actually forwarded.
     BG3MFXBindFilter bindFilter;
     // EncoderAssociation bits; they only ever accumulate.
@@ -100,7 +94,6 @@ enum EncoderAssociation : uint16_t {
 @public
     __strong NSDictionary *description;
     uint8_t kind;           // the renderer extension's class (0: none)
-    uint8_t rendererFlags;  // and its flags
     // Its non-indexed draws go through the draw replacement.
     bool replaceDraws;
     // Binding it binds the pipeline substitution's choice instead.
@@ -183,8 +176,6 @@ using FinishEncoder = void (*)(id encoder, SEL cmd, BG3MFXEncoderState *state, i
 struct RendererExtension {
     // Constant slots (bit per index below 32) whose bindings encoder state records.
     uint32_t constantSlots;
-    // A vertex buffer slot recorded as watchedBuffer/watchedOffset (NSNotFound: none).
-    NSUInteger vertexBufferSlot;
     void (*commandBufferCreated)(id<MTLCommandBuffer> buffer);
     // A render pass about to be created; may return a replacement descriptor.
     MTLRenderPassDescriptor *(*prepareRenderPass)(MTLRenderPassDescriptor *desc, bool *changed);
@@ -194,11 +185,9 @@ struct RendererExtension {
     void (*encoderRecycled)(id encoder, uint16_t stale);
     // Ends the encoder: must call finish, which ends it in Metal.
     void (*endEncoding)(id encoder, SEL cmd, BG3MFXEncoderState *state, id<MTLCommandBuffer> buffer, FinishEncoder finish);
-    // Before a render pipeline is created; may return a replacement descriptor.
-    MTLRenderPipelineDescriptor *(*prepareRenderPipeline)(id device, MTLRenderPipelineDescriptor *desc);
     // Whether to create it with reflection (passed to renderPipelineCreated).
     bool (*wantsReflection)(MTLRenderPipelineDescriptor *desc);
-    // Classifies a new render pipeline: kind, rendererFlags, and a description
+    // Classifies a new render pipeline: kind and a description
     // when the extension will read it.
     void (*renderPipelineCreated)(MTLRenderPipelineDescriptor *desc, id state, MTLRenderPipelineReflection *reflection,
                                   BG3MFXPipelineInfo *info);

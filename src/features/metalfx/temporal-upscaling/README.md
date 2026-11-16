@@ -9,8 +9,8 @@ the upscaled scene, disables the separate anti-aliasing control while selected,
 and uses BG3's depth, motion, camera, and post-processing inputs. Native and
 auxiliary views retain BG3's TAA. Upscaled scenes use quality-dependent
 14/18/24/32-phase Halton jitter, and Ultra Performance
-([reduced resolution](../ultra-performance/README.md)) ceil(8 / area) phases
-(8–128) for its fixed area;
+([Ultra Performance](../ultra-performance/README.md)) ceil(8 × scale²) phases
+(8–128) for its render scale;
 other views keep the native eight-phase table.
 BG3's `FSR_Tonemap` draw is skipped as for
 [Spatial](../spatial-upscaling/README.md). With the Metal 4 scaler, the

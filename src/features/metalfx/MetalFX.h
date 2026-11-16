@@ -2,7 +2,7 @@
 #import <Foundation/Foundation.h>
 
 // The metalfx feature: MetalFX Spatial and Temporal upscaling (with
-// Temporal's jitter and reduced resolution), Frame Generation and the
+// Temporal's jitter and Ultra Performance), Frame Generation and the
 // FSR_Tonemap skip, with their Video options (MetalFXOptions.mm). Requires
 // custom-menu and metal-hooks; its renderer work (renderer/MetalFXRenderer.mm)
 // is metal-hooks' renderer extension.

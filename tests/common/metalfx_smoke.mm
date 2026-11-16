@@ -76,51 +76,21 @@ int main(void) {
         id<MTLTexture> wrongDepth = input(device,MTLPixelFormatR32Float,128,128);
         buffer = [queue commandBuffer];
         if ([pipeline encodeColor:color depth:wrongDepth motion:motion parameters:parameters commandBuffer:buffer error:&error]) return 9;
-        // Reduced content: a 384² input scaler renders 256² or the whole
-        // input per frame. Red outside the 256² region must never be read.
+        // Ultra Performance renders at BG3's output / scale, truncated. With the
+        // scale just under the device's maximum, the plain scaler accepts that
+        // input at sizes where exactly the maximum would not.
         {
-            // A scaler without reduced content refuses a smaller region.
-            BG3MFXFrameParameters region = parameters; region.contentWidth = region.contentHeight = 128;
-            buffer = [queue commandBuffer];
-            if ([pipeline encodeColor:color depth:depth motion:motion parameters:region commandBuffer:buffer error:&error]) return 13;
-            BG3MFXPipeline *reduced = [[BG3MFXPipeline alloc] initWithDevice:device mode:BG3MFXScalingModeTemporal
-                colorProcessingMode:MTLFXSpatialScalerColorProcessingModeHDR inputWidth:384 inputHeight:384
-                outputWidth:512 outputHeight:512 colorFormat:MTLPixelFormatRGBA8Unorm depthFormat:MTLPixelFormatR32Float
-                motionFormat:MTLPixelFormatRG16Float outputFormat:MTLPixelFormatRGBA8Unorm reducedContent:YES error:&error];
-            if (!reduced) { fprintf(stderr,"%s\n",error.description.UTF8String); return 14; }
-            id<MTLTexture> full = input(device,MTLPixelFormatRGBA8Unorm,384,384), partial = input(device,MTLPixelFormatRGBA8Unorm,384,384);
-            id<MTLTexture> bigDepth = input(device,MTLPixelFormatR32Float,384,384), bigMotion = input(device,MTLPixelFormatRG16Float,384,384);
-            std::vector<uint8_t> uniform(384*384*4), outside(384*384*4);
-            for (size_t y=0;y<384;++y) for (size_t x=0;x<384;++x) {
-                uint8_t *u=&uniform[(y*384+x)*4], *o=&outside[(y*384+x)*4];
-                u[0]=64;u[1]=128;u[2]=192;u[3]=255;
-                bool inside = x<256 && y<256;
-                o[0]=inside?64:255;o[1]=inside?128:0;o[2]=inside?192:0;o[3]=255;
+            float scale = [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:device] * (1 - 1.0f / 300);
+            const NSUInteger outputs[][2] = {{1280,720},{1728,1117},{2560,1440},{2560,1600},{3456,2234},{3840,2160},{5120,2880}};
+            for (const auto &o : outputs) {
+                NSUInteger w = (NSUInteger)(o[0] / scale), h = (NSUInteger)(o[1] / scale);
+                BG3MFXPipeline *small = [[BG3MFXPipeline alloc] initWithDevice:device mode:BG3MFXScalingModeTemporal
+                    colorProcessingMode:MTLFXSpatialScalerColorProcessingModeHDR inputWidth:w inputHeight:h
+                    outputWidth:o[0] outputHeight:o[1] colorFormat:MTLPixelFormatRGBA8Unorm depthFormat:MTLPixelFormatR32Float
+                    motionFormat:MTLPixelFormatRG16Float outputFormat:MTLPixelFormatRGBA8Unorm error:&error];
+                if (!small) { fprintf(stderr,"%lux%lu from %lux%lu: %s\n",(unsigned long)o[0],(unsigned long)o[1],(unsigned long)w,(unsigned long)h,error.description.UTF8String); return 14; }
             }
-            std::vector<float> bigDepths(384*384,0.5f);
-            std::vector<uint16_t> bigMotions(384*384*2,0);
-            [full replaceRegion:MTLRegionMake2D(0,0,384,384) mipmapLevel:0 withBytes:uniform.data() bytesPerRow:384*4];
-            [partial replaceRegion:MTLRegionMake2D(0,0,384,384) mipmapLevel:0 withBytes:outside.data() bytesPerRow:384*4];
-            [bigDepth replaceRegion:MTLRegionMake2D(0,0,384,384) mipmapLevel:0 withBytes:bigDepths.data() bytesPerRow:384*4];
-            [bigMotion replaceRegion:MTLRegionMake2D(0,0,384,384) mipmapLevel:0 withBytes:bigMotions.data() bytesPerRow:384*4];
-            const NSUInteger sizes[] = {256,256,384,384,256,256};
-            for (NSUInteger size : sizes) {
-                BG3MFXFrameParameters p = parameters; p.contentWidth = p.contentHeight = size;
-                buffer = [queue commandBuffer];
-                BG3MFXFrame *frame = [reduced encodeColor:size==384 ? full : partial depth:bigDepth motion:bigMotion
-                    parameters:p commandBuffer:buffer error:&error];
-                if (!frame) { fprintf(stderr,"%s\n",error.description.UTF8String); return 15; }
-                id<MTLBuffer> actual = readback(buffer,frame.rendered);
-                [buffer commit]; [buffer waitUntilCompleted];
-                if (buffer.status != MTLCommandBufferStatusCompleted) { fprintf(stderr,"%s\n",buffer.error.description.UTF8String); return 16; }
-                if (!check(actual)) { fprintf(stderr,"Reduced region %lu\n",(unsigned long)size); return 17; }
-            }
-            // A region beyond the device's largest scale is refused.
-            BG3MFXFrameParameters tiny = parameters; tiny.contentWidth = tiny.contentHeight = 32;
-            buffer = [queue commandBuffer];
-            if ([reduced encodeColor:partial depth:bigDepth motion:bigMotion parameters:tiny commandBuffer:buffer error:&error]) return 18;
-            printf("Reduced content: 384² inputs scaled 256²/384² regions to 512² (max scale %.2f).\n",
-                [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:device]);
+            printf("Ultra Performance: plain scalers accept output / %.3f at 7 output sizes.\n", scale);
         }
         // Spatial scaling neither requires nor consumes motion, depth, or jitter.
         // Verify all explicit color-processing modes independently of temporal AA.

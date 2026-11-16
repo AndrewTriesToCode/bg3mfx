@@ -391,7 +391,7 @@ which it forwards only when the player sets it; a player can set one to 0 to
 turn it off. `tools/launch/bg3mfx.py` sets only the
 features named with `--feature`, so a live test exercises one at a time.
 `BG3MFX_FEATURE_METALFX` covers MetalFX Spatial, Temporal (with its jitter
-hooks and reduced resolution), Frame Generation and the FSR_Tonemap skip. No
+hooks and Ultra Performance), Frame Generation and the FSR_Tonemap skip. No
 feature enables itself. The Video menu is patched
 only for a feature that adds options to it (metal-hud, metalfx).
 
@@ -419,7 +419,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   respond to the first click after a fullscreen settings change.
 - `src/features/metalfx/MetalFX.mm`: the metalfx feature (native; requires
   custom-menu and metal-hooks), the only feature under `metalfx/`. Its
-  install puts in Temporal's jitter, reduced resolution (optional), the
+  install puts in Temporal's jitter, Ultra Performance (optional), the
   renderer and the options; its activation hooks `CAMetalLayer` for the
   renderer and restores the saved choices. In the test runtime
   (`BG3MFX_STANDALONE_TEST_HOOKS`) it is not native, requires only
@@ -591,24 +591,20 @@ only for a feature that adds options to it (metal-hud, metalfx).
   the ring slot it just wrote, through the `SSAOBlur` island, instead of op
   0x08, whose replay binds the frame's last write for both passes.
 - `src/features/metalfx/ultra-performance/UltraPerformance.*`: the Ultra
-  Performance (4) Upscaling Quality, a fixed reduced render area (the device's
-  largest MetalFX Temporal input scale, 3x per axis and 72 jitter phases on the
-  M5 Pro), MetalFX Temporal only, with or without Frame Generation; installed by
-  metalfx. Before each on-screen frame records it sets BG3's unused
-  render-viewport reduction (`RenderFrame` +0x4368) to the area and recalculates
-  the frame's and views' viewports, so render-resolution passes draw a
-  sub-rectangle of the same targets. The TAA capture accepts the reduced
-  viewport and a reduced-content scaler upscales just that region. It also
-  patches the volumetric fog history's previous viewport loads, the
-  auto-exposure scene UV load, the SSR history viewport, an SSR history discard
-  after each area change, and loads of the full view rectangle for forward
-  lighting clamps, bloom and DOF radii and the projection jitter divisor;
-  `MetalFXRenderer.mm` gives the fog composite a viewport-mapped vertex shader
-  (`viewportFogDescriptor`, whenever the feature is installed) and corrects
-  surface grid draws (`SurfaceGridDraw`) and subsurface scattering widths
-  (`SubsurfaceDraw`) while reducing.
+  Performance (4) Upscaling Quality, MetalFX Temporal only, with or without
+  Frame Generation; installed by metalfx. BG3 reads a table of four render
+  scales (`0x107872d40`: 1.3, 1.5, 1.7, 2.0) inline in `RenderFrame::Resize`,
+  `BaseApp::InitAPI` and `PostProcessStep_FSR::ExecuteWTKernel`, after
+  `cmp quality, #3` sends higher qualities to 1.0. Those comparisons become 4
+  and the table loads go through a pointer in the `RenderScale` island, to a
+  table in the runtime whose entry 4 is the device's largest MetalFX Temporal
+  input scale less 1/300 (2.99 on the M5 Pro, BG3's truncated render size
+  keeping the ratio within the scaler's limit) while Temporal is selected and
+  working, and 1.0 otherwise. BG3 then sizes its own render targets, 72 jitter
+  phases and a plain Temporal scaler need no further patches. MetalFX AA
+  (quality 5) stays at 1.0.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, thread idling `0x9c0`, uniform
-  slices `0xa00`, viewport reduction `0xa40`, SSR history `0xa70`, SSR valid `0xaa0`, SSAO blur `0xac0`, custom pipeline bundles `0xad8`, improved display `0xb08`, script fixes `0xb38`, custom menu `0xb68` (offsets from
+  slices `0xa00`, render scale `0xa40`, SSAO blur `0xac0`, custom pipeline bundles `0xad8`, improved display `0xb08`, script fixes `0xb38`, custom menu `0xb68` (offsets from
   `0x100004000`). Each install checks its range is still zero.
 - `src/features/metal-hooks/MetalHooks.mm`: Metal hooks; `src/features/metalfx/renderer/MetalFXRenderer.mm`: exact texture
   association and pass replacement.

@@ -25,9 +25,6 @@ static void failure(NSError **error, NSString *message) {
     BG3MFXTexturePool *_outputs;
     id<MTL4FXSpatialScaler> _spatial;
     NSUInteger _inputWidth, _inputHeight, _outputWidth, _outputHeight;
-    // Smallest content region a reduced-content Temporal scaler accepts;
-    // 0 when every frame must render the whole input.
-    NSUInteger _minimumContentWidth, _minimumContentHeight;
     MTLPixelFormat _outputFormat;
     BOOL _reset;
 }
@@ -48,18 +45,6 @@ static void failure(NSError **error, NSString *message) {
                    outputWidth:(NSUInteger)outputWidth outputHeight:(NSUInteger)outputHeight
                    colorFormat:(MTLPixelFormat)colorFormat depthFormat:(MTLPixelFormat)depthFormat
                   motionFormat:(MTLPixelFormat)motionFormat outputFormat:(MTLPixelFormat)outputFormat error:(NSError **)error {
-    return [self initWithDevice:device mode:mode colorProcessingMode:colorProcessingMode inputWidth:width
-        inputHeight:height outputWidth:outputWidth outputHeight:outputHeight colorFormat:colorFormat
-        depthFormat:depthFormat motionFormat:motionFormat outputFormat:outputFormat reducedContent:NO error:error];
-}
-
-- (instancetype)initWithDevice:(id<MTLDevice>)device mode:(BG3MFXScalingMode)mode
-           colorProcessingMode:(MTLFXSpatialScalerColorProcessingMode)colorProcessingMode
-                    inputWidth:(NSUInteger)width inputHeight:(NSUInteger)height
-                   outputWidth:(NSUInteger)outputWidth outputHeight:(NSUInteger)outputHeight
-                   colorFormat:(MTLPixelFormat)colorFormat depthFormat:(MTLPixelFormat)depthFormat
-                  motionFormat:(MTLPixelFormat)motionFormat outputFormat:(MTLPixelFormat)outputFormat
-             reducedContent:(BOOL)reducedContent error:(NSError **)error {
     self = [super init];
     if (!self) return nil;
     if (!device || (mode != BG3MFXScalingModeTemporal && mode != BG3MFXScalingModeSpatial)) {
@@ -99,18 +84,6 @@ static void failure(NSError **error, NSString *message) {
         descriptor.motionTextureFormat = motionFormat; descriptor.outputTextureFormat = outputFormat;
         descriptor.autoExposureEnabled = NO;
         descriptor.requiresSynchronousInitialization = YES;
-        if (reducedContent) {
-            // Scale is output / rendered content: the full input is the
-            // smallest, the device limit the largest.
-            float fullScale = (float)std::max((double)outputWidth / width, (double)outputHeight / height);
-            float maximum = [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:device];
-            if (!(maximum > fullScale)) { failure(error, @"This GPU cannot scale a smaller region of these inputs"); return nil; }
-            descriptor.inputContentPropertiesEnabled = YES;
-            descriptor.inputContentMinScale = std::max(fullScale, [MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:device]);
-            descriptor.inputContentMaxScale = maximum;
-            _minimumContentWidth = (NSUInteger)std::ceil(outputWidth / maximum);
-            _minimumContentHeight = (NSUInteger)std::ceil(outputHeight / maximum);
-        }
         _temporal = [descriptor newTemporalScalerWithDevice:device compiler:compiler];
         if (!_temporal) { failure(error, @"MetalFX could not create the temporal scaler for these formats"); return nil; }
     }
@@ -166,13 +139,6 @@ static void failure(NSError **error, NSString *message) {
         parameters.motionScaleX == 0 || parameters.motionScaleY == 0)) {
         failure(error, @"Invalid jitter or motion-vector scale"); return nil;
     }
-    NSUInteger contentWidth = parameters.contentWidth ?: color.width;
-    NSUInteger contentHeight = parameters.contentHeight ?: color.height;
-    BOOL wholeInput = contentWidth == color.width && contentHeight == color.height;
-    if (contentWidth > color.width || contentHeight > color.height || !contentWidth || !contentHeight ||
-        (_temporal && !wholeInput && (!_minimumContentWidth || contentWidth < _minimumContentWidth || contentHeight < _minimumContentHeight))) {
-        failure(error, @"The rendered region is outside the range this MetalFX scaler accepts"); return nil;
-    }
 
     id<MTLTexture> output = explicitOutput;
     if (output) {
@@ -194,8 +160,6 @@ static void failure(NSError **error, NSString *message) {
     if (_spatial) {
         _spatial.colorTexture = color;
         _spatial.outputTexture = output;
-        _spatial.inputContentWidth = contentWidth;
-        _spatial.inputContentHeight = contentHeight;
         id<MTL4FXSpatialScaler> scaler=_spatial;
         BOOL encoded=[_bridge encodeIntoBuffer:buffer allocations:@[color,output] retained:@[scaler]
                 encode:^(id<MTL4CommandBuffer> commands) {
@@ -209,8 +173,6 @@ static void failure(NSError **error, NSString *message) {
         _temporal.depthTexture = depth;
         _temporal.motionTexture = motion;
         _temporal.outputTexture = output;
-        _temporal.inputContentWidth = contentWidth;
-        _temporal.inputContentHeight = contentHeight;
         _temporal.jitterOffsetX = parameters.jitterX;
         _temporal.jitterOffsetY = parameters.jitterY;
         _temporal.motionVectorScaleX = parameters.motionScaleX;

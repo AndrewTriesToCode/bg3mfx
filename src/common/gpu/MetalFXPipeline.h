@@ -15,9 +15,6 @@ typedef struct {
     float jitterX, jitterY;
     float motionScaleX, motionScaleY;
     BOOL depthReversed, reset;
-    // Rendered region at the inputs' origin; 0 means the whole input texture.
-    // A smaller Temporal region needs a scaler created with reduced content (Ultra Performance).
-    NSUInteger contentWidth, contentHeight;
 } BG3MFXFrameParameters;
 
 @interface BG3MFXFrame : NSObject
@@ -54,22 +51,6 @@ typedef struct {
                            depthFormat:(MTLPixelFormat)depthFormat
                           motionFormat:(MTLPixelFormat)motionFormat
                           outputFormat:(MTLPixelFormat)outputFormat
-                                 error:(NSError **)error;
-// Temporal only: with `reducedContent`, each frame may render a smaller
-// region (parameters.contentWidth/Height) of the same inputs, down to the
-// device's largest supported scale, and history carries across changes.
-- (nullable instancetype)initWithDevice:(id<MTLDevice>)device
-                                  mode:(BG3MFXScalingMode)mode
-                   colorProcessingMode:(MTLFXSpatialScalerColorProcessingMode)colorProcessingMode
-                            inputWidth:(NSUInteger)width
-                           inputHeight:(NSUInteger)height
-                           outputWidth:(NSUInteger)outputWidth
-                          outputHeight:(NSUInteger)outputHeight
-                           colorFormat:(MTLPixelFormat)colorFormat
-                           depthFormat:(MTLPixelFormat)depthFormat
-                          motionFormat:(MTLPixelFormat)motionFormat
-                          outputFormat:(MTLPixelFormat)outputFormat
-                     reducedContent:(BOOL)reducedContent
                                  error:(NSError **)error;
 - (nullable BG3MFXFrame *)encodeColor:(id<MTLTexture>)color
                                depth:(nullable id<MTLTexture>)depth

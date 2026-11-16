@@ -6,8 +6,8 @@
 #include <vector>
 static int mode=3;
 int BG3MFXSelectedScalingMode(void) { return mode; }
-static float area=1;
-float BG3MFXUltraPerformanceArea(void) { return area; }
+static float scale=1;
+float BG3MFXUltraPerformanceScale(void) { return scale; }
 void BG3MFXFail(NSString *, NSString *, NSString *) {}
 extern "C" void BG3MFXTestJitterProjection(void *,void *,void *,void *);
 extern "C" void BG3MFXTestJitterCamera(void *,void *,void *,void *);
@@ -40,13 +40,13 @@ int main() {
     };
     unsigned counts[]={14,18,24,32};
     for(unsigned q=0;q<4;++q) { put(settings,0x98,uint8_t(q)); if(!check(counts[q],true)) return 1; }
-    // Ultra Performance: ceil(8 / area) phases (8-128) at the area this frame renders.
+    // Ultra Performance: ceil(8 x scale^2) phases (8-128) at BG3's render scale.
     for(int quality:{BG3MFXUltraPerformanceQuality}) {
         put(settings,0x98,uint8_t(quality));
-        for(float a:{1.0f,0.5f,0.3f,0.25f,0.1114f}) { area=a; if(!check(std::clamp(unsigned(std::ceil(8/a)),8u,128u),true)) return 15; }
+        for(float a:{1.0f,1.5f,2.0f,2.99f,3.5f}) { scale=a; if(!check(a>1 ? std::clamp(unsigned(std::ceil(8*a*a)),8u,128u) : 8u,true)) return 15; }
     }
-    // MetalFX AA: Temporal at 1x (the hidden quality, area 1) keeps 8 phases.
-    area=1; put(settings,0x98,uint8_t(BG3MFXMetalFXAAQuality)); if(!check(8,true)) return 16;
+    // MetalFX AA: Temporal at 1x (the hidden quality) keeps 8 phases.
+    scale=2.99f; put(settings,0x98,uint8_t(BG3MFXMetalFXAAQuality)); if(!check(8,true)) return 16;
     for(mode=0;mode<3;++mode) if(!check(8,false)) return 2;
     mode=3;put(step,0x18,uint8_t(0)); if(!check(8,false)) return 3;
     put(step,0x18,uint8_t(1));put(stage,0x18,uint8_t(0)); if(!check(8,false)) return 4;
@@ -115,5 +115,5 @@ int main() {
     if(!run(BG3MFXTestJitterProjection,BG3MFXTestJitterProjectionResume,BG3MFXJitterProjection,view.data(),3)) return 6;
     if(!run(BG3MFXTestJitterCamera,BG3MFXTestJitterCameraResume,BG3MFXJitterCamera,view.data(),1)) return 7;
     if(!run(BG3MFXTestJitterVelocity,BG3MFXTestJitterVelocityResume,BG3MFXJitterVelocity,velocity.data(),0)) return 8;
-    printf("Native jitter: 14/18/24/32-phase and Ultra Performance area-based wrap, same-frame consistency, native/auxiliary isolation, and all three ARM64 register-preserving wrappers passed.\n");
+    printf("Native jitter: 14/18/24/32-phase and Ultra Performance scale-based wrap, same-frame consistency, native/auxiliary isolation, and all three ARM64 register-preserving wrappers passed.\n");
 }

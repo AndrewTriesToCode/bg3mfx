@@ -94,15 +94,13 @@ static void notifyNewEncoder(__unsafe_unretained id encoder, BOOL compute) {
     if (!encoder) return;
     for (size_t i = 0; i < encoderObservers.count; ++i) encoderObservers.entries[i](encoder, compute);
 }
-// The renderer extension (MetalHooksInternal.h); its constant slots and
-// watched vertex buffer slot are copied out for the bind hooks.
+// The renderer extension (MetalHooksInternal.h); its constant slots are copied
+// out for the bind hooks.
 static RendererExtension renderer;
-static NSUInteger watchedVertexSlot = NSNotFound;
 BOOL metalhooks::extendRenderer(const RendererExtension &extension) {
     if (hooksActive || renderer.endEncoding || !extension.endEncoding) return NO;
     renderer = extension;
     watchedConstants |= extension.constantSlots;
-    watchedVertexSlot = extension.vertexBufferSlot;
     return YES;
 }
 @implementation BG3MFXEncoderState
@@ -147,24 +145,13 @@ static EncoderStage bindingStage(SEL cmd) {
     for (SEL f:fragment) if (cmd==f) return StageFragment;
     return StageCompute;
 }
-// The vertex buffer at the renderer extension's watched slot.
-static void noteWatchedBuffer(__unsafe_unretained id encoder, SEL cmd, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, bool offsetOnly) {
-    if (bindingStage(cmd) != StageVertex) return;
-    if (__unsafe_unretained BG3MFXEncoderState *s = encoderState(encoder)) {
-        if (!offsetOnly) s->watchedBuffer = buffer;
-        s->watchedOffset = offset;
-    }
-}
 static void bindBuffer(__unsafe_unretained id self, SEL cmd, __unsafe_unretained id<MTLBuffer> buffer, NSUInteger offset, NSUInteger index) {
     ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,buffer,offset,index);
-    if (index == watchedVertexSlot) noteWatchedBuffer(self,cmd,buffer,offset,false);
     if (!constantInputNeeded(index)) return;
     if (ConstantBinding *b=constantSlot(self,bindingStage(cmd),index)) { b->buffer=buffer; b->offset=offset; b->hasBytes=false; b->length=0; }
 }
 static void bindBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> const *buffers, const NSUInteger *offsets, NSRange range) {
     ((void(*)(id,SEL,id<MTLBuffer> const *,const NSUInteger *,NSRange))original(self,cmd))(self,cmd,buffers,offsets,range);
-    if (NSLocationInRange(watchedVertexSlot,range))
-        noteWatchedBuffer(self,cmd,buffers[watchedVertexSlot-range.location],offsets[watchedVertexSlot-range.location],false);
     if (!watchedConstants) return;
     EncoderStage stage=bindingStage(cmd);
     for (NSUInteger i=0; i<range.length; ++i) {
@@ -174,13 +161,11 @@ static void bindBuffers(__unsafe_unretained id self, SEL cmd, id<MTLBuffer> cons
 }
 static void bufferOffset(__unsafe_unretained id self, SEL cmd, NSUInteger offset, NSUInteger index) {
     ((void(*)(id,SEL,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,offset,index);
-    if (index == watchedVertexSlot) noteWatchedBuffer(self,cmd,nil,offset,true);
     if (!constantInputNeeded(index)) return;
     if (ConstantBinding *b=constantSlot(self,bindingStage(cmd),index)) if (b->buffer) b->offset=offset;
 }
 static void bindBytes(__unsafe_unretained id self, SEL cmd, const void *bytes, NSUInteger length, NSUInteger index) {
     ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(self,cmd))(self,cmd,bytes,length,index);
-    if (index == watchedVertexSlot) noteWatchedBuffer(self,cmd,nil,0,false);
     if (!constantInputNeeded(index)) return;
     EncoderStage stage=bindingStage(cmd);
     if (ConstantBinding *b=constantSlot(self,stage,index)) {
@@ -290,7 +275,6 @@ static void renderPipelineCreated(id self, MTLRenderPipelineDescriptor *desc, id
 }
 static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NSError **error) {
     desc = filterRenderPipeline(self, desc);
-    if (renderer.prepareRenderPipeline) desc = renderer.prepareRenderPipeline(self, desc);
     id state;
     MTLRenderPipelineReflection *reflection = nil;
     if (reflectedShader(desc)) {
@@ -304,7 +288,6 @@ static id renderPipeline(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, NS
 }
 static id renderPipelineOptions(id self, SEL cmd, MTLRenderPipelineDescriptor *desc, MTLPipelineOption options, MTLRenderPipelineReflection **reflection, NSError **error) {
     desc = filterRenderPipeline(self, desc);
-    if (renderer.prepareRenderPipeline) desc = renderer.prepareRenderPipeline(self, desc);
     MTLRenderPipelineReflection *extraReflection = nil;
     id state;
     if (reflectedShader(desc)) {

@@ -75,7 +75,7 @@ drawables. metal-hooks calls it at:
 
 From those it tracks the scene through TAA and post-processing, replaces FSR
 and RCAS with the MetalFX scalers, skips FSR_Tonemap, composes and presents
-Frame Generation's pairs, and applies reduced resolution's draw corrections.
+Frame Generation's pairs.
 Hook-overhead probe (synthetic, offscreen, 20,000 draws): with metalfx on,
 the move left the cost per draw the same or slightly lower than before it
 (about 144–150 vs 147–155 ns in scaling mode 3).

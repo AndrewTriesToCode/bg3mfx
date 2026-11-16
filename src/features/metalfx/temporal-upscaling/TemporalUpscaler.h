@@ -23,15 +23,6 @@ static inline void BG3MFXApplyTemporalJitter(BG3MFXFrameParameters *p, float x, 
                             outputWidth:(NSUInteger)outputWidth
                            outputHeight:(NSUInteger)outputHeight
                                   error:(NSError **)error;
-// With `reducedContent`, parameters.contentWidth/Height may name a smaller
-// rendered region of the same inputs each frame (BG3MFXPipeline).
-- (nullable instancetype)initWithDevice:(id<MTLDevice>)device
-                              inputWidth:(NSUInteger)width
-                             inputHeight:(NSUInteger)height
-                            outputWidth:(NSUInteger)outputWidth
-                           outputHeight:(NSUInteger)outputHeight
-                      reducedContent:(BOOL)reducedContent
-                                  error:(NSError **)error;
 - (BOOL)encodeColor:(id<MTLTexture>)color
          deviceDepth:(id<MTLTexture>)deviceDepth
               motion:(id<MTLTexture>)motion

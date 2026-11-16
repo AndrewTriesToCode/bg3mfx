@@ -228,20 +228,12 @@ void frameGenerationChanged(void *, const void *item) {
         updateDependentControls(manager, selectedScalingMode.load());
     }
 }
-// Ultra Performance is an Upscaling Quality of MetalFX Temporal only. BG3 renders any quality above Ultra Quality at full size; the
-// reduced-resolution hook then renders a fixed smaller region
-// (src/features/metalfx/ultra-performance/).
-// Only where MetalFX Temporal can render a smaller region than the targets:
-// with a device maximum no larger than the minimum scale the area would stay 1.
-bool reductionSupported() {
-    static bool supported = [] {
-        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-        return device && [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:device] >
-            std::max(1.0f, [MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:device]);
-    }();
-    return supported;
-}
-bool reducedOffered(int mode) { return temporalValue(mode) && BG3MFXUltraPerformanceInstalled() && reductionSupported(); }
+// Ultra Performance is an Upscaling Quality of MetalFX Temporal only. BG3 renders
+// any quality above Ultra Quality at full size; the patch in
+// src/features/metalfx/ultra-performance/ gives quality 4 its own render scale.
+// Only where MetalFX Temporal can scale input down at all (installed checks the
+// device's maximum scale).
+bool reducedOffered(int mode) { return temporalValue(mode) && BG3MFXUltraPerformanceInstalled(); }
 int customQuality(void *manager, int mode) {
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:qualityPreference];
     int value = saved ? [saved intValue] : (field<uint8_t>(manager, Layout::NativeUpscalingType) == 1 ? field<uint8_t>(manager, Layout::NativeQuality) : 2);

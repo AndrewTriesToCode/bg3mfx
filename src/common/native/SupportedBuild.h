@@ -147,84 +147,30 @@ inline constexpr size_t OpWord = 1, BufferWord = 5;
 inline constexpr uint32_t OpPatched = 0x528000f5; // mov w21, #0x7
 inline constexpr uint32_t BindIsland[] = {0xb9402a89, 0x12000529, 0xf8695a89, 0xf9000409, 0xd65f03c0};
 }
-// Ultra Performance's viewport reduction (src/features/metalfx/ultra-performance/): BG3's render viewport reduction.
-namespace ViewportReduction {
-inline constexpr uintptr_t StartRecordingFirst = 0x1060dbd3c;
-inline constexpr uintptr_t StartRecordingSecond = 0x1060dbe80;
-inline constexpr uintptr_t StartRecording = 0x10641ec98;
-inline constexpr uintptr_t CalculateViewports = 0x10641c930;
-inline constexpr uintptr_t RecalculateViewports = 0x1064238c0;
-inline constexpr uintptr_t MetalRenderFrameVTable = 0x108886248;
-inline constexpr uint32_t CalculateViewportsFirst = 0x52886028;
-inline constexpr uint32_t RecalculateViewportsFirst = 0x52843f08;
-// ls::LightingRenderStage::ExecuteWTKernel saves the view's "previous" viewport
-// for the volumetric fog history (_ReprojectData.g_ViewportScale/Offset_Prev)
-// from view +0x2170/+0x2178, which stay 1/0; the composed render viewport is
-// at +0x21f8/+0x2200.
-inline constexpr uintptr_t FogPrevScaleLoad = 0x105ff8f50, FogPrevOffsetLoad = 0x105ff8f58;
-inline constexpr uint32_t FogPrevScaleOriginal = 0xf950b909, FogPrevOffsetOriginal = 0xf950bd08; // ldr x9, [x8, #0x2170]; ldr x8, [x8, #0x2178]
-inline constexpr uint32_t FogPrevScaleRender = 0xf950fd09, FogPrevOffsetRender = 0xf9510108;     // ldr x9, [x8, #0x21f8]; ldr x8, [x8, #0x2200]
-// ls::PostProcessStep_ExposureOld::ExecuteWTKernel builds the auto-exposure
-// _SceneUVSettings (UOffset, UScale, VOffset, VScale) from the same full-size
-// +0x2170/+0x2178 pair, so exposure averages the whole target. The q load
-// cannot reach +0x21f8, so the load and ext become two d loads that leave the
-// same scale and offset halves in v1 and v0 for the st2.
-inline constexpr uintptr_t ExposureUVLoad = 0x1060b357c;
-inline constexpr uint32_t ExposureUVOriginal[2] = {0x3dc85ea1, 0x6e014020}; // ldr q1, [x21, #0x2170]; ext.16b v0, v1, v1, #8
-inline constexpr uint32_t ExposureUVRender[2] = {0xfd50fea1, 0xfd5102a0};   // ldr d1, [x21, #0x21f8]; ldr d0, [x21, #0x2200]
-// Code that sizes things from the view's full-target integer rectangle
-// (+0x2180 size, +0x2188 offset) instead of the composed render rectangle
-// RecalculateViewports writes at +0x2208/+0x2210. Each load moves to the
-// composed field.
-struct RectLoad { uintptr_t address; uint32_t original, render; };
-inline constexpr RectLoad RenderRectLoads[] = {
-    // ls::SetupForwardLightingConstants: UV clamps (+0x17c) that the forward
-    // lighting and volumetric fog history read.
-    {0x105e1c780, 0xb9618a89, 0xb9621289}, // ldr w9, [x20, #0x2188] -> #0x2210
-    {0x105e1c7a4, 0xb9618e8a, 0xb962168a}, // ldr w10, [x20, #0x218c] -> #0x2214
-    {0x105e1c7d0, 0xb9618a8a, 0xb962128a}, // ldr w10, [x20, #0x2188] -> #0x2210
-    {0x105e1c7d4, 0xb961828b, 0xb9620a8b}, // ldr w11, [x20, #0x2180] -> #0x2208
-    {0x105e1c7fc, 0xb9618e89, 0xb9621689}, // ldr w9, [x20, #0x218c] -> #0x2214
-    {0x105e1c800, 0xb961868a, 0xb9620e8a}, // ldr w10, [x20, #0x2184] -> #0x220c
-    // ls::PostProcessStep_Bloom and ls::PostProcessStep_DOF: the blur radius
-    // factor (render size / output size x output height / 1080, _CB).
-    {0x106095af8, 0xfd50c2ab, 0xfd5106ab}, // ldr d11, [x21, #0x2180] -> #0x2208
-    {0x1060a4eb4, 0xfd50c280, 0xfd510680}, // ldr d0, [x20, #0x2180] -> #0x2208
-    // ls::GameRenderView::UpdateConstantBuffersData and GetJitteredProjectionMatrix:
-    // the projection jitter divisor, so a jitter step is one rendered pixel.
-    // The velocity shader removes jitter (_TemporalConstants g_Jitter) in whole
-    // rendered pixels; divided by the full target the projection moved only
-    // the region's share of that, leaving jitter-correlated velocity.
-    {0x105f8af68, 0xfd50c280, 0xfd510680}, // ldr d0, [x20, #0x2180] -> #0x2208
-    {0x105f8bdb8, 0xfd50c282, 0xfd510682}, // ldr d2, [x20, #0x2180] -> #0x2208
+// Ultra Performance's render scale (src/features/metalfx/ultra-performance/). BG3's
+// FSR resolution code reads render scale = Table[quality] (four floats: 1.3, 1.5,
+// 1.7, 2.0) inline in rf::RenderFrame::Resize, BaseApp::InitAPI and
+// ls::PostProcessStep_FSR::ExecuteWTKernel, after `cmp quality, #3` sends any
+// higher quality to scale 1.0 (the kernel's constant is the table value x 8,
+// and 8 above 3). Each site is patched to compare against 4 and to load the
+// table through a pointer in an island (adrp x9, island page; ldr x9, [x9,
+// slot]) in place of adrp x9, table page; add x9, x9, table offset.
+namespace RenderScale {
+inline constexpr uintptr_t Table = 0x107872d40;
+inline constexpr float TableOriginal[4] = {1.3f, 1.5f, 1.7f, 2.0f};
+struct Compare { uintptr_t address; uint32_t original, patched; };
+inline constexpr Compare Compares[] = {
+    {0x10641a49c, 0x71000d1f, 0x7100111f}, // Resize: cmp w8, #3 -> #4 (b.gt)
+    {0x10641a4ac, 0x71000d1f, 0x7100111f}, // Resize: cmp w8, #3 -> #4 (b.hi)
+    {0x105d18e24, 0x71000d1f, 0x7100111f}, // InitAPI: cmp w8, #3 -> #4 (b.gt)
+    {0x105d18e34, 0x71000d1f, 0x7100111f}, // InitAPI: cmp w8, #3 -> #4 (b.hi)
+    {0x1060b5e90, 0xf1000d1f, 0xf100111f}, // FSR kernel: cmp x8, #3 -> #4 (b.hi)
 };
-// ls::SSRStage::ExecuteWTKernel saves the SSR history's previous viewport into
-// its state (x26): UV clamps at +0x2470/+0x2478 from the view's integer rectangle
-// (+0x2188 offset, +0x2180 size) over a texture size in v0, then scale and offset
-// at +0x2480/+0x2488 from +0x2170/+0x2178. An island stores all four from the
-// composed render viewport (x9 is the view) and returns after the last store.
-inline constexpr uintptr_t SSRHistoryStart = 0x106116cec, SSRHistoryReturn = 0x106116d30;
-inline constexpr uint32_t SSRHistoryOriginal[] = {0xfd50c521, 0x0e21d822, 0x0f0167e3, 0x0e23d442, 0x2e20fc42, 0xfd123b42,
-                                                  0xfd50c122, 0x0ea18441, 0x0e21d821, 0x0f0567e2, 0x0e22d421, 0x2e20fc20,
-                                                  0xfd123f40, 0xf950b928, 0xf9124348, 0xf950bd28, 0xf9124748};
-inline constexpr uint32_t SSRHistoryRender[] = {
-    0xfd50fd21, 0xfd510122,             // ldr d1, [x9, #0x21f8]; ldr d2, [x9, #0x2200]
-    0x0f03f403, 0x2e20fc63,             // fmov.2s v3, #0.5; fdiv.2s v3, v3, v0 (half texel)
-    0x0e23d440, 0xfd123b40,             // fadd.2s v0, v2, v3; str d0, [x26, #0x2470]
-    0x0e21d440, 0x0ea3d400, 0xfd123f40, // fadd.2s v0, v2, v1; fsub.2s v0, v0, v3; str d0, [x26, #0x2478]
-    0xfd124341, 0xfd124742,             // str d1, [x26, #0x2480]; str d2, [x26, #0x2488]
-};
-// ls::SSRStage::ExecuteWTKernel loads its history-valid byte (state +0x2148,
-// x27 + 0x20) and sets g_discard_history to its inverse. BG3 clears it on
-// target resizes, disable and view resets, never on a viewport reduction
-// change, and the main history read assumes the previous viewport equals the
-// current one. An island loads the byte as 0 while a flag the probe owns is
-// set: ldrb w11, [x27, #0x20]; ldr x16, flag; ldrb w16, [x16]; cbz w16, back;
-// mov w11, #0; back: b SSRValidReturn; .quad flag.
-inline constexpr uintptr_t SSRValidLoad = 0x10611268c, SSRValidReturn = 0x106112690;
-inline constexpr uint32_t SSRValidOriginal = 0x3940836b; // ldrb w11, [x27, #0x20]
-inline constexpr uint32_t SSRValidRender[] = {0x3940836b, 0x580000b0, 0x39400210, 0x34000050, 0x5280000b};
+struct Load { uintptr_t address; uint32_t adrp; }; // the adrp x9; the next word is the add
+inline constexpr Load Loads[] = {{0x10641a4b4, 0x9000a2c9}, {0x105d18e3c, 0xd000dac9}, {0x1060b5e98, 0xb000bde9}};
+inline constexpr uint32_t AddTable = 0x91350129; // add x9, x9, #0xd40
 }
+
 // View stage lists (src/features/custom-render-stages/). BaseApp::
 // InitFrameStages(view) passes fixed packs of AppStageType codes, one virtual
 // call each, to BaseApp::InitFrameStages(view, Span); App's vtable (the only
@@ -475,17 +421,6 @@ inline constexpr size_t Lock = 0x8, Offset = 0x2090, SetupRenderer = 0x1f0;
 inline constexpr uint64_t BufferBytes = 0x1500000;
 }
 
-// rf::RenderFrame: render size (output / FSR scale) and output size as int
-// pairs; CalculateViewports shrinks only the render-size viewport by
-// sqrt(Reduction) when it is below 1, storing its pixel size at
-// RenderViewport. Registered views: pointer array and count. Settings: the
-// global graphics settings' FSR-enabled byte (quality is Temporal::Layout).
-namespace ViewportReduction::Layout {
-inline constexpr size_t RenderSize = 0x18, OutputSize = 0x20, Reduction = 0x4368, RenderViewport = 0x4318;
-inline constexpr size_t Views = 0x42f0, ViewCount = 0x42fc, ViewRenderRect = 0x2208;
-inline constexpr size_t SettingsUpscaling = 0x97;
-}
-
 // Reserved half-open ranges relative to HeaderPadding. Validate every island
 // against its own zero bytes before patching, in addition to these overlap checks.
 struct Island { size_t offset, bytes; };
@@ -494,15 +429,13 @@ inline constexpr Island Temporal{0x000, 3 * 64};
 inline constexpr Island Lua{0x700, 32};
 inline constexpr Island ThreadIdle{0x9c0, 32};
 inline constexpr Island UniformSlices{0xa00, 64};
-inline constexpr Island ViewportReduction{0xa40, 2 * 24};
-inline constexpr Island SSRHistory{0xa70, 12 * 4};
-inline constexpr Island SSRValid{0xaa0, 32};
+inline constexpr Island RenderScale{0xa40, 8};
 inline constexpr Island SSAOBlur{0xac0, 24};
 inline constexpr Island CustomPipelineBundles{0xad8, 2 * 24};
 inline constexpr Island ImprovedDisplay{0xb08, 2 * 24};
 inline constexpr Island ScriptFixes{0xb38, 2 * 24};
 inline constexpr Island CustomMenu{0xb68, 24};
-inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, ViewportReduction, SSRHistory, SSRValid, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes, CustomMenu};
+inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, RenderScale, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes, CustomMenu};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];

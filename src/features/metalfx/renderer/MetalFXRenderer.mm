@@ -20,8 +20,7 @@
 // metalfx's renderer work, as metal-hooks' renderer extension
 // (MetalHooksInternal.h): the MetalFX Spatial and Temporal scaler dispatch
 // that replaces BG3's FSR, the scene tracking that feeds them, Frame
-// Generation's composition and presentation, reduced resolution's renderer
-// corrections and the FSR_Tonemap skip.
+// Generation's composition and presentation, and the FSR_Tonemap skip.
 
 using namespace metalhooks;
 
@@ -31,9 +30,6 @@ enum PipelineKind : uint8_t {
     PipelineOther, PipelineTAA, PipelineLinearizeDepth, PipelineVelocity,
     PipelinePostColor, PipelineToneMapLUT, PipelineCombineUI, PipelineSceneOverlay,
 };
-// BG3MFXPipelineInfo::rendererFlags: reduced resolution corrections (see
-// SurfaceGridDraw and SubsurfaceDraw).
-enum : uint8_t { FlagSurfaceGrid = 1, FlagSubsurface = 2 };
 // Associated objects this renderer sets on an encoder.
 enum : uint16_t {
     AssocTAAInputs = AssocRenderer, AssocFSRInputs = AssocRenderer << 1, AssocComposition = AssocRenderer << 2,
@@ -42,8 +38,6 @@ enum : uint16_t {
 // The scene's camera (11), temporal (8) and viewport (9) constants, and the
 // composition's vertices and constants (0).
 constexpr uint32_t ConstantSlots = 1u << 0 | 1u << 8 | 1u << 9 | 1u << 11;
-// Reduced resolution: the vertex EngineParams (index 21) surface grid draws read.
-constexpr NSUInteger SurfaceEngineIndex = 21;
 char bufferScalingModeKey;
 char frameGenerationModeKey, compositorSizeKey, frameCompositionKey, generatedPairKey;
 thread_local bool encodingFrameGeneration=false;
@@ -193,8 +187,8 @@ static void failFeature(BOOL temporal, NSString *reason) {
         @"\n\nThe game continues with AMD FSR 1.0 upscaling. To retry, choose another Upscaling Type "
         "and then this one again in Video options."]);
 }
-// The viewport reduction probe reduces only while Temporal can upscale the region;
-// BG3's FSR fallback would show the reduced region as is.
+// Ultra Performance renders small only while Temporal can upscale it;
+// BG3's FSR fallback would show the small image as is.
 extern "C" BOOL BG3MFXTemporalFailed(void) {
     std::lock_guard<std::recursive_mutex> lock(guard());
     return temporalFailed;
@@ -318,11 +312,6 @@ static BOOL temporalParameters(NSDictionary *inputs, BG3MFXFrameParameters *para
     // image/projection displacement. Depth registration and the analytic
     // reconstruction regression establish the opposite sign in both axes.
     BG3MFXApplyTemporalJitter(&p, temporal[52], temporal[53]);
-    if (NSNumber *width = inputs[@"contentWidth"], *height = inputs[@"contentHeight"]; width && height) {
-        // The reduction probe makes BG3 divide its projection jitter by the
-        // reduced region, so BG3's value is already in rendered pixels.
-        p.contentWidth = width.unsignedIntegerValue; p.contentHeight = height.unsignedIntegerValue;
-    }
     // Inspected BG3 camera/object shaders emit current minus previous in
     // framebuffer pixels. MetalFX needs previous minus current displacement.
     p.motionScaleX = p.motionScaleY = -1;
@@ -353,18 +342,12 @@ static BOOL upscaleTemporal(id<MTLCommandBuffer> buffer, NSDictionary *inputs, i
     BOOL nativeAAWarmup = [inputs[@"nativeTAAPreserved"] boolValue];
     parameters.reset |= nativeAAWarmup || temporalResetPending.exchange(false);
     NSString *key = scalerKey(buffer.device,color.width,color.height,destination.width,destination.height);
-    if (BG3MFXUltraPerformanceSelected()) key = [key stringByAppendingString:@" reduced"];
     BG3MFXTemporalUpscaler *upscaler;
     { std::lock_guard<std::recursive_mutex> lock(guard()); upscaler = temporalUpscalerCache()[key]; }
     NSError *error = nil;
     if (!upscaler) {
-        BOOL reducedContent = BG3MFXUltraPerformanceSelected();
-        if (reducedContent)
-            BG3MFXUltraPerformanceSetScaleLimits([MTLFXTemporalScalerDescriptor supportedInputContentMinScaleForDevice:buffer.device],
-                [MTLFXTemporalScalerDescriptor supportedInputContentMaxScaleForDevice:buffer.device]);
         upscaler = [[BG3MFXTemporalUpscaler alloc] initWithDevice:buffer.device inputWidth:color.width
-            inputHeight:color.height outputWidth:destination.width outputHeight:destination.height
-            reducedContent:reducedContent error:&error];
+            inputHeight:color.height outputWidth:destination.width outputHeight:destination.height error:&error];
         if (upscaler) {
             upscaler.gpuFailureHandler=^(NSError *gpuError) {
                 failTemporal(gpuError.localizedDescription ?: @"Metal 4 could not complete temporal scaling commands.");
@@ -434,40 +417,6 @@ static BOOL copyTemporalAAColor(id<MTLCommandBuffer> buffer, NSDictionary *input
     [encoder endEncoding];
     return YES;
 }
-// BG3 pairs DeferredFog_* with DefaultVS, whose texCoord spans the render
-// viewport, but indexes the volumetric fog in texture UV. Other post passes use
-// PPDefaultVS, which maps texCoord through _Viewport (buffer 9, already bound
-// for the fog draw). Reduced resolution shrinks the viewport, so give the fog
-// composite that mapping (identical at full size); the output member keeps
-// DefaultVS's linkage name. Reduced resolution installs at library load,
-// before BG3 creates its device.
-static MTLRenderPipelineDescriptor *viewportFogDescriptor(id<MTLDevice> device, MTLRenderPipelineDescriptor *desc) {
-    if (!BG3MFXUltraPerformanceInstalled() || ![desc.vertexFunction.name isEqualToString:@"DefaultVS"] ||
-        ![desc.fragmentFunction.name hasPrefix:@"DeferredFog_"]) return desc;
-    static id<MTLFunction> vertex;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        NSString *source = @"#include <metal_stdlib>\nusing namespace metal;\n"
-            "struct In { float2 position [[attribute(0)]]; float2 texCoord [[attribute(1)]]; };\n"
-            "struct Out { float4 position [[position]]; float2 texCoord; };\n"
-            "struct Viewport { float2 scale; float2 offset; };\n"
-            "vertex Out BG3MFXViewportFogVS(In in [[stage_in]], constant Viewport &viewport [[buffer(9)]]) {\n"
-            "    return { float4(in.position, 1, 1), in.texCoord * viewport.scale + viewport.offset };\n}\n";
-        NSError *error = nil;
-        id<MTLLibrary> library = [device newLibraryWithSource:source options:nil error:&error];
-        vertex = [library newFunctionWithName:@"BG3MFXViewportFogVS"];
-        if (!vertex) BG3MFXFail([@"The viewport fog vertex function did not compile: " stringByAppendingString:error.description ?: @"unknown error"], nil, nil);
-    });
-    if (!vertex) return desc;
-    MTLRenderPipelineDescriptor *copy = [desc copy];
-    copy.vertexFunction = vertex;
-    return copy;
-}
-static void classifyReducedViewport(BG3MFXPipelineInfo *info, MTLRenderPipelineDescriptor *desc) {
-    if (!BG3MFXUltraPerformanceInstalled()) return;
-    if ([desc.vertexFunction.name hasPrefix:@"Shared_Surface_VFX_Surface_"]) info->rendererFlags |= FlagSurfaceGrid;
-    if ([desc.fragmentFunction.name hasPrefix:@"PPSSSS_"]) info->rendererFlags |= FlagSubsurface;
-}
 static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *request) {
     id<MTLTexture> scene=request[@"scene"], ui=request[@"ui"], target=request[@"target"];
     // Only frames composed into a stand-in drawable can be paired. A frame that
@@ -483,14 +432,12 @@ static void encodeGeneratedPair(id<MTLCommandBuffer> buffer, NSDictionary *reque
     id<MTLTexture> depth=inputs[@"depth"], motion=inputs[@"motion"];
     BG3MFXFrameParameters parameters={}; NSString *reason=nil;
     if(!temporalParameters(inputs,&parameters,&reason)) { declineFrameGeneration(reason); return; }
-    BOOL reducedContent=BG3MFXUltraPerformanceSelected();
-    NSString *configuration=[NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu:%d:%lu:%lu/%lu:%lu/%lu:%lu/%lu:%d",(__bridge void *)buffer.device,
+    NSString *configuration=[NSString stringWithFormat:@"%p:%lu:%lu:%lu:%lu:%d:%lu:%lu/%lu:%lu/%lu:%lu/%lu",(__bridge void *)buffer.device,
         depth.width,depth.height,scene.width,scene.height,[objc_getAssociatedObject(buffer,&bufferScalingModeKey) intValue],target.pixelFormat,
-        scene.pixelFormat,scene.usage,depth.pixelFormat,depth.usage,motion.pixelFormat,motion.usage,reducedContent];
+        scene.pixelFormat,scene.usage,depth.pixelFormat,depth.usage,motion.pixelFormat,motion.usage];
     NSError *error=nil;
     if(![configuration isEqualToString:frameConfiguration]) {
-        frameInterpolator=[[BG3MFXFrameInterpolation alloc] initWithDevice:buffer.device scene:scene depth:depth motion:motion
-            reducedContent:reducedContent error:&error];
+        frameInterpolator=[[BG3MFXFrameInterpolation alloc] initWithDevice:buffer.device scene:scene depth:depth motion:motion error:&error];
         if(!frameInterpolator) {declineFrameGeneration(error.localizedDescription ?: @"Could not initialize frame generation.");return;}
         frameInterpolator.failureHandler=^(NSError *e){declineFrameGeneration(e.localizedDescription ?: @"Metal could not complete frame generation.");};
         frameConfiguration=configuration;previousFrameTime=0;
@@ -630,15 +577,7 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
     const float *vp = (const float *)viewport.bytes;
     const uint32_t *size = (const uint32_t *)((const uint8_t *)viewport.bytes+16);
     // Split-screen, cropped, and scaled viewport support requires separate work.
-    NSDictionary *content = @{};
-    if (vp[0] != 1 || vp[1] != 1 || vp[2] != 0 || vp[3] != 0 || size[0] != source.width || size[1] != source.height) {
-        // Reduced resolution renders a smaller region at the origin of the
-        // same targets; Temporal scales just that region.
-        const uint32_t *minimum = size + 2;
-        if (!BG3MFXUltraPerformanceInstalled() || spatialSeed || vp[2] != 0 || vp[3] != 0 || minimum[0] || minimum[1] ||
-            !size[0] || !size[1] || size[0] > source.width || size[1] > source.height) return;
-        content = @{@"contentWidth": @(size[0]), @"contentHeight": @(size[1])};
-    }
+    if (vp[0] != 1 || vp[1] != 1 || vp[2] != 0 || vp[3] != 0 || size[0] != source.width || size[1] != source.height) return;
     if (spatialSeed) {
         NSMutableDictionary *inputs = [spatialSeed mutableCopy];
         [inputs addEntriesFromDictionary:@{@"depth": depth, @"motion": motion, @"camera": camera, @"temporal": temporal, @"reset":@(resetMotion)}];
@@ -649,7 +588,6 @@ static void captureSceneInputs(id encoder, NSString *fragment) {
     NSMutableDictionary *inputs = [@{@"color": source, @"taaColor": taaTarget, @"nativeTAA":taaTarget,
           @"nativeTAAPreserved":@(!knownUpscaledTAA(taaTarget)),
           @"depth": depth, @"motion": motion, @"camera": camera, @"temporal": temporal, @"reset":@(resetMotion)} mutableCopy];
-    [inputs addEntriesFromDictionary:content];
     objc_setAssociatedObject(encoder, &taaInputsKey, inputs, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     noteAssociation(encoder,AssocTAAInputs);
 }
@@ -849,84 +787,6 @@ static void restoreSkippedTonemap(id encoder, id<MTLCommandBuffer> buffer, NSDic
     bindTexture(encoder,setTexture,target,0);
     bindTexture(encoder,setTexture,textures[@"1"],1);
 }
-// BG3's subsurface scattering blurs (PPSSSS_H/V) step through the kernel by
-// P00 (horizontal) or P11 (vertical) x width / (2 x view depth) in target UV,
-// which assumes NDC spans the whole target; in the reduced viewport it spans
-// the region's share, so the blur reached 1/scale too far. For each draw,
-// rebind the fragment PerCamera with those projection terms scaled by the
-// viewport's share (the shaders read the projection only there), then restore
-// BG3's binding.
-struct SubsurfaceDraw {
-    static constexpr NSUInteger PerCameraIndex = 11, PerCameraBytes = 224;
-    __unsafe_unretained id encoder = nil;
-    __unsafe_unretained id<MTLBuffer> buffer = nil;
-    NSUInteger offset = 0;
-    NSData *bytes = nil;
-    explicit SubsurfaceDraw(__unsafe_unretained id e) {
-        __unsafe_unretained BG3MFXEncoderState *s = encoderState(e);
-        if (!s || !s->subsurface || !s->hasViewport) return;
-        ConstantBinding *binding = constantSlot(e, StageFragment, PerCameraIndex);
-        NSData *camera = binding ? constantBytes(e, StageFragment, PerCameraIndex, PerCameraBytes) : nil;
-        if (!camera) return;
-        float sx = float(s->viewport.width / s->colorTarget.width), sy = float(s->viewport.height / s->colorTarget.height);
-        if (!(sx > 0 && sx < 1) && !(sy > 0 && sy < 1)) return;
-        float params[PerCameraBytes / 4];
-        memcpy(params, camera.bytes, sizeof params);
-        params[16] *= sx;  // g_ProjectionMat column 0 .x
-        params[21] *= sy;  // g_ProjectionMat column 1 .y
-        static SEL setBytes = @selector(setFragmentBytes:length:atIndex:);
-        ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(e,setBytes))(e,setBytes,params,sizeof params,PerCameraIndex);
-        encoder = e;
-        if (binding->hasBytes) bytes = s->bytes[@(StageFragment*EncoderSlots+PerCameraIndex)];
-        else { buffer = binding->buffer; offset = binding->offset; }
-    }
-    ~SubsurfaceDraw() {
-        if (!encoder) return;
-        if (bytes) {
-            static SEL setBytes = @selector(setFragmentBytes:length:atIndex:);
-            ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(encoder,setBytes))(encoder,setBytes,bytes.bytes,bytes.length,PerCameraIndex);
-        } else {
-            static SEL bind = @selector(setFragmentBuffer:offset:atIndex:);
-            ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(encoder,bind))(encoder,bind,buffer,offset,PerCameraIndex);
-        }
-    }
-};
-// BG3 draws its surfaces (blood, water) on a screen-space grid whose vertices
-// are NDC positions, placed by EngineParams' first matrix; the vertex shader
-// projects them and passes the matching view-space ray on for depth
-// reconstruction. BG3 chooses the grid cells in full-target coordinates that
-// already account for the reduced render region, so the reduced viewport
-// shrinks the grid toward the top-left a second time. For each draw, rebind
-// the vertex EngineParams with that matrix stretched by the reduction about
-// NDC (-1, 1), so the grid and its rays cover the region they were chosen for,
-// then restore BG3's binding.
-struct SurfaceGridDraw {
-    __unsafe_unretained id encoder = nil;
-    __unsafe_unretained id<MTLBuffer> buffer = nil;
-    NSUInteger offset = 0;
-    explicit SurfaceGridDraw(__unsafe_unretained id e) {
-        __unsafe_unretained BG3MFXEncoderState *s = encoderState(e);
-        if (!s || !s->surfaceGrid || !s->watchedBuffer || !s->hasViewport || s->watchedBuffer.storageMode == MTLStorageModePrivate ||
-            s->watchedOffset + 160 > s->watchedBuffer.length) return;
-        float sx = float(s->viewport.width / s->colorTarget.width), sy = float(s->viewport.height / s->colorTarget.height);
-        if (!(sx > 0 && sx < 1) && !(sy > 0 && sy < 1)) return;
-        float params[40];
-        memcpy(params, static_cast<const char *>(s->watchedBuffer.contents) + s->watchedOffset, sizeof params);
-        // M' = M * S, with x' = (x + 1) / sx - 1 and y' = 1 - (1 - y) / sy.
-        for (int i = 0; i < 4; ++i) {
-            params[12 + i] += params[i] * (1 / sx - 1) + params[4 + i] * (1 - 1 / sy);
-            params[i] /= sx; params[4 + i] /= sy;
-        }
-        static SEL bytes = @selector(setVertexBytes:length:atIndex:);
-        ((void(*)(id,SEL,const void *,NSUInteger,NSUInteger))original(e,bytes))(e,bytes,params,sizeof params,SurfaceEngineIndex);
-        encoder = e; buffer = s->watchedBuffer; offset = s->watchedOffset;
-    }
-    ~SurfaceGridDraw() {
-        if (!encoder) return;
-        static SEL bind = @selector(setVertexBuffer:offset:atIndex:);
-        ((void(*)(id,SEL,id,NSUInteger,NSUInteger))original(encoder,bind))(encoder,bind,buffer,offset,SurfaceEngineIndex);
-    }
-};
 // Native compute with Frame Generation: carry the scene's association from
 // FSR's input through its upscale and RCAS sharpening, as for the MetalFX
 // outputs, and through CAS, the FidelityFX sharpening BG3 applies after tone
@@ -1143,6 +1003,10 @@ static void commandBufferCreated(id<MTLCommandBuffer> buffer) {
     // Selection changes apply to the next command buffer. Sampling the live
     // menu independently at TAA and FSR could mix two render paths in one frame.
     objc_setAssociatedObject(buffer,&bufferScalingModeKey,@(BG3MFXSelectedScalingMode()),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // Ultra Performance renders small only while Temporal can upscale it, and
+    // BG3 starts with its own quality until the saved one is published.
+    BG3MFXUltraPerformanceActive(BG3MFXSelectedScalingMode()==3 && !BG3MFXTemporalFailed());
+    BG3MFXPublishStartupReducedQuality();
     // Frame Generation combines with every Upscaling Type: it uses the camera,
     // depth and motion captured at BG3's TAA pass.
     bool frameGenerationSelected=BG3MFXFrameGenerationEnabled();
@@ -1263,9 +1127,6 @@ static void endEncoding(id self, SEL cmd, BG3MFXEncoderState *encoderRecord, id<
     if (associations & AssocTAAInputs) objc_setAssociatedObject(self, &taaInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (associations & AssocFSRInputs) objc_setAssociatedObject(self, &fsrInputsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
-static MTLRenderPipelineDescriptor *prepareRenderPipeline(id device, MTLRenderPipelineDescriptor *desc) {
-    return viewportFogDescriptor(device, desc);
-}
 // Frame Generation replays the composition with constants of the size its
 // shader declares.
 static bool wantsReflection(MTLRenderPipelineDescriptor *desc) { return compositionShader(desc.fragmentFunction.name); }
@@ -1279,21 +1140,15 @@ static void renderPipelineCreated(MTLRenderPipelineDescriptor *desc, id state, M
     // Pipelines keep their fragment name only when this renderer reads it.
     if (!info->description && recognizedFragment(fragment)) info->description = @{@"fragment":fragment};
     info->kind = classifyPipeline(fragment);
-    classifyReducedViewport(info, desc);
 }
 static bool recognizedCompute(NSString *name) {
     return [name isEqualToString:@"FSR"] || [name isEqualToString:@"FSR_RCAS"] || [name isEqualToString:@"CAS"];
 }
-static bool pipelineBound(id, BG3MFXEncoderState *s, BG3MFXPipelineInfo *info, NSDictionary *description) {
+static bool pipelineBound(id, BG3MFXEncoderState *s, BG3MFXPipelineInfo *, NSDictionary *description) {
     if (s->deferredStore && ![description[@"fragment"] isEqualToString:@"FSR_Tonemap"]) s->storeNeeded = true;
-    bool reduced = info && (info->rendererFlags & (FlagSurfaceGrid | FlagSubsurface)) && s->colorTarget && BG3MFXUltraPerformanceArea() < 1;
-    s->surfaceGrid = reduced && (info->rendererFlags & FlagSurfaceGrid);
-    s->subsurface = reduced && (info->rendererFlags & FlagSubsurface);
-    return s->surfaceGrid || s->subsurface;
+    return false;
 }
 static void draw(id encoder, BG3MFXEncoderState *s, const DrawCall &call, void (^forward)(void)) {
-    SubsurfaceDraw subsurfaceDraw(call.indexed ? nil : encoder);
-    SurfaceGridDraw surfaceGridDraw(call.indexed ? encoder : nil);
     // Draws with unrecognized pipelines skip all inspection. Their only effect,
     // invalidating a scene association for the encoder's color target, is
     // applied once in endEncoding.
@@ -1310,14 +1165,11 @@ namespace {
 BOOL installRenderer(NSError **error) {
     RendererExtension extension = {};
     extension.constantSlots = ConstantSlots;
-    // Reduced resolution installs later, with metalfx; its corrections check.
-    extension.vertexBufferSlot = SurfaceEngineIndex;
     extension.commandBufferCreated = commandBufferCreated;
     extension.prepareRenderPass = prepareRenderPass;
     extension.encoderCreated = encoderCreated;
     extension.encoderRecycled = encoderRecycled;
     extension.endEncoding = endEncoding;
-    extension.prepareRenderPipeline = prepareRenderPipeline;
     extension.wantsReflection = wantsReflection;
     extension.renderPipelineCreated = renderPipelineCreated;
     extension.recognizedCompute = recognizedCompute;
