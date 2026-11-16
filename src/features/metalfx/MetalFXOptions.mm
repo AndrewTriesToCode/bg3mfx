@@ -88,6 +88,18 @@ bool restoreSharpness(void *manager, float value) {
     if (void *slider = BG3MFXMenuFind(manager, -1, upscaleSharpnessID)) BG3MFXMenuShowSliderValue(slider, value * 100);
     return changed;
 }
+// BG3's FSR quality setter clears CAS (FSR has its own sharpening), which the
+// MetalFX bridge does behind the player's choice; put the choice back and show it.
+uint8_t &casStorage(void *manager) {
+    return field<uint8_t>(manager, Layout::SettingsStorage + BG3MFXBuild::CASRendering::SettingsCASEnabled);
+}
+bool restoreCAS(void *manager, uint8_t value) {
+    if (!BG3MFXCASSharpeningInstalled()) return false;
+    bool changed = casStorage(manager) != value;
+    casStorage(manager) = value;
+    if (void *tick = BG3MFXMenuFind(manager, -1, casTickBoxID)) BG3MFXMenuShowTickBoxValue(tick, value != 0);
+    return changed;
+}
 void updateDependentControls(void *manager, int mode) {
     // Upscaling Sharpness drives FSR's RCAS pass, which MetalFX replaces; dim it
     // there. BG3 enables it for its FSR type, which the MetalFX types run as.
@@ -207,9 +219,14 @@ void qualityChanged(void *storage, const void *item) {
     int mode = selectedScalingMode.load();
     void *manager = BG3MFXMenuStorageManager(storage);
     float sharpness = manager ? currentSharpness(manager) : 0;
+    uint8_t cas = manager ? casStorage(manager) : 0;
     if (originalQualityCall) originalQualityCall(storage, item);
     if (!manager) return;
-    if (metalFXValue(mode) && restoreSharpness(manager, sharpness)) publishSettings(manager);
+    if (metalFXValue(mode)) {
+        bool restored = restoreSharpness(manager, sharpness);
+        if (restoreCAS(manager, cas)) restored = true;
+        if (restored) publishSettings(manager);
+    }
     if (metalFXValue(mode) && ((value >= 0 && value <= 3) || (value == BG3MFXUltraPerformanceQuality && reducedOffered(mode)))) {
         [NSUserDefaults.standardUserDefaults setInteger:value forKey:qualityPreference];
     }
@@ -229,11 +246,13 @@ void applyCombo(void *manager, const void *item, BG3MFXMenuApply next) {
     bool custom = metalFXValue(value);
     int quality = custom ? customQuality(manager, value) : -1;
     float sharpness = currentSharpness(manager);
+    uint8_t cas = casStorage(manager);
     if (custom) BG3MFXMenuSetComboSelection(mutableItem, 1);
     next(manager, item);
     if (!custom) return;
     restoreCustomQuality(manager, value, quality, true);
     restoreSharpness(manager, sharpness);
+    restoreCAS(manager, cas);
     BG3MFXMenuSetComboSelection(mutableItem, value);
     updateDependentControls(manager, value);
 }
@@ -257,11 +276,14 @@ void upscaleChanged(void *storage, const void *item) {
     // selected, so the native Off and FSR paths remain unchanged.
     int quality = metalFXValue(value) ? customQuality(manager, value) : -1;
     float sharpness = currentSharpness(manager);
+    uint8_t cas = casStorage(manager);
     BG3MFXMenuSetComboSelection(mutableItem, metalFXValue(value) ? 1 : value);
     originalUpscaleCall(storage, item);
     if (quality >= 0) restoreCustomQuality(manager, value, quality, true);
     // Changing the type is not a sharpness choice, even to or from FSR.
     bool sharpnessRestored = restoreSharpness(manager, sharpness);
+    // The MetalFX types keep CAS; BG3's own FSR setup would have cleared it.
+    if (metalFXValue(value) && restoreCAS(manager, cas)) sharpnessRestored = true;
     BG3MFXMenuSetComboSelection(mutableItem, value);
     // The selection callback already published Balanced before we restored
     // the manager's quality. Publish the restored settings to the renderer too.
@@ -444,8 +466,10 @@ void BG3MFXPublishStartupReducedQuality(void) {
         char *storage = manager + Layout::SettingsStorage;
         memcpy(storage, current, Layout::PublishedSettingsBytes);
         float sharpness = field<float>(storage, BG3MFXBuild::Temporal::Layout::SettingsSharpness);
+        uint8_t cas = field<uint8_t>(storage, BG3MFXBuild::CASRendering::SettingsCASEnabled);
         at<void (*)(void *, int)>(Native::SetQuality)(storage, quality);
         field<float>(storage, BG3MFXBuild::Temporal::Layout::SettingsSharpness) = sharpness;
+        field<uint8_t>(storage, BG3MFXBuild::CASRendering::SettingsCASEnabled) = cas;
         publishSettings(manager);
     });
 }

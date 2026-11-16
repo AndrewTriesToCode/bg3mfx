@@ -27,8 +27,19 @@ Spatial or Temporal is selected (and not failed back to FSR).
 The menu dims the CAS tick box and slider for the upscaling types 1 to 3.
 [`MetalFXOptions.mm`](../MetalFXOptions.mm) keeps them available (the slider
 while the box is ticked) when MetalFX is selected and this part is installed.
-BG3's `PublishSettings` copies the options' values (CAS enabled at settings
-`+0xa1`, sharpness at `+0xa4`) whatever the type.
+Two more things stopped the choice from sticking, found in a live test:
+
+- `VideoOptionsManager::ApplyTickBox` drops a ticked CAS box while the native
+  type is 1 to 3 (`b.lo` at `0x10329060c`, patched to a nop; checked against
+  the original word first). Its anti-aliasing check never applies, because TAA
+  is value 2.
+- `rf::GraphicSettings::SetResolutionUpscaleFSR1`, which BG3's type and quality
+  callbacks and MetalFX's own quality restore call, always clears CAS. The
+  metalfx menu code saves the manager's CAS byte (`+0x101`, copied to settings
+  `+0xa1` by `PublishSettings`) before those calls and puts it back after,
+  showing it on the tick box (`BG3MFXMenuShowTickBoxValue`), and the startup
+  publish for Ultra Performance does the same. BG3's own tick callback then
+  enables the slider.
 
 With Frame Generation the renderer already carries the scene's depth and motion
 through BG3's CAS dispatch by name (`MetalFXRenderer.mm`), as it did with Off.

@@ -3,6 +3,7 @@
 #import "features/metalfx/MetalFX.h"
 #include "common/native/CodePatch.h"
 #include <atomic>
+#include <cstring>
 
 namespace Native = BG3MFXBuild::CASRendering;
 
@@ -33,6 +34,16 @@ BOOL BG3MFXInstallCASSharpening(intptr_t slide, NSError **error) {
     if (const char *failure = BG3MFXHookEntry(Native::UpdateIsRendering + slide, Native::UpdateIsRenderingFirst, island,
                                               reinterpret_cast<void *>(updateIsRendering)))
         return fail([NSString stringWithFormat:@"Could not hook BG3's CAS stage: %s.", failure]);
+    // BG3's Apply drops a ticked CAS box under the FSR type MetalFX runs on, so
+    // the choice would not stick.
+    const uintptr_t typeCheck = Native::ApplyTickBoxTypeCheck + slide;
+    if (*reinterpret_cast<const uint32_t *>(typeCheck) != Native::ApplyTickBoxTypeCheckOriginal)
+        return fail(@"Unsupported CAS tick box apply code.");
+    auto result = BG3MFXPatchCode({{typeCheck, 4}}, [&] {
+        const uint32_t type = Native::ApplyTickBoxTypeCheckPatched;
+        memcpy(reinterpret_cast<void *>(typeCheck), &type, 4);
+    });
+    if (result != BG3MFXCodePatchResult::Patched) return fail(@"Could not patch BG3's CAS tick box apply.");
     installed = true;
     return YES;
 }

@@ -54,6 +54,14 @@ inline constexpr uint32_t UpdateIsRenderingFirst = 0xf9408d08;
 inline constexpr size_t SettingsCASEnabled = 0xa1, SettingsUpscalingType = 0x97, StepIsRendering = 0x18;
 // Video options: the CAS tick box (id 105) and sharpness slider (id 106).
 inline constexpr uint16_t TickBoxID = 105, SliderID = 106;
+// VideoOptionsManager::ApplyTickBox stores the CAS tick (manager +0x101, which
+// PublishSettings copies to settings +0xa1) only when the native upscaling type
+// (+0xf7) is not 1 to 3, else it drops a ticked box: its `b.lo` skips the store
+// and becomes a nop. (Its anti-aliasing check never applies: TAA is value 2.)
+// rf::GraphicSettings::SetResolutionUpscaleFSR1 (Native::SetQuality) always
+// clears CAS (+0xa1), so metalfx puts the player's choice back after it.
+inline constexpr uintptr_t ApplyTickBoxTypeCheck = 0x10329060c;
+inline constexpr uint32_t ApplyTickBoxTypeCheckOriginal = 0x54000083, ApplyTickBoxTypeCheckPatched = 0xd503201f;
 }
 namespace ThreadIdling {
 inline constexpr uintptr_t WorkerBudget = 0x10655389c;
@@ -349,6 +357,8 @@ inline constexpr size_t Items = 0x30;
 inline constexpr size_t ItemCount = 0x3c;
 inline constexpr size_t ItemID = 0x88;
 inline constexpr size_t CheckboxValue = 0xa8;
+// A tick box's value observers (called with the new bool) and their count.
+inline constexpr size_t CheckboxObservers = 0x98, CheckboxObserverCount = 0xa4;
 inline constexpr size_t ItemEnabled = 0x2c;
 inline constexpr size_t EnabledObservers = 0x78;
 inline constexpr size_t EnabledObserverCount = 0x84;

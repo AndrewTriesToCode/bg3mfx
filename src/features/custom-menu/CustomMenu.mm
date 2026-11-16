@@ -193,6 +193,11 @@ void *BG3MFXMenuAddTickBox(void *manager, uint16_t id, const BG3MFXMenuText &nam
     return item;
 }
 bool BG3MFXMenuTickBoxValue(const void *item) { return field<uint8_t>(item, Layout::CheckboxValue) != 0; }
+void BG3MFXMenuShowTickBoxValue(void *item, bool value) {
+    if (BG3MFXMenuTickBoxValue(item) == value) return;
+    field<uint8_t>(item, Layout::CheckboxValue) = value;
+    notify(item, Layout::CheckboxObservers, Layout::CheckboxObserverCount, value);
+}
 void *BG3MFXMenuAddSlider(void *manager, uint16_t id, const BG3MFXMenuText &name, const BG3MFXMenuText &description,
                           float value, float lowest, float highest, BG3MFXMenuCallback changed) {
     void *item = at<void *(*)(void *, uint16_t, const Text *, const Text *, float, float, float, bool)>(Native::AddSlider)
