@@ -48,6 +48,9 @@ $(BIN_DIR)/metal4-bridge-smoke: tests/common/metal4_bridge_smoke.mm src/common/g
 $(BIN_DIR)/temporal-jitter-smoke: tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S src/features/metalfx/temporal-upscaling/TemporalJitter.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S src/features/metalfx/ultra-performance/UltraPerformance.h src/common/native/CodePatch.mm src/common/native/CodePatch.h src/features/metalfx/MetalFX.h src/common/native/SupportedBuild.h src/common/Feature.h src/common/Notice.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) tests/features/metalfx/temporal-upscaling/temporal_jitter_smoke.mm src/features/metalfx/temporal-upscaling/TemporalJitter.S tests/features/metalfx/temporal-upscaling/temporal_jitter_wrappers.S -framework Foundation -o $@
 
+$(BIN_DIR)/cas-rule-smoke: tests/features/metalfx/cas-sharpening/cas_rule_smoke.mm src/features/metalfx/cas-sharpening/CASSharpening.h | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $< -framework Foundation -o $@
+
 $(BIN_DIR)/metalfx-smoke: tests/common/metalfx_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm src/common/gpu/MetalFXPipeline.h src/common/gpu/GPUResources.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) tests/common/metalfx_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -o $@
 
@@ -75,6 +78,7 @@ RUNTIME_SOURCES = \
 	src/features/animation-optimizations/AnimationOptimizations.mm \
 	src/features/ssao-blur-fix/SSAOBlurFix.mm \
 	src/features/metalfx/ultra-performance/UltraPerformance.mm \
+	src/features/metalfx/cas-sharpening/CASSharpening.mm \
 	src/features/improved-shadows/ImprovedShadows.mm \
 	src/features/improved-shadows/ShadowMask.mm \
 	src/features/improved-shadows/PointLightShadowFix.mm \
@@ -119,6 +123,7 @@ RUNTIME_HEADERS = \
 	src/features/animation-optimizations/GrannyKernels.h \
 	src/features/ssao-blur-fix/SSAOBlurFix.h \
 	src/features/metalfx/ultra-performance/UltraPerformance.h \
+	src/features/metalfx/cas-sharpening/CASSharpening.h \
 	src/features/improved-shadows/ShadowMask.h \
 	src/features/improved-shadows/ImprovedShadowsShader.h \
 	src/features/improved-shadows/PointLightShadowFix.h \
@@ -157,7 +162,7 @@ $(BIN_DIR)/metalfx-probe: tools/probes/metalfx_probe.m | $(BIN_DIR)
 $(BIN_DIR)/uniform-lock-sim: tools/probes/uniform_lock_sim.cpp | $(BIN_DIR)
 	xcrun clang++ -std=c++17 -O2 -Wall -Wextra -mmacosx-version-min=26.0 $< -o $@
 
-test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/script-fixes-smoke $(BIN_DIR)/improved-display-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/point-light-shadow-fix-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/animation-optimizations-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
+test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/script-fixes-smoke $(BIN_DIR)/improved-display-smoke $(BIN_DIR)/root-smoke $(BIN_DIR)/custom-render-stages-smoke $(BIN_DIR)/custom-pipeline-bundles-smoke $(BIN_DIR)/duplicate-shadow-fix-smoke $(BIN_DIR)/improved-shadows-smoke $(BIN_DIR)/native-shadows-smoke $(BIN_DIR)/point-light-shadow-fix-smoke $(BIN_DIR)/ssao-blur-fix-smoke $(BIN_DIR)/animation-optimizations-smoke $(BIN_DIR)/bind-filter-smoke $(BIN_DIR)/frame-generation-hook-smoke $(BIN_DIR)/frame-interpolation-smoke $(BIN_DIR)/metal4-bridge-smoke $(BIN_DIR)/runtime-smoke $(BIN_DIR)/metalfx-smoke $(BIN_DIR)/cas-rule-smoke $(BIN_DIR)/temporal-quality-smoke $(BIN_DIR)/temporal-jitter-smoke $(BIN_DIR)/spatial-upscaler-smoke $(BIN_DIR)/temporal-upscaler-smoke $(BIN_DIR)/spatial-hook-smoke $(BIN_DIR)/temporal-hook-smoke $(BIN_DIR)/new-character-crash-fix-smoke $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib $(BIN_DIR)/libBG3MetalFXTest.dylib
 	$(BIN_DIR)/supported-build-smoke
 	$(BIN_DIR)/script-fixes-smoke $(SCRIPTS_DIR)
 	$(BIN_DIR)/root-smoke
@@ -181,6 +186,7 @@ test: $(BIN_DIR)/supported-build-smoke $(BIN_DIR)/script-fixes-smoke $(BIN_DIR)/
 	$(BIN_DIR)/metal4-bridge-smoke
 	$(BIN_DIR)/temporal-jitter-smoke
 	$(BIN_DIR)/metalfx-smoke
+	$(BIN_DIR)/cas-rule-smoke
 	mkdir -p "$(EVIDENCE_DIR)"
 	quality_evidence=$$(mktemp -d "$(EVIDENCE_DIR)/$$(date +%F)-temporal-quality-XXXXXX"); \
 		$(BIN_DIR)/temporal-quality-smoke "$$quality_evidence/regression"

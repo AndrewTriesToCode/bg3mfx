@@ -3,6 +3,7 @@
 #import "features/metalfx/MetalFX.h"
 #import "features/custom-menu/CustomMenu.h"
 #import "features/metalfx/ultra-performance/UltraPerformance.h"
+#import "features/metalfx/cas-sharpening/CASSharpening.h"
 #import <MetalFX/MetalFX.h>
 #import <QuartzCore/QuartzCore.h>
 #include <algorithm>
@@ -44,6 +45,7 @@ NSString *const scalingPreference = @"BG3MFXUpscalingType";
 NSString *const qualityPreference = @"BG3MFXUpscalingQuality";
 constexpr uint16_t upscaleTypeID = 99, upscaleQualityID = 100, upscaleSharpnessID = 101, antiAliasingID = 98, vsyncID = 82;
 constexpr uint16_t frameGenerationID = 0x7f02;
+constexpr uint16_t casTickBoxID = BG3MFXBuild::CASRendering::TickBoxID, casSliderID = BG3MFXBuild::CASRendering::SliderID;
 template<class T> T at(uintptr_t address) { return reinterpret_cast<T>(address + slide); }
 template<class T> T &field(const void *object, size_t offset) {
     return *reinterpret_cast<T *>(static_cast<char *>(const_cast<void *>(object)) + offset);
@@ -90,6 +92,13 @@ void updateDependentControls(void *manager, int mode) {
     // Upscaling Sharpness drives FSR's RCAS pass, which MetalFX replaces; dim it
     // there. BG3 enables it for its FSR type, which the MetalFX types run as.
     if (metalFXValue(mode)) BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, upscaleSharpnessID), false);
+    // BG3 dims its CAS options for every type but Off; CAS runs with MetalFX
+    // (src/features/metalfx/cas-sharpening/), so they stay available.
+    if (BG3MFXCASSharpeningInstalled() && (mode == 2 || mode == 3)) {
+        void *tick = BG3MFXMenuFind(manager, -1, casTickBoxID);
+        BG3MFXMenuSetEnabled(tick, true);
+        BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, casSliderID), tick && BG3MFXMenuTickBoxValue(tick));
+    }
     // MetalFX Temporal and Frame Generation use the depth, motion and camera
     // data of BG3's TAA pass (Temporal then replaces its draw). While either is
     // on, select TAA and dim the control; afterwards restore the player's choice.

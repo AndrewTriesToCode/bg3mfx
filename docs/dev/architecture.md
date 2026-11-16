@@ -113,7 +113,10 @@ queue on a buffer BG3 had not committed yet, or never would. A buffer BG3 drops
 uncommitted is detected when it is destroyed or recycled, or when a later one
 commits (BG3 commits in order). Its Metal 4 work runs without the wait, because
 the MetalFX scaler stalls its next submission if any encoded buffer never runs.
-An abandoned later buffer stays behind earlier live submissions. An associated
+An abandoned later buffer stays behind earlier live submissions. Each queued
+submission also waits for the previous one's `done` signal, so two never run at
+once (an orphan, which has no wait of its own, could otherwise overwrite or be
+overwritten by the one before it). An associated
 ownership token supplies cleanup even when no later frame arrives; commit
 disarms it, and GPU feedback releases resources after the work completes.
 When committing a buffer would not reach the hook, the work is submitted at once.
@@ -417,6 +420,13 @@ only for a feature that adds options to it (metal-hud, metalfx).
   metalfx's install fails.
 - `src/features/metalfx/ultra-performance/UltraPerformance.*`: part of
   metalfx, optional: when it cannot install, MetalFX starts without Ultra Performance.
+- `src/features/metalfx/cas-sharpening/CASSharpening.*`: part of metalfx,
+  optional. `ls::PostProcessStep_CAS::UpdateIsRenderingInternal` (`0x106099628`)
+  sets the stage's byte (`+0x18`) to CAS enabled (settings `+0xa1`) and
+  upscaling type (`+0x97`) below 1. An entry hook at its second instruction
+  (`CASRendering` island) applies the same rule but also accepts MetalFX Spatial
+  and Temporal, and the menu keeps the CAS options (ids 105, 106) available with
+  them.
 - `src/features/metalfx/renderer/MetalFXRenderer.mm`: part of metalfx. It is metal-hooks'
   renderer extension (`MetalHooksInternal.h`): scene tracking, the Spatial and
   Temporal dispatch that replaces FSR, the FSR_Tonemap skip, Frame
@@ -589,7 +599,7 @@ only for a feature that adds options to it (metal-hud, metalfx).
   working, and 1.0 otherwise. BG3 then sizes its own render targets, 72 jitter
   phases and a plain Temporal scaler need no further patches.
 - Header-padding islands: Temporal jitter `0x000`–`0x0c0`, Lua `0x700`, thread idling `0x9c0`, uniform
-  slices `0xa00`, render scale `0xa40`, SSAO blur `0xac0`, custom pipeline bundles `0xad8`, improved display `0xb08`, script fixes `0xb38` (offsets from
+  slices `0xa00`, render scale `0xa40`, SSAO blur `0xac0`, custom pipeline bundles `0xad8`, improved display `0xb08`, script fixes `0xb38`, CAS rendering `0xb68` (offsets from
   `0x100004000`). Each install checks its range is still zero.
 - `src/features/metal-hooks/MetalHooks.mm`: Metal hooks; `src/features/metalfx/renderer/MetalFXRenderer.mm`: exact texture
   association and pass replacement.

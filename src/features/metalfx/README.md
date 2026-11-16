@@ -22,6 +22,7 @@ The parts:
 - [Spatial upscaling](spatial-upscaling/README.md)
 - [Temporal upscaling](temporal-upscaling/README.md), with its jitter
 - [Ultra Performance](ultra-performance/README.md)
+- [CAS sharpening](cas-sharpening/README.md), BG3's sharpener with MetalFX
 - [Frame generation](frame-generation/README.md)
 
 ## Implementation
@@ -35,8 +36,10 @@ folder. Its install puts in each part, in order:
 2. Ultra Performance ([`UltraPerformance.mm`](ultra-performance/UltraPerformance.mm)),
    optional: if it cannot install, metalfx reports it through `BG3MFXFail` and
    carries on without Ultra Performance.
-3. The renderer ([`MetalFXRenderer.mm`](renderer/MetalFXRenderer.mm)), below.
-4. The options, registered with custom-menu.
+3. CAS sharpening ([`CASSharpening.mm`](cas-sharpening/CASSharpening.mm)),
+   optional like Ultra Performance: without it CAS stays off with MetalFX.
+4. The renderer ([`MetalFXRenderer.mm`](renderer/MetalFXRenderer.mm)), below.
+5. The options, registered with custom-menu.
 
 Its activation restores the saved choices before BG3 creates its first command
 buffer, and migrates earlier preference keys.

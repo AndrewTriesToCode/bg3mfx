@@ -42,6 +42,19 @@ inline constexpr uintptr_t CameraLoad = 0x105f8af84;
 inline constexpr uintptr_t VelocityLoad = 0x106253924;
 inline constexpr uintptr_t PostProcessMethod = 0x10608f590;
 }
+// CAS sharpening (src/features/metalfx/cas-sharpening/). ls::PostProcessStep_CAS::
+// UpdateIsRenderingInternal is `adrp x8, settings page; ldr x8, [x8, #0x118]; if
+// settings+0xa1 (CAS enabled) is clear, the step is off; else the step is on
+// only while settings+0x97 (the upscaling type) < 1, Off`. The hook replaces
+// the function at its second instruction (`ldr x8, [x8, #0x118]`, which can move
+// to an island) and writes the step's rendering byte itself.
+namespace CASRendering {
+inline constexpr uintptr_t UpdateIsRendering = 0x10609962c;
+inline constexpr uint32_t UpdateIsRenderingFirst = 0xf9408d08;
+inline constexpr size_t SettingsCASEnabled = 0xa1, SettingsUpscalingType = 0x97, StepIsRendering = 0x18;
+// Video options: the CAS tick box (id 105) and sharpness slider (id 106).
+inline constexpr uint16_t TickBoxID = 105, SliderID = 106;
+}
 namespace ThreadIdling {
 inline constexpr uintptr_t WorkerBudget = 0x10655389c;
 inline constexpr uintptr_t SchedulerWindowFirst = 0x106551aec;
@@ -426,7 +439,8 @@ inline constexpr Island SSAOBlur{0xac0, 24};
 inline constexpr Island CustomPipelineBundles{0xad8, 2 * 24};
 inline constexpr Island ImprovedDisplay{0xb08, 2 * 24};
 inline constexpr Island ScriptFixes{0xb38, 2 * 24};
-inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, RenderScale, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes};
+inline constexpr Island CASRendering{0xb68, 24};
+inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, RenderScale, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes, CASRendering};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];
