@@ -87,5 +87,5 @@ bool BG3MFXShadowAtlasPipeline(MTLRenderPipelineDescriptor *desc);
 // `error`, if the shader or pipeline cannot be built.
 id<MTLRenderPipelineState> BG3MFXPointLightShadowPipeline(id<MTLDevice> device, MTLRenderPipelineDescriptor *desc,
                                                           BG3MFXCreateRenderPipeline create, NSError **error);
-// Takes metal-hooks' draw replacement and a render-pass observer.
+// Takes metal-hooks' draw replacement and reads each encoder's source/lifetime.
 BOOL BG3MFXInstallPointLightShadowFix(NSError **error);

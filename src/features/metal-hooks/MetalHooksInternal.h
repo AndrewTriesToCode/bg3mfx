@@ -68,6 +68,8 @@ enum EncoderAssociation : uint16_t {
     // itself owns nothing and costs nothing to destroy (one per encoder).
     __strong NSMutableDictionary<NSNumber *, NSData *> *bytes;
     __strong id<MTLTexture> colorTarget;
+    __weak id<MTLTexture> depthTarget;
+    uint64_t bufferGeneration;
     __unsafe_unretained id sampler0;
     int mode;            // the renderer extension's mode for this encoder; -1 when unknown
     bool lastDrawOther;  // the latest draw went the fast way (an unrecognized pipeline)

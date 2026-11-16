@@ -115,17 +115,21 @@ adapter supplied the opposite displacement in both framebuffer axes, preventing
 correct temporal reconstruction. The analytic reconstruction test and captured
 depth registration establish this conversion.
 
-Temporal uses `MTL4FXTemporalScaler` on devices reporting `supportsMetal4FX:`;
-other devices retain `MTLFXTemporalScaler`. A dedicated Metal 4 queue waits on
+Spatial and Temporal require Metal 4 MetalFX and use `MTL4FXSpatialScaler` and
+`MTL4FXTemporalScaler`. Initialization checks `supportsMetal4FX:` and reports
+a feature failure if unsupported. A dedicated Metal 4 queue waits on
 an event signaled after BG3 produces the scaler inputs, then signals another
 event that BG3's original Metal 3 buffer waits on before consuming the output.
 The Metal 4 work is recorded during BG3's encoding but submitted from the
 `commit` hook, after BG3 commits that buffer: a queue-level wait has no
 per-command-buffer form, so work submitted earlier would hold the whole Metal 4
 queue on a buffer BG3 had not committed yet, or never would. A buffer BG3 drops
-uncommitted is detected when a later one commits (BG3 commits in order); its
-Metal 4 work is then submitted without the wait, because the MetalFX scaler
-stalls its next submission if any command buffer it encoded into never runs.
+uncommitted is detected when it is destroyed or recycled, or when a later one
+commits (BG3 commits in order). Its Metal 4 work runs without the wait, because
+the MetalFX scaler stalls its next submission if any encoded buffer never runs.
+An abandoned later buffer stays behind earlier live submissions. An associated
+ownership token supplies cleanup even when no later frame arrives; commit
+disarms it, and GPU feedback releases resources after the work completes.
 When committing a buffer would not reach the hook, the work is submitted at once.
 Per-submission residency and feedback-owned resources preserve GPU lifetimes.
 This does not convert BG3's renderer or presentation to Metal 4.
@@ -193,8 +197,8 @@ refresh interval is read on the main thread from the
 layer's window. The stand-in is released when the real copy completes, before
 any wait, and the worker skips the wait when BG3's next frame is already
 queued. Frames without a generated image are presented at once. Only the generated scene goes through an extra
-`CombineUI` pass. The worker never blocks BG3's or Metal's threads. Devices
-without Metal 4 FX use the Metal 3 effect. This implementation still needs
+`CombineUI` pass. The worker never blocks BG3's or Metal's threads. Frame
+Generation requires Metal 4 FX. This implementation still needs
 displayed/pacing validation and does not establish HDR support.
 
 ## Hook overhead
@@ -514,7 +518,10 @@ only for a feature that adds options to it (metal-hud, metalfx).
     stage's program table; its `Unload` override puts BG3's back first;
   - its `StartRecording` override records GBuffer0's bind at fragment
     texture 6 with BG3's `SetTextureSafe` at the head of the stage's list,
-    before the kernel records. With no G-buffer normal (Bink videos),
+    before the kernel records, only when BG3's recording-enabled flag is set.
+    Disabled stages cancel without beginning a list; injecting a bind there
+    would leave it queued across frames and could replay a retired texture
+    when the stage becomes enabled again. With no G-buffer normal (Bink videos),
     `SetTextureSafe` binds BG3's transparent default texture, and the
     shader drops the normal offset for that frame.
 
@@ -526,7 +533,11 @@ only for a feature that adds options to it (metal-hud, metalfx).
   `g_TetrahedronFaceIndex` 0-3 are drawn with the viewport moved into a region
   of their own (at half resolution when the tile fills the target), and the
   next atlas `LinearizeDepth` uses a clone that reads each texel from its
-  face's region.
+  face's region. Pending tile coordinates hold weak source-texture and
+  command-buffer identities, plus the buffer's recording generation. Only a
+  matching atlas source in that recording consumes them. Missing constants,
+  incompatible casters and rejected composites invalidate the pending sequence;
+  driver recycling cannot match a previous recording at the same address.
 - `src/features/improved-display/`: Improved Display (`BG3MFX_FEATURE_IMPROVED_DISPLAY=1`,
   requires metal-hooks; native). It replaces BG3's Windows-style PQ HDR with
   macOS EDR on every screen, including EDR-capable screens that aren't HDR

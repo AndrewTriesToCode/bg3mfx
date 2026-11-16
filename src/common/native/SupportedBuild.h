@@ -384,6 +384,9 @@ namespace Shadows::Layout {
 // Load's 12 programs: 3 quality rows (PCSS 2048, PCSS 1024, PCF 1024) of
 // 1-4 cascades. The kernel copies one to Current.
 inline constexpr size_t Programs = 0x2198, Current = 0x2190;
+// RenderStage::StartRecording (0x1060d915c) schedules the kernel only when
+// this byte is set; otherwise it calls Cancel without beginning the list.
+inline constexpr size_t RecordingEnabled = 0x18;
 inline constexpr size_t SceneGraphOwner = 0x10;
 inline constexpr size_t List = 0x30;
 }

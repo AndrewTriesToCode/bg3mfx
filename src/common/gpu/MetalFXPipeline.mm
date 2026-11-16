@@ -20,12 +20,10 @@ static void failure(NSError **error, NSString *message) {
 
 @implementation BG3MFXPipeline {
     id<MTLDevice> _device;
-    id<MTLFXTemporalScalerBase> _temporal;
-    id<MTLFXTemporalScaler> _temporal3;
-    id<MTL4FXTemporalScaler> _temporal4;
+    id<MTL4FXTemporalScaler> _temporal;
     BG3MFXMetal4Bridge *_bridge;
     BG3MFXTexturePool *_outputs;
-    id<MTLFXSpatialScaler> _spatial;
+    id<MTL4FXSpatialScaler> _spatial;
     NSUInteger _inputWidth, _inputHeight, _outputWidth, _outputHeight;
     // Smallest content region a dynamic-resolution Temporal scaler accepts;
     // 0 when every frame must render the whole input.
@@ -71,10 +69,13 @@ static void failure(NSError **error, NSString *message) {
         (double)outputWidth / width > 3 || (double)outputHeight / height > 3) {
         failure(error, @"Unsupported input/output dimensions"); return nil;
     }
+    NSError *compilerError=nil;
+    id<MTL4Compiler> compiler=[device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:&compilerError];
+    if (!compiler) { failure(error,compilerError.localizedDescription ?: @"Could not create the Metal 4 compiler"); return nil; }
 
     if (mode == BG3MFXScalingModeSpatial) {
-        if (![MTLFXSpatialScalerDescriptor supportsDevice:device]) {
-            failure(error, @"This GPU does not support MetalFX spatial upscaling"); return nil;
+        if (![MTLFXSpatialScalerDescriptor supportsMetal4FX:device]) {
+            failure(error, @"This GPU does not support Metal 4 MetalFX spatial upscaling"); return nil;
         }
         if (colorProcessingMode < MTLFXSpatialScalerColorProcessingModePerceptual ||
             colorProcessingMode > MTLFXSpatialScalerColorProcessingModeHDR) {
@@ -85,11 +86,11 @@ static void failure(NSError **error, NSString *message) {
         descriptor.outputWidth = outputWidth; descriptor.outputHeight = outputHeight;
         descriptor.colorTextureFormat = colorFormat; descriptor.outputTextureFormat = outputFormat;
         descriptor.colorProcessingMode = colorProcessingMode;
-        _spatial = [descriptor newSpatialScalerWithDevice:device];
+        _spatial = [descriptor newSpatialScalerWithDevice:device compiler:compiler];
         if (!_spatial) { failure(error, @"MetalFX could not create the spatial scaler for these formats"); return nil; }
     } else {
-        if (![MTLFXTemporalScalerDescriptor supportsDevice:device]) {
-            failure(error, @"This GPU does not support MetalFX temporal upscaling"); return nil;
+        if (![MTLFXTemporalScalerDescriptor supportsMetal4FX:device]) {
+            failure(error, @"This GPU does not support Metal 4 MetalFX temporal upscaling"); return nil;
         }
         MTLFXTemporalScalerDescriptor *descriptor = [MTLFXTemporalScalerDescriptor new];
         descriptor.inputWidth = width; descriptor.inputHeight = height;
@@ -110,21 +111,11 @@ static void failure(NSError **error, NSString *message) {
             _minimumContentWidth = (NSUInteger)std::ceil(outputWidth / maximum);
             _minimumContentHeight = (NSUInteger)std::ceil(outputHeight / maximum);
         }
-        BOOL metal4 = [MTLFXTemporalScalerDescriptor supportsMetal4FX:device];
-        if (metal4) {
-            NSError *compilerError=nil;
-            id<MTL4Compiler> compiler=[device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:&compilerError];
-            if (!compiler) { failure(error,compilerError.localizedDescription ?: @"Could not create the Metal 4 compiler"); return nil; }
-            _temporal4 = [descriptor newTemporalScalerWithDevice:device compiler:compiler];
-            _bridge = [[BG3MFXMetal4Bridge alloc] initWithDevice:device label:@"BG3MFX Temporal" error:&compilerError];
-            if (!_bridge) { failure(error,@"Could not create the Metal 4 temporal queue"); return nil; }
-            _temporal = _temporal4;
-        } else {
-            _temporal3 = [descriptor newTemporalScalerWithDevice:device];
-            _temporal = _temporal3;
-        }
+        _temporal = [descriptor newTemporalScalerWithDevice:device compiler:compiler];
         if (!_temporal) { failure(error, @"MetalFX could not create the temporal scaler for these formats"); return nil; }
     }
+    _bridge = [[BG3MFXMetal4Bridge alloc] initWithDevice:device label:@"BG3MFX upscaling" error:&compilerError];
+    if (!_bridge) { failure(error,@"Could not create the Metal 4 upscaling queue"); return nil; }
 
     _device = device;
     _inputWidth = width; _inputHeight = height;
@@ -139,7 +130,7 @@ static void failure(NSError **error, NSString *message) {
     return self;
 }
 
-- (BOOL)usesMetal4 { return _temporal4 != nil; }
+- (BOOL)usesMetal4 { return YES; }
 - (void)resetHistory { _reset = YES; }
 - (void)releaseIdleResources { [_bridge releaseResidency]; }
 
@@ -205,9 +196,14 @@ static void failure(NSError **error, NSString *message) {
         _spatial.outputTexture = output;
         _spatial.inputContentWidth = contentWidth;
         _spatial.inputContentHeight = contentHeight;
-        [_spatial encodeToCommandBuffer:buffer];
+        id<MTL4FXSpatialScaler> scaler=_spatial;
+        BOOL encoded=[_bridge encodeIntoBuffer:buffer allocations:@[color,output] retained:@[scaler]
+                encode:^(id<MTL4CommandBuffer> commands) {
+                    commands.label=@"BG3 Metal 4 Spatial upscale"; [scaler encodeToCommandBuffer:commands];
+                } failure:self.gpuFailureHandler error:error];
         // The scaler retains its textures; the command buffer keeps them for the GPU.
         _spatial.colorTexture = nil; _spatial.outputTexture = nil;
+        if (!encoded) return nil;
     } else {
         _temporal.colorTexture = color;
         _temporal.depthTexture = depth;
@@ -222,22 +218,18 @@ static void failure(NSError **error, NSString *message) {
         _temporal.depthReversed = parameters.depthReversed;
         _temporal.preExposure = 1.0f;
         _temporal.reset = _reset || parameters.reset;
-        if (_temporal4) {
-            // GPU-only bridge: producer passes -> Metal 4 FX -> native consumers.
-            // Never commit/split BG3's buffer or wait for GPU work on the CPU.
-            id<MTL4FXTemporalScaler> scaler=_temporal4;
-            if (![_bridge encodeIntoBuffer:buffer allocations:@[color,depth,motion,output] retained:@[scaler]
-                    encode:^(id<MTL4CommandBuffer> commands) {
-                        commands.label=@"BG3 Metal 4 Temporal upscale"; [scaler encodeToCommandBuffer:commands];
-                    } failure:self.gpuFailureHandler error:error]) {
-                [self resetHistory]; return nil;
-            }
-        } else [_temporal3 encodeToCommandBuffer:buffer];
+        // GPU-only bridge: producer passes -> Metal 4 FX -> native consumers.
+        id<MTL4FXTemporalScaler> scaler=_temporal;
+        BOOL encoded=[_bridge encodeIntoBuffer:buffer allocations:@[color,depth,motion,output] retained:@[scaler]
+                encode:^(id<MTL4CommandBuffer> commands) {
+                    commands.label=@"BG3 Metal 4 Temporal upscale"; [scaler encodeToCommandBuffer:commands];
+                } failure:self.gpuFailureHandler error:error];
         // The scaler retains its textures, which would keep a cached size's last
         // BG3 render targets alive after a resize. Encoding is done, and the
         // command buffer (or the Metal 4 bridge) keeps them until the GPU finishes.
         _temporal.colorTexture = nil; _temporal.depthTexture = nil;
         _temporal.motionTexture = nil; _temporal.outputTexture = nil;
+        if (!encoded) { [self resetHistory]; return nil; }
     }
     _reset = NO;
     return frame;

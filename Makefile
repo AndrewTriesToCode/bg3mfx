@@ -42,10 +42,6 @@ $(BIN_DIR)/temporal-replay-smoke: tests/features/metalfx/temporal-upscaling/temp
 $(BIN_DIR)/temporal-quality-smoke: tests/features/metalfx/temporal-upscaling/temporal_quality_smoke.mm src/features/metalfx/temporal-upscaling/TemporalUpscaler.h src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm src/common/gpu/MetalFXPipeline.h src/common/gpu/GPUResources.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) tests/features/metalfx/temporal-upscaling/temporal_quality_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -o $@
 
-# Optional public-API comparison; no changes to the injected game runtime.
-$(BIN_DIR)/temporal-api-compare: tests/features/metalfx/temporal-upscaling/temporal_api_compare.mm | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $< $(FRAMEWORKS) -o $@
-
 $(BIN_DIR)/metal4-bridge-smoke: tests/common/metal4_bridge_smoke.mm src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm src/common/gpu/MetalFXPipeline.h src/common/gpu/GPUResources.h | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< src/common/gpu/MetalFXPipeline.mm src/common/gpu/GPUResources.mm $(FRAMEWORKS) -o $@
 

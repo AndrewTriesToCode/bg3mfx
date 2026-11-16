@@ -47,6 +47,12 @@ struct BG3MFXEncoderCalls {
     bool (*scissor)(__unsafe_unretained id encoder, MTLScissorRect *scissor);
     // Sets the viewport without changing the record of BG3's.
     void (*setViewport)(__unsafe_unretained id encoder, MTLViewport viewport);
+    // Identity and lifetime of this encoder's work, for replacements whose
+    // producer and consumer occupy different render passes.
+    id<MTLCommandBuffer> (*commandBuffer)(__unsafe_unretained id encoder);
+    id<MTLTexture> (*depthTarget)(__unsafe_unretained id encoder);
+    // Changes when the driver recycles a command-buffer object.
+    uint64_t (*commandBufferGeneration)(__unsafe_unretained id encoder);
 };
 struct BG3MFXDrawReplacement {
     // A render pipeline BG3 created: whether to take its draws.

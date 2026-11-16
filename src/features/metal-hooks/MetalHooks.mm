@@ -82,6 +82,8 @@ BOOL BG3MFXMetalHooksSubstitutePipelines(BG3MFXPipelineSubstitution substitution
 }
 static uint32_t watchedConstants;
 static BG3MFXDrawReplacement drawReplacement;
+static char bufferGenerationKey;
+static std::atomic<uint64_t> bufferGeneration{0};
 BOOL BG3MFXMetalHooksReplaceDraws(BG3MFXDrawReplacement replacement) {
     if (hooksActive || drawReplacement.claim || !replacement.claim || !replacement.draw) return NO;
     drawReplacement = replacement;
@@ -429,6 +431,15 @@ static bool replacedDraw(__unsafe_unretained id encoder, void (^call)(void)) {
             static SEL set = @selector(setViewport:);
             ((void(*)(id,SEL,MTLViewport))original(e,set))(e,set,viewport);
         },
+        [](__unsafe_unretained id e) -> id<MTLCommandBuffer> { return encoderBuffer(e); },
+        [](__unsafe_unretained id e) -> id<MTLTexture> {
+            __unsafe_unretained BG3MFXEncoderState *s=encoderState(e);
+            return s ? s->depthTarget : nil;
+        },
+        [](__unsafe_unretained id e) -> uint64_t {
+            __unsafe_unretained BG3MFXEncoderState *s=encoderState(e);
+            return s ? s->bufferGeneration : 0;
+        },
     };
     __unsafe_unretained BG3MFXEncoderState *s=encoderState(encoder);
     return drawReplacement.draw(encoder,s->pipeline,s->textures[0],s->textures[1],calls,call);
@@ -572,7 +583,11 @@ static id renderEncoder(id self, SEL cmd, MTLRenderPassDescriptor *desc) {
     notifyNewEncoder(encoder,NO);
     for (size_t i = 0; i < renderPassObservers.count; ++i) renderPassObservers.entries[i](desc);
     if (runtimeEnabled && encoder) {
-        if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) { state->buffer=self; state->colorTarget=desc.colorAttachments[0].texture; }
+        if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) {
+            state->buffer=self; state->colorTarget=desc.colorAttachments[0].texture;
+            state->depthTarget=pass.depthAttachment.texture;
+            state->bufferGeneration=[objc_getAssociatedObject(self,&bufferGenerationKey) unsignedLongLongValue];
+        }
     }
     if (renderer.encoderCreated) renderer.encoderCreated(encoder,self,desc,passChanged);
     return encoder;
@@ -581,7 +596,10 @@ static id computeEncoder(id self, SEL cmd) {
     id encoder = ((id(*)(id,SEL))original(self,cmd))(self,cmd);
     instrumentEncoder(encoder);
     notifyNewEncoder(encoder,YES);
-    if (runtimeEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) state->buffer=self;
+    if (runtimeEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) {
+        state->buffer=self;
+        state->bufferGeneration=[objc_getAssociatedObject(self,&bufferGenerationKey) unsignedLongLongValue];
+    }
     if (renderer.encoderCreated) renderer.encoderCreated(encoder,self,nil,false);
     return encoder;
 }
@@ -601,7 +619,10 @@ static id computeEncoderType(id self, SEL cmd, MTLDispatchType type) {
     activeBuffer = previous;
     instrumentEncoder(encoder);
     notifyNewEncoder(encoder,YES);
-    if (runtimeEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) state->buffer=self;
+    if (runtimeEnabled) if (__unsafe_unretained BG3MFXEncoderState *state=encoderState(encoder)) {
+        state->buffer=self;
+        state->bufferGeneration=[objc_getAssociatedObject(self,&bufferGenerationKey) unsignedLongLongValue];
+    }
     if (renderer.encoderCreated) renderer.encoderCreated(encoder,self,nil,false);
     return encoder;
 }
@@ -636,6 +657,9 @@ static id commandBuffer(id self, SEL cmd) {
     SEL actual = cmd;
     if (runtimeEnabled && cmd == @selector(commandBufferWithUnretainedReferences)) actual = @selector(commandBuffer);
     id buffer = ((id(*)(id,SEL))original(self,actual))(self,actual);
+    BG3MFXMetal4BridgeBufferCreated(buffer);
+    if (buffer && runtimeEnabled)
+        objc_setAssociatedObject(buffer,&bufferGenerationKey,@(bufferGeneration.fetch_add(1,std::memory_order_relaxed)+1),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (renderer.commandBufferCreated) renderer.commandBufferCreated(buffer);
     if (!buffer || classInstrumented(instrumentedBufferClasses,object_getClass(buffer))) return buffer;
     hook(buffer,"renderCommandEncoderWithDescriptor:",(IMP)renderEncoder);

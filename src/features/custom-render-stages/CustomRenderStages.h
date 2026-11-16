@@ -53,6 +53,9 @@ BOOL BG3MFXStageListRequested(void);
 // `bool (*)(void *stage)`: it sets the stage's enabled byte, and
 // StageGroup::AddAppStage checks the result. The others are
 // `void (*)(void *stage)`.
+// StartRecording also runs for disabled stages: the original cancels instead
+// of scheduling their kernel. An override must honor that decision before
+// appending commands; an unbegun list is not drained by native cancellation.
 enum class BG3MFXStageMethod : uint8_t { Load = 3, Unload = 4, Submit = 5, StartRecording = 7 };
 // Replaces `method` of stage type `type` (an rf::AppStageType code) with
 // `replacement`, for every stage of that class, from this feature's activation

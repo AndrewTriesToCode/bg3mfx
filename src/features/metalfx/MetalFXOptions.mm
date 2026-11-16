@@ -79,7 +79,7 @@ bool bg3VSyncOn() {
 }
 void publishSettings(void *manager) { at<void (*)(void *, bool)>(Native::PublishSettings)(manager, false); }
 bool frameGenerationSupported() {
-    static bool supported = [MTLFXFrameInterpolatorDescriptor supportsDevice:MTLCreateSystemDefaultDevice()];
+    static bool supported = [MTLFXFrameInterpolatorDescriptor supportsMetal4FX:MTLCreateSystemDefaultDevice()];
     return supported;
 }
 // The Anti-Aliasing combo value labelled "TAA", or -1.

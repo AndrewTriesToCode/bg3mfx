@@ -71,20 +71,16 @@ enum : uintptr_t { Caster = 1, Atlas = 2 };
 char kindKey, cloneKey;
 std::atomic<bool> failed;
 
-// Per render thread: the depth target of the current pass, and the point
-// light tile whose faces were moved and that the next atlas copy composites.
+// A pending tile may cross render passes, but never command buffers or
+// source textures. Weak identities do not retain obsolete scene resources.
 struct ThreadState {
-    NSUInteger depthWidth = 0, depthHeight = 0;
+    __weak id<MTLCommandBuffer> buffer;
+    __weak id<MTLTexture> depth;
+    uint64_t generation = 0;
     bool moved = false;
     BG3MFXShadowTile tile = {};
 };
 thread_local ThreadState thread;
-
-void renderPass(MTLRenderPassDescriptor *pass) {
-    id<MTLTexture> depth = pass.depthAttachment.texture;
-    thread.depthWidth = depth.width;
-    thread.depthHeight = depth.height;
-}
 
 bool claim(id device, MTLRenderPipelineDescriptor *desc, id state, BG3MFXCreateRenderPipeline create) {
     if (failed.load(std::memory_order_relaxed)) return false;
@@ -106,18 +102,25 @@ bool claim(id device, MTLRenderPipelineDescriptor *desc, id state, BG3MFXCreateR
 
 // A shadow caster draw for a point light's face: drawn in its own region.
 bool casterDraw(__unsafe_unretained id encoder, const BG3MFXEncoderCalls &calls, void (^call)(void)) {
+    // Every incompatible caster invalidates the previous sequence, including
+    // missing CPU constants and unsupported viewports.
+    thread.moved = false; thread.buffer = nil; thread.depth = nil;
+    id<MTLCommandBuffer> buffer = calls.commandBuffer ? calls.commandBuffer(encoder) : nil;
+    id<MTLTexture> depth = calls.depthTarget ? calls.depthTarget(encoder) : nil;
+    uint64_t generation = calls.commandBufferGeneration ? calls.commandBufferGeneration(encoder) : 0;
+    if (!buffer || buffer.status != MTLCommandBufferStatusNotEnqueued || !depth || !generation) return false;
     auto *camera = static_cast<const BG3MFXShadowCamera *>(calls.fragmentConstants(encoder, BG3MFXShadowCameraIndex, sizeof(BG3MFXShadowCamera)));
     if (!camera) return false;
     int face = camera->tetrahedronFaceIndex;
-    // Another light's shadow view: its atlas copy must stay BG3's.
-    if (face < 0) thread.moved = false;
     MTLViewport viewport;
     BG3MFXShadowTile tile;
     MTLScissorRect scissor;
     if (!calls.viewport(encoder, &viewport) ||
-        !BG3MFXShadowFaceTile(face, viewport, thread.depthWidth, thread.depthHeight, &tile) || calls.scissor(encoder, &scissor))
+        !BG3MFXShadowFaceTile(face, viewport, depth.width, depth.height, &tile) || calls.scissor(encoder, &scissor))
         return false;
     thread.moved = true;
+    thread.buffer = buffer; thread.depth = depth;
+    thread.generation = generation;
     thread.tile = tile;
     if (face == 0 && tile.region == tile.size) return false;
     calls.setViewport(encoder, BG3MFXShadowFaceViewport(face, viewport, tile));
@@ -127,9 +130,16 @@ bool casterDraw(__unsafe_unretained id encoder, const BG3MFXEncoderCalls &calls,
 }
 
 // BG3's atlas copy after a moved point light: the compositing clone instead.
-bool atlasDraw(__unsafe_unretained id encoder, __unsafe_unretained id state, const BG3MFXEncoderCalls &calls, void (^call)(void)) {
+bool atlasDraw(__unsafe_unretained id encoder, __unsafe_unretained id state, __unsafe_unretained id<MTLTexture> source,
+               const BG3MFXEncoderCalls &calls, void (^call)(void)) {
     if (!thread.moved) return false;
     thread.moved = false;
+    id<MTLCommandBuffer> buffer = thread.buffer;
+    id<MTLTexture> depth = thread.depth;
+    thread.buffer = nil; thread.depth = nil;
+    if (!buffer || buffer.status != MTLCommandBufferStatusNotEnqueued || !depth || depth != source ||
+        !calls.commandBuffer || calls.commandBuffer(encoder) != buffer || !calls.commandBufferGeneration ||
+        calls.commandBufferGeneration(encoder) != thread.generation) return false;
     id clone = objc_getAssociatedObject(state, &cloneKey);
     if (!clone) return false;
     calls.setPipeline(encoder, clone);
@@ -139,21 +149,17 @@ bool atlasDraw(__unsafe_unretained id encoder, __unsafe_unretained id state, con
     return true;
 }
 
-bool draw(__unsafe_unretained id encoder, __unsafe_unretained id state, __unsafe_unretained id<MTLTexture>,
+bool draw(__unsafe_unretained id encoder, __unsafe_unretained id state, __unsafe_unretained id<MTLTexture> source,
           __unsafe_unretained id<MTLTexture>, const BG3MFXEncoderCalls &calls, void (^call)(void)) {
     uintptr_t kind = (uintptr_t)(__bridge void *)objc_getAssociatedObject(state, &kindKey);
     if (kind == Caster) return casterDraw(encoder, calls, call);
-    if (kind == Atlas) return atlasDraw(encoder, state, calls, call);
+    if (kind == Atlas) return atlasDraw(encoder, state, source, calls, call);
     return false;
 }
 
 }
 
 BOOL BG3MFXInstallPointLightShadowFix(NSError **error) {
-    if (!BG3MFXMetalHooksOnRenderPass(renderPass)) {
-        if (error) *error = [NSError errorWithDomain:@"BG3MFX" code:1 userInfo:@{NSLocalizedDescriptionKey: @"No render-pass observer is free."}];
-        return NO;
-    }
     if (BG3MFXMetalHooksReplaceDraws({claim, draw, 1u << BG3MFXShadowCameraIndex})) return YES;
     if (error) *error = [NSError errorWithDomain:@"BG3MFX" code:1
                                         userInfo:@{NSLocalizedDescriptionKey: @"Another feature already replaces draws."}];

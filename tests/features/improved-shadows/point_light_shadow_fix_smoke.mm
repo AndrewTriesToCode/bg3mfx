@@ -36,6 +36,90 @@ BOOL BG3MFXMetalHooksOnRenderPass(void (*)(MTLRenderPassDescriptor *)) { return 
 static void *create(id device, SEL, MTLRenderPipelineDescriptor *desc, NSError **error) {
     return (__bridge_retained void *)[device newRenderPipelineStateWithDescriptor:desc error:error];
 }
+
+static void check(bool ok, const char *what);
+// Exercise the real draw-replacement state machine with distinct encoder
+// contexts. The GPU pixel checks below separately verify the tile shader.
+@interface ShadowContext : NSObject {
+@public
+    id<MTLCommandBuffer> buffer;
+    id<MTLTexture> depth;
+    BG3MFXShadowCamera camera;
+    MTLViewport viewport;
+    bool missingCamera, scissor;
+    uint64_t generation;
+}
+@end
+@implementation ShadowContext
+@end
+
+static void checkSequenceLifetime(id<MTLDevice> device) {
+    id<MTLCommandQueue> queue=[device newCommandQueue];
+    auto descriptor=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+        width:2048 height:2048 mipmapped:NO];
+    descriptor.usage=MTLTextureUsageRenderTarget|MTLTextureUsageShaderRead;
+    id<MTLTexture> source=[device newTextureWithDescriptor:descriptor];
+    id<MTLTexture> otherSource=[device newTextureWithDescriptor:descriptor];
+    ShadowContext *producer=[ShadowContext new], *consumer=[ShadowContext new];
+    producer->depth=source;
+    producer->camera.tetrahedronFaceIndex=1;
+    producer->viewport={640,512,128,256,0,1};
+    BG3MFXEncoderCalls calls={};
+    calls.commandBuffer=[](__unsafe_unretained id e)->id<MTLCommandBuffer> { return ((ShadowContext *)e)->buffer; };
+    calls.depthTarget=[](__unsafe_unretained id e)->id<MTLTexture> { return ((ShadowContext *)e)->depth; };
+    calls.commandBufferGeneration=[](__unsafe_unretained id e)->uint64_t { return ((ShadowContext *)e)->generation; };
+    calls.fragmentConstants=[](__unsafe_unretained id e, NSUInteger, NSUInteger)->const void * {
+        auto *context=(ShadowContext *)e; return context->missingCamera ? nullptr : &context->camera;
+    };
+    calls.viewport=[](__unsafe_unretained id e, MTLViewport *out) { *out=((ShadowContext *)e)->viewport; return true; };
+    calls.scissor=[](__unsafe_unretained id e, MTLScissorRect *) { return ((ShadowContext *)e)->scissor; };
+    calls.setViewport=[](__unsafe_unretained id, MTLViewport) {};
+    calls.setPipeline=[](__unsafe_unretained id, __unsafe_unretained id) {};
+    calls.setFragmentBytes=[](__unsafe_unretained id, const void *, NSUInteger, NSUInteger) {};
+    NSObject *state=[NSObject new], *clone=[NSObject new];
+    objc_setAssociatedObject(state,&cloneKey,clone,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    auto begin=[&] {
+        producer->buffer=[queue commandBuffer]; consumer->buffer=producer->buffer;
+        consumer->generation=++producer->generation;
+        producer->missingCamera=false; producer->scissor=false;
+        producer->viewport={640,512,128,256,0,1};
+        return casterDraw(producer,calls,^{});
+    };
+    check(begin(),"caster sequence begins");
+    __block int composites=0;
+    check(atlasDraw(consumer,state,source,calls,^{ ++composites; }) && composites==1,
+        "matching source in a different encoder composites once");
+    check(!atlasDraw(consumer,state,source,calls,^{}),"consumed tile cannot be replayed");
+    check(begin(),"begin before different source");
+    check(!atlasDraw(consumer,state,otherSource,calls,^{}),"another depth texture cannot consume old coordinates");
+    check(!atlasDraw(consumer,state,source,calls,^{}),"a rejected atlas ends the pending sequence");
+    check(begin(),"begin before buffer change");
+    consumer->buffer=[queue commandBuffer];
+    check(!atlasDraw(consumer,state,source,calls,^{}),"another command buffer cannot consume an interrupted tile");
+    check(begin(),"begin before recycled buffer");
+    ++consumer->generation;
+    check(!atlasDraw(consumer,state,source,calls,^{}),"recycled command-buffer identity cannot replay an old tile");
+    check(begin(),"begin before missing constants");
+    producer->missingCamera=true;
+    check(!casterDraw(producer,calls,^{}) && !atlasDraw(consumer,state,source,calls,^{}),
+        "missing constants invalidate the previous tile");
+    check(begin(),"begin before unsupported viewport");
+    producer->viewport.width=13;
+    check(!casterDraw(producer,calls,^{}) && !atlasDraw(consumer,state,source,calls,^{}),
+        "unsupported caster invalidates the previous tile");
+    check(begin(),"begin before committed producer");
+    [producer->buffer commit]; [producer->buffer waitUntilCompleted];
+    check(!atlasDraw(consumer,state,source,calls,^{}),"committed producer cannot leave a tile for a later frame");
+    __weak id<MTLTexture> retired;
+    @autoreleasepool {
+        producer->depth=[device newTextureWithDescriptor:descriptor];
+        retired=producer->depth;
+        check(begin(),"begin before depth destruction");
+        producer->depth=nil;
+    }
+    check(!retired && !atlasDraw(consumer,state,otherSource,calls,^{}),
+        "pending tile neither retains its source nor matches a replacement texture");
+}
 static int failures;
 static void check(bool ok, const char *what) {
     if (!ok) { fprintf(stderr, "FAIL: %s\n", what); ++failures; }
@@ -165,6 +249,7 @@ int main() {
     @autoreleasepool {
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
         if (!device) { fprintf(stderr, "SKIP: no Metal device\n"); return 0; }
+        checkSequenceLifetime(device);
         NSError *error = nil;
         id<MTLLibrary> library = [device newLibraryWithSource:@(bg3Source) options:nil error:&error];
         if (!library) { fprintf(stderr, "FAIL: %s\n", error.localizedDescription.UTF8String); return 1; }

@@ -6,7 +6,7 @@ static id<MTLTexture> texture(id<MTLDevice> device, NSUInteger size, MTLPixelFor
 }
 int main() { @autoreleasepool {
     auto device=MTLCreateSystemDefaultDevice(); if(!device)return 1;
-    if (![MTLFXFrameInterpolatorDescriptor supportsDevice:device]) { puts("Frame interpolation unsupported: skipped."); return 0; }
+    if (![MTLFXFrameInterpolatorDescriptor supportsMetal4FX:device]) { puts("Metal 4 frame interpolation unsupported: skipped."); return 0; }
     NSError *error=nil;
     // BG3MFX_TEST_DIRECT_INPUTS uses BG3's live formats, read in place.
     const bool direct=getenv("BG3MFX_TEST_DIRECT_INPUTS");
@@ -69,6 +69,6 @@ int main() { @autoreleasepool {
     [effect resetHistory];
     auto cb=[queue commandBuffer]; BG3MFXFrameParameters p={};
     if([effect encodeScene:scene depth:depth motion:scene camera:c parameters:p deltaTime:.016 commandBuffer:cb error:&error] || !error)return 7;
-    printf("Frame interpolation %s%s: real GPU producer/consumer, preserved history, finite pixels, reduced-region and invalid-input checks passed.\n",effect.usesMetal4 ? "Metal 4" : "Metal 3",direct ? " (BG3 formats, direct inputs)" : "");
+    printf("Frame interpolation Metal 4%s: real GPU producer/consumer, preserved history, finite pixels, reduced-region and invalid-input checks passed.\n",direct ? " (BG3 formats, direct inputs)" : "");
     return 0;
 }}

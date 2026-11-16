@@ -79,21 +79,59 @@ static NSError *resourceError(NSString *reason) {
 // queues it behind BG3's signal; `orphan` runs it without that wait, for a
 // buffer BG3 dropped uncommitted (see -resolveThrough:).
 @interface BG3MFXMetal4Pending : NSObject
-@property(nonatomic) BG3MFXMetal4Bridge *bridge;
+// A later commit can resolve this entry while its original Metal 3 buffer
+// deallocates on another thread. Publish/clear the owner atomically so the
+// token can safely acquire the bridge before entering its resolution lock.
+@property(atomic) BG3MFXMetal4Bridge *bridge;
 @property(nonatomic, copy) void (^submit)(void);
 @property(nonatomic, copy) void (^orphan)(void);
+@property(nonatomic) BOOL abandoned;
 @end
 @implementation BG3MFXMetal4Pending
 @end
 @interface BG3MFXMetal4Bridge ()
 - (void)resolveThrough:(BG3MFXMetal4Pending *)pending;
+- (void)abandon:(BG3MFXMetal4Pending *)pending;
+@end
+// The Metal 3 buffer owns this token, but no deferred work owns the buffer.
+// Its destruction is therefore an actual abandonment boundary. A committed
+// buffer disarms the token before removing its association.
+@interface BG3MFXMetal4Batch : NSObject
+@property(nonatomic) NSMutableArray<BG3MFXMetal4Pending *> *submissions;
+- (void)abandon;
+@end
+@implementation BG3MFXMetal4Batch
+- (instancetype)init {
+    if ((self=[super init])) _submissions=[NSMutableArray array];
+    return self;
+}
+- (void)abandon {
+    NSArray<BG3MFXMetal4Pending *> *submissions=_submissions;
+    _submissions=nil;
+    for (BG3MFXMetal4Pending *pending in submissions) {
+        BG3MFXMetal4Bridge *bridge=pending.bridge;
+        [bridge abandon:pending];
+    }
+}
+- (void)dealloc { [self abandon]; }
 @end
 static char pendingSubmissionsKey;
 extern "C" void BG3MFXMetal4BridgeCommitted(id<MTLCommandBuffer> buffer) {
-    NSArray<BG3MFXMetal4Pending *> *pending=objc_getAssociatedObject(buffer,&pendingSubmissionsKey);
+    BG3MFXMetal4Batch *batch=objc_getAssociatedObject(buffer,&pendingSubmissionsKey);
+    NSArray<BG3MFXMetal4Pending *> *pending=batch.submissions;
     if (!pending) return;
+    batch.submissions=nil;
     objc_setAssociatedObject(buffer,&pendingSubmissionsKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    for (BG3MFXMetal4Pending *submission in pending) [submission.bridge resolveThrough:submission];
+    for (BG3MFXMetal4Pending *submission in pending) {
+        BG3MFXMetal4Bridge *bridge=submission.bridge;
+        [bridge resolveThrough:submission];
+    }
+}
+extern "C" void BG3MFXMetal4BridgeBufferCreated(id<MTLCommandBuffer> buffer) {
+    BG3MFXMetal4Batch *batch=objc_getAssociatedObject(buffer,&pendingSubmissionsKey);
+    if (!batch) return;
+    [batch abandon];
+    objc_setAssociatedObject(buffer,&pendingSubmissionsKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 @implementation BG3MFXMetal4Bridge {
@@ -102,6 +140,9 @@ extern "C" void BG3MFXMetal4BridgeCommitted(id<MTLCommandBuffer> buffer) {
     id<MTLResidencySet> _residency;
     NSString *_label;
     std::mutex _mutex;
+    // Serialize selection AND queue submission across commit/deallocation
+    // threads, without holding the mutex used by GPU feedback callbacks.
+    std::mutex _resolutionMutex;
     NSMutableArray<BG3MFXMetal4Slot *> *_free;
     // Recorded submissions not yet on the queue, in encode order.
     NSMutableArray<BG3MFXMetal4Pending *> *_unresolved;
@@ -170,14 +211,30 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
 // to run, in order (skipping one stalls its next submission), so they run
 // without the wait. Their frames are discarded anyway.
 - (void)resolveThrough:(BG3MFXMetal4Pending *)pending {
-    NSArray<BG3MFXMetal4Pending *> *dropped;
+    [self resolve:pending committed:YES];
+}
+- (void)abandon:(BG3MFXMetal4Pending *)pending {
+    [self resolve:pending committed:NO];
+}
+- (void)resolve:(BG3MFXMetal4Pending *)pending committed:(BOOL)committed {
+    std::lock_guard<std::mutex> resolveLock(_resolutionMutex);
+    NSArray<BG3MFXMetal4Pending *> *resolved;
     { std::lock_guard<std::mutex> lock(_mutex);
       NSUInteger index=[_unresolved indexOfObjectIdenticalTo:pending];
       if (index==NSNotFound) return;
-      dropped=[_unresolved subarrayWithRange:NSMakeRange(0,index)];
-      [_unresolved removeObjectsInRange:NSMakeRange(0,index+1)]; }
-    for (BG3MFXMetal4Pending *orphan in dropped) { orphan.orphan(); orphan.submit=nil; orphan.orphan=nil; }
-    pending.submit(); pending.submit=nil; pending.orphan=nil;
+      if (!committed) pending.abandoned=YES;
+      NSUInteger count=committed ? index+1 : 0;
+      // Later buffers may die first. Keep their work behind earlier live
+      // buffers until those commit or are also abandoned.
+      while (count<_unresolved.count && _unresolved[count].abandoned) ++count;
+      resolved=[_unresolved subarrayWithRange:NSMakeRange(0,count)];
+      [_unresolved removeObjectsInRange:NSMakeRange(0,count)]; }
+    for (BG3MFXMetal4Pending *entry in resolved) {
+        if (committed && entry==pending) entry.submit(); else entry.orphan();
+        // Feedback now owns the flight resources and bridge through GPU
+        // completion; the pending entry must no longer form an owner cycle.
+        entry.submit=nil; entry.orphan=nil; entry.bridge=nil;
+    }
 }
 - (BOOL)encodeIntoBuffer:(id<MTLCommandBuffer>)buffer allocations:(NSArray<id<MTLAllocation>> *)allocations
                 retained:(NSArray *)retained encode:(void (^)(id<MTL4CommandBuffer>))encode
@@ -243,12 +300,12 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
     };
     { std::lock_guard<std::mutex> lock(_mutex); [_unresolved addObject:pending]; }
     if (!BG3MFXMetal4CommitHooked || !BG3MFXMetal4CommitHooked(buffer)) { [self resolveThrough:pending]; return YES; }
-    NSMutableArray *submissions=objc_getAssociatedObject(buffer,&pendingSubmissionsKey);
-    if (!submissions) {
-        submissions=[NSMutableArray array];
-        objc_setAssociatedObject(buffer,&pendingSubmissionsKey,submissions,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    BG3MFXMetal4Batch *batch=objc_getAssociatedObject(buffer,&pendingSubmissionsKey);
+    if (!batch) {
+        batch=[BG3MFXMetal4Batch new];
+        objc_setAssociatedObject(buffer,&pendingSubmissionsKey,batch,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    [submissions addObject:pending];
+    [batch.submissions addObject:pending];
     return YES;
 }
 @end

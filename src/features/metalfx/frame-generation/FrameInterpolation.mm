@@ -39,9 +39,7 @@ static BG3MFXTexturePool *fgPool(id<MTLDevice> device, NSUInteger w, NSUInteger 
 }
 @implementation BG3MFXFrameInterpolation {
     id<MTLDevice> _device;
-    id<MTLFXFrameInterpolatorBase> _effect;
-    id<MTLFXFrameInterpolator> _effect3;
-    id<MTL4FXFrameInterpolator> _effect4;
+    id<MTL4FXFrameInterpolator> _effect;
     BG3MFXMetal4Bridge *_bridge;
     BG3MFXTexturePool *_colors, *_depths, *_motions, *_outputs;
     id<MTLComputePipelineState> _copy, _copyDepth;
@@ -80,11 +78,8 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
         return NO;
 #endif
     }
-    _effect=_effect3=nil; _effect4=nil;
-    if ([MTLFXFrameInterpolatorDescriptor supportsMetal4FX:_device]) {
-        auto compiler=[_device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:error];
-        _effect4=compiler ? [d newFrameInterpolatorWithDevice:_device compiler:compiler] : nil; _effect=_effect4;
-    } else { _effect3=[d newFrameInterpolatorWithDevice:_device]; _effect=_effect3; }
+    auto compiler=[_device newCompilerWithDescriptor:[MTL4CompilerDescriptor new] error:error];
+    _effect=compiler ? [d newFrameInterpolatorWithDevice:_device compiler:compiler] : nil;
     _colorFormat=color; _depthFormat=depth;
     return _effect!=nil;
 }
@@ -92,8 +87,8 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
                    outputWidth:(NSUInteger)ow outputHeight:(NSUInteger)oh scene:(id<MTLTexture>)scene
                          depth:(id<MTLTexture>)depth motion:(id<MTLTexture>)motion error:(NSError **)error {
     if (!(self=[super init])) return nil;
-    if (!w || !h || !ow || !oh || ![MTLFXFrameInterpolatorDescriptor supportsDevice:device]) {
-        if (error) *error=fgError(@"MetalFX frame generation is not supported by this device or resolution."); return nil;
+    if (!w || !h || !ow || !oh || ![MTLFXFrameInterpolatorDescriptor supportsMetal4FX:device]) {
+        if (error) *error=fgError(@"Metal 4 MetalFX frame generation is not supported by this device or resolution."); return nil;
     }
     _device=device; _w=w; _h=h; _outW=ow; _outH=oh; _reset=YES; _lock=[NSLock new];
     // Prefer reading BG3's own textures. MetalFX accepts its scene and depth
@@ -111,7 +106,7 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
                             depth:depthDirect ? depth.pixelFormat : MTLPixelFormatR32Float error:&ignored]) {
             _directColor=sceneDirect && fgUsable(scene,_effect.colorTextureUsage);
             _directDepth=depthDirect && fgUsable(depth,_effect.depthTextureUsage);
-            if (_directColor!=sceneDirect || _directDepth!=depthDirect) _effect=_effect3=nil, _effect4=nil;
+            if (_directColor!=sceneDirect || _directDepth!=depthDirect) _effect=nil;
         }
     }
     if (!_effect) {
@@ -119,7 +114,7 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
         [self makeEffectColor:MTLPixelFormatRGBA16Float depth:MTLPixelFormatR32Float error:error];
     }
     _directMotion=_effect && fgUsable(motion,_effect.motionTextureUsage) && motion.width==w && motion.height==h;
-    if (_effect4) _bridge=[[BG3MFXMetal4Bridge alloc] initWithDevice:device label:@"BG3 Metal 4 Frame Generation" error:error];
+    _bridge=[[BG3MFXMetal4Bridge alloc] initWithDevice:device label:@"BG3 Metal 4 Frame Generation" error:error];
     // Each copy reads the source's region (buffer 0) stretched over the whole
     // destination, nearest sample; the full size copies pixel for pixel.
     NSString *source=@"#include <metal_stdlib>\nusing namespace metal;\n"
@@ -128,7 +123,7 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
     auto library=[device newLibraryWithSource:source options:nil error:error];
     _copy=library ? [device newComputePipelineStateWithFunction:[library newFunctionWithName:@"Copy"] error:error] : nil;
     _copyDepth=library ? [device newComputePipelineStateWithFunction:[library newFunctionWithName:@"Depth"] error:error] : nil;
-    if (!_effect || (_effect4 && !_bridge) || !_copy || !_copyDepth) {
+    if (!_effect || !_bridge || !_copy || !_copyDepth) {
         if (error && !*error) *error=fgError(@"Could not initialize MetalFX frame generation."); return nil;
     }
     _colors=fgPool(device,ow,oh,MTLPixelFormatRGBA16Float,_effect.colorTextureUsage|MTLTextureUsageShaderWrite);
@@ -137,7 +132,7 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
     _outputs=fgPool(device,ow,oh,MTLPixelFormatRGBA16Float,_effect.outputTextureUsage|MTLTextureUsageShaderRead);
     return self;
 }
-- (BOOL)usesMetal4 { return _effect4!=nil; }
+- (BOOL)usesMetal4 { return YES; }
 - (void)resetHistory { [_lock lock]; _reset=YES; [_lock unlock]; }
 - (id<MTLTexture>)encodeScene:(id<MTLTexture>)scene depth:(id<MTLTexture>)depth motion:(id<MTLTexture>)motion
                       camera:(NSData *)camera parameters:(BG3MFXFrameParameters)p deltaTime:(float)delta
@@ -202,19 +197,16 @@ static BOOL fgUsable(id<MTLTexture> t, MTLTextureUsage required) { return t && (
     _effect.nearPlane=c[48]; _effect.farPlane=c[49]; _effect.fieldOfView=fov;
     _effect.aspectRatio=(float)_outW/_outH; _effect.deltaTime=delta;
     _effect.shouldResetHistory=_reset || p.reset; _effect.uiTexture=nil;
-    if (_effect4) {
-        id<MTL4FXFrameInterpolator> effect=_effect4;
-        if (![_bridge encodeIntoBuffer:buffer allocations:previous ? @[color,z,mv,out,previous] : @[color,z,mv,out] retained:@[effect]
-                encode:^(id<MTL4CommandBuffer> commands) {
-                    commands.label=@"BG3MFX generated scene"; [effect encodeToCommandBuffer:commands];
-                } failure:self.failureHandler error:error]) {
-            [_lock unlock]; return nil;
-        }
-    } else { [_effect3 encodeToCommandBuffer:buffer]; }
+    id<MTL4FXFrameInterpolator> effect=_effect;
+    BOOL encoded=[_bridge encodeIntoBuffer:buffer allocations:previous ? @[color,z,mv,out,previous] : @[color,z,mv,out] retained:@[effect]
+            encode:^(id<MTL4CommandBuffer> commands) {
+                commands.label=@"BG3MFX generated scene"; [effect encodeToCommandBuffer:commands];
+            } failure:self.failureHandler error:error];
     // The effect retains its textures (BG3's own when read directly); the
     // command buffer or Metal 4 bridge keeps them until the GPU finishes.
     _effect.colorTexture=nil; _effect.prevColorTexture=nil; _effect.outputTexture=nil;
     _effect.depthTexture=nil; _effect.motionTexture=nil;
+    if (!encoded) { [_lock unlock]; return nil; }
     if (!_directColor) {
         if (_previous) [_colors relinquish:_previous afterCommandBuffer:buffer];
         [_colors retainTexture:color]; _previous=color;

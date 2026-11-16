@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 namespace {
 void check(bool ok, const char *what) {
@@ -55,24 +56,32 @@ void stubUnload(void *stage) { ++unloads; atUnload = programs(stage); }
 
 int lookups;
 char gbuffer0;
+void *currentNormal = &gbuffer0;
 bool normalPresent = true;
 void stubGetTextureSRV(TextureBindingInfo *out, void *graph, uint32_t hash, int32_t slice, int32_t view) {
     ++lookups;
     check(graph == sceneGraph && hash == Native::GBuffer0 && slice == -1 && view == 0, "GetTextureSRV is called as the kernel calls it");
     memset(out, 0, sizeof *out);
-    if (normalPresent) { out->texture = &gbuffer0; memset(out->view, 0x5a, sizeof out->view); }
+    if (normalPresent) { out->texture = currentNormal; memset(out->view, 0x5a, sizeof out->view); }
 }
 int binds;
 void *bindList;
 Binding bound;
 TextureBindingInfo boundInfo;
+struct RecordedBind { void *list; void *texture; };
+std::vector<RecordedBind> pendingBinds;
 void stubSetTextureSafe(void *list, Binding binding, const TextureBindingInfo *info) {
     ++binds; bindList = list; bound = binding; boundInfo = *info;
+    pendingBinds.push_back({list, info->texture});
+    // Native SetTextureSafe sets the has-commands byte, but does not begin
+    // the list. Keep these offsets independent of the implementation.
+    write<uint8_t>(list, 0x81, 1);
 }
 
 void *stageAt(int i) {
     write(stages[i], Layout::SceneGraphOwner, static_cast<void *>(owners[i]));
     owners[i][0] = sceneGraph;
+    write<uint8_t>(stages[i], 0x18, 1);
     return stages[i];
 }
 void *listOf(void *stage) { return static_cast<char *>(stage) + Layout::List; }
@@ -83,6 +92,27 @@ int recordings, bindsBeforeRecording;
 std::array<uint64_t, Programs> atRecording;
 void stubStartRecording(void *stage) {
     ++recordings; bindsBeforeRecording = binds; atRecording = programs(stage);
+    if (read<uint8_t>(stage, 0x18)) {
+        // ExecuteWTKernel begins its command list before recording work.
+        write<uint16_t>(listOf(stage), 0x80, 0x0101);
+    } else {
+        // RenderStage::Cancel only clears a list that was begun. A bind
+        // appended before a disabled StartRecording otherwise survives.
+        if (read<uint8_t>(listOf(stage), 0x80)) {
+            pendingBinds.erase(std::remove_if(pendingBinds.begin(), pendingBinds.end(),
+                [stage](const auto &bind) { return bind.list == listOf(stage); }), pendingBinds.end());
+        }
+        write<uint16_t>(listOf(stage), 0x80, 0);
+    }
+}
+std::vector<void *> submitRecordedBinds(void *stage) {
+    check(read<uint8_t>(listOf(stage), 0x80), "only a begun list is submitted");
+    std::vector<void *> textures;
+    for (const auto &bind : pendingBinds) if (bind.list == listOf(stage)) textures.push_back(bind.texture);
+    pendingBinds.erase(std::remove_if(pendingBinds.begin(), pendingBinds.end(),
+        [stage](const auto &bind) { return bind.list == listOf(stage); }), pendingBinds.end());
+    write<uint16_t>(listOf(stage), 0x80, 0);
+    return textures;
 }
 void reset() {
     clonesTried = false;
@@ -160,6 +190,29 @@ int main() {
         check(binds == 2 && bindList == listOf(other) && boundInfo.texture == nullptr && atRecording == mine,
             "without a normal, the clones draw with an empty bind");
         normalPresent = true;
+
+        // A disabled stage must not leave a bind waiting for a later frame.
+        // Model BG3's begin/cancel flags, then retire the old G-buffer and
+        // enable the stage again. Each submission must contain only the
+        // current frame's normal, even across repeated transitions.
+        submitRecordedBinds(stage);
+        submitRecordedBinds(other);
+        char replacementNormals[3];
+        for (int transition = 0; transition < 3; ++transition) {
+            write<uint8_t>(stage, 0x18, 0);
+            const int previousBinds = binds, previousLookups = lookups, previousRecordings = recordings;
+            for (int frame = 0; frame < 5; ++frame) startRecordingHook(stage);
+            check(recordings == previousRecordings + 5, "disabled starts still reach BG3");
+            check(binds == previousBinds && lookups == previousLookups && pendingBinds.empty(),
+                "disabled starts neither resolve nor accumulate texture binds");
+            check(read<uint16_t>(listOf(stage), 0x80) == 0, "disabled stage keeps an unbegun empty list");
+            currentNormal = &replacementNormals[transition];
+            write<uint8_t>(stage, 0x18, 1);
+            startRecordingHook(stage);
+            const auto submitted = submitRecordedBinds(stage);
+            check(submitted.size() == 1 && submitted[0] == currentNormal,
+                "re-enabled stage submits exactly the current normal");
+        }
 
         // Unload puts BG3's programs back before BG3 releases them.
         unloadHook(stage);

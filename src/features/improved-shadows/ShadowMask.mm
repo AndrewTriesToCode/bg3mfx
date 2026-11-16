@@ -156,7 +156,10 @@ void unloadHook(void *stage) {
 // once on an immediate list, and binds BG3's transparent default texture when
 // GetTextureSRV finds none. A stage that kept BG3's programs ignores slot 6.
 void startRecordingHook(void *stage) {
-    if (ready.load(std::memory_order_acquire)) {
+    // Disabled stages call Cancel instead of recording a kernel. SetTextureSafe
+    // alone does not begin the list, so Cancel would leave our bind queued;
+    // a later enabled frame could replay it after its texture was retired.
+    if (ready.load(std::memory_order_acquire) && read<uint8_t>(stage, Layout::RecordingEnabled)) {
         void *list = static_cast<char *>(stage) + Layout::List;
         void *sceneGraph = read<void *>(read<void *>(stage, Layout::SceneGraphOwner), 0);
         TextureBindingInfo normal{};

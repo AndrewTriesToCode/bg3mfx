@@ -49,6 +49,8 @@ static BOOL upscalerFailure(NSError **error, NSString *message) {
         outputFormat:MTLPixelFormatRGBA16Float error:error];
     return _scaler ? self : nil;
 }
+- (void (^)(NSError *))gpuFailureHandler { return _scaler.gpuFailureHandler; }
+- (void)setGpuFailureHandler:(void (^)(NSError *))handler { _scaler.gpuFailureHandler=handler; }
 - (BOOL)encodeHDRColor:(id<MTLTexture>)input destination:(id<MTLTexture>)destination
       commandBuffer:(id<MTLCommandBuffer>)buffer error:(NSError **)error {
     if (!input || !destination || input == destination || input.device != _device ||

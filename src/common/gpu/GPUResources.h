@@ -46,6 +46,10 @@ extern "C" BOOL (*_Nullable BG3MFXMetal4CommitHooked)(id<MTLCommandBuffer> buffe
 // Call right after committing a Metal 3 command buffer: submits the Metal 4
 // work bridges recorded into it. A no-op for buffers without any.
 extern "C" void BG3MFXMetal4BridgeCommitted(id<MTLCommandBuffer> buffer);
+// Call when a queue returns a command buffer, before recording into it.
+// Drivers can recycle buffers without deallocating their associated objects;
+// retire any uncommitted work belonging to the previous use of that object.
+extern "C" void BG3MFXMetal4BridgeBufferCreated(id<MTLCommandBuffer> buffer);
 
 NS_ASSUME_NONNULL_END
 

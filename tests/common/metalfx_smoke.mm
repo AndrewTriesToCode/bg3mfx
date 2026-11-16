@@ -40,9 +40,8 @@ int main(void) {
             outputWidth:512 outputHeight:512 colorFormat:MTLPixelFormatRGBA8Unorm depthFormat:MTLPixelFormatR32Float
             motionFormat:MTLPixelFormatRG16Float outputFormat:MTLPixelFormatRGBA8Unorm error:&error];
         if (!pipeline) { fprintf(stderr,"%s\n",error.description.UTF8String); return 2; }
-        BOOL expected4=[MTLFXTemporalScalerDescriptor supportsMetal4FX:device];
-        if(pipeline.usesMetal4!=expected4) return 20;
-        printf("Temporal selected %s.\n",pipeline.usesMetal4 ? "Metal4" : "Metal3");
+        if(!pipeline.usesMetal4) return 20;
+        puts("Temporal uses Metal 4.");
         id<MTLTexture> color = input(device,MTLPixelFormatRGBA8Unorm,256,256);
         id<MTLTexture> depth = input(device,MTLPixelFormatR32Float,256,256);
         id<MTLTexture> motion = input(device,MTLPixelFormatRG16Float,256,256);

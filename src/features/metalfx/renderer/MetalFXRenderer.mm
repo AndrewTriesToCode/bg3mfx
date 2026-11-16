@@ -253,8 +253,13 @@ static BOOL upscaleSpatial(id<MTLCommandBuffer> buffer, NSDictionary *inputs) {
     BG3MFXSpatialUpscaler *upscaler;
     { std::lock_guard<std::recursive_mutex> lock(guard()); upscaler = spatialUpscalerCache()[key]; }
     NSError *error = nil;
-    if (!upscaler) upscaler = [[BG3MFXSpatialUpscaler alloc] initWithDevice:buffer.device inputWidth:input.width
-        inputHeight:input.height outputWidth:destination.width outputHeight:destination.height error:&error];
+    if (!upscaler) {
+        upscaler = [[BG3MFXSpatialUpscaler alloc] initWithDevice:buffer.device inputWidth:input.width
+            inputHeight:input.height outputWidth:destination.width outputHeight:destination.height error:&error];
+        upscaler.gpuFailureHandler=^(NSError *gpuError) {
+            failSpatial(gpuError.localizedDescription ?: @"Metal 4 could not complete spatial scaling commands.");
+        };
+    }
     if (upscaler) {
         // Frames in flight keep an evicted scaler alive until they complete.
         std::lock_guard<std::recursive_mutex> lock(guard());
