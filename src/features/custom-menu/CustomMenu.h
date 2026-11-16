@@ -25,13 +25,6 @@ void BG3MFXMenuOnBuilt(void (*built)(void *manager));
 // Options closes. `next` is the rest of the chain, BG3's own last.
 using BG3MFXMenuApply = void (*)(void *manager, const void *item);
 void BG3MFXMenuWrapApplyCombo(void (*wrapper)(void *manager, const void *item, BG3MFXMenuApply next));
-// Called inside BG3's RefreshUIAntiAliasing (menu build, Reset, every Upscaling
-// Type change) once it has rebuilt the Anti-Aliasing combo (id 98) and
-// reinstalled BG3's selection callback, before the menu hears of it. Append
-// values and replace the callback here without notifying: custom-menu then
-// notifies the items, enabled state and selection once, so the menu never
-// sees BG3's list without them. One callback; register from install.
-void BG3MFXMenuOnAntiAliasingRefreshed(void (*refreshed)(void *manager, void *combo));
 // The Video options manager since it was last built, or null before.
 void *BG3MFXMenuManager(void);
 // Whether BG3 has built any options (Video or not) since launch. Any thread.
@@ -78,9 +71,6 @@ void BG3MFXMenuShowSliderValue(void *item, float value);
 NSArray<NSNumber *> *BG3MFXMenuComboValues(void *combo);
 NSString *BG3MFXMenuComboLabel(void *combo, size_t index);
 void BG3MFXMenuAppendComboValue(void *combo, int value, const BG3MFXMenuText &name, const BG3MFXMenuText &description);
-// Removes a value (and its texts) from a combo's items; false if absent. The
-// selection is unchanged; notify with BG3MFXMenuComboItemsChanged.
-bool BG3MFXMenuRemoveComboValue(void *combo, int value);
 // After changing a combo's items, as RefreshUIUpscaleMode does.
 void BG3MFXMenuComboItemsChanged(void *combo);
 int BG3MFXMenuComboSelection(const void *combo);

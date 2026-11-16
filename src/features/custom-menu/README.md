@@ -53,23 +53,12 @@ screen reports the mode's rate, so it matches BG3's.
   options. Callbacks run in install order (requirements first, then by name).
 - `BG3MFXMenuWrapApplyCombo` wraps the manager's ApplyCombo; each wrapper calls
   the rest of the chain, BG3's own last.
-- `BG3MFXMenuOnAntiAliasingRefreshed` registers a callback that runs inside
-  BG3's `RefreshUIAntiAliasing` (menu build, Reset, every Upscaling Type
-  change), after BG3 rebuilt the Anti-Aliasing combo and reinstalled its own
-  selection callback. BG3's notifications are held back meanwhile and sent once
-  after the callback, so the menu never sees BG3's list without the appended
-  values. (Appending and notifying after BG3's own notification lost the value:
-  the entry vanished and the selection showed blank.)
-- Item calls add tick boxes and sliders, append and remove combo values, move
+- Item calls add tick boxes and sliders, append combo values, move
   and dim items, and replace selection callbacks. Each uses BG3's observed ARM64 ABI.
 
 [`CustomMenu.mm`](CustomMenu.mm) patches the Video options manager's Init and
 ApplyCombo vtable slots at its activation. That runs after every install and
-before BG3 builds a menu. It checks both slots first. When a feature registered
-an Anti-Aliasing refresh callback, it also hooks `RefreshUIAntiAliasing`'s
-entry (`SupportedBuild.h` `Menu::RefreshAntiAliasing`, island
-`Islands::CustomMenu`) through `BG3MFXHookEntry`; if that fails it reports a
-menu problem and BG3's refresh runs unchanged. Init calls BG3's own,
+before BG3 builds a menu. It checks both slots first. Init calls BG3's own,
 then validates the option list. It runs the callbacks only for the Video pass,
 which it recognizes by the Upscaling Type combo (type 3, id 99).
 

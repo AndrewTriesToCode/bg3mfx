@@ -13,13 +13,6 @@ Adds the MetalFX options to Options → Video:
 - **MetalFX Spatial** and **MetalFX Temporal**, two more Upscaling Types.
 - **Ultra Performance**, an Upscaling Quality offered with Temporal that renders
   the smallest region the device allows (1/9 of the pixels on the M5 Pro).
-- **MetalFX AA**, an Anti-Aliasing entry: MetalFX Temporal at 1x scale, with no
-  upscaling. It is selected (and dimmed) automatically while a Temporal upscaler
-  is on; picking it with Upscaling Type Off runs Temporal at native resolution
-  (Upscaling Quality stays dimmed, as with Off). It is offered only with Off
-  and MetalFX Temporal: with AMD FSR 1.0 or MetalFX Spatial it is not in the
-  list. Picking another Anti-Aliasing option or Upscaling Type ends it; FSR and
-  Spatial return to the player's previous Anti-Aliasing choice.
 - **MetalFX Frame Generation**, a checkbox shown on devices that support it. It requires BG3's VSync (Double or
   Triple Buffering): it is dimmed while VSync is Off, and choosing VSync Off while
   it is ticked snaps back to the previous setting.

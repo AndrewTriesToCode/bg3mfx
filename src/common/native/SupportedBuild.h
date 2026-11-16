@@ -32,12 +32,6 @@ inline constexpr uintptr_t AddSlider = 0x1030a4784;
 inline constexpr uintptr_t Callbacks = 0x1087ac1a0;
 inline constexpr uintptr_t Init = 0x103288fb8;
 inline constexpr uintptr_t ApplyCombo = 0x103290180;
-// VideoOptionsManager::RefreshUIAntiAliasing(): rebuilds the Anti-Aliasing
-// combo (id 98), reinstalls BG3's selection callback and shows BG3's setting.
-// Called by InitOptions, ResetOptions and the Upscaling Type callback.
-// `sub sp, sp, #0x60`.
-inline constexpr uintptr_t RefreshAntiAliasing = 0x10329253c;
-inline constexpr uint32_t RefreshAntiAliasingFirst = 0xd10183ff;
 }
 namespace Temporal {
 inline constexpr uintptr_t PostProcessStageVTable = 0x10886b5a0;
@@ -350,8 +344,6 @@ inline constexpr size_t ComboCount = 0x9c;
 inline constexpr size_t ComboItems = 0x90;
 inline constexpr size_t ComboItemStride = 0x24;
 inline constexpr size_t ComboItemValue = 0x20;
-// A ComboItem's name and description ls::TranslatedStrings.
-inline constexpr size_t ComboItemName = 0, ComboItemDescription = 0x10;
 // RefreshUIUpscaleMode notifies these (no argument) after rebuilding a combo's items.
 inline constexpr size_t ComboItemsObservers = 0xa8;
 inline constexpr size_t ComboItemsObserverCount = 0xb4;
@@ -434,8 +426,7 @@ inline constexpr Island SSAOBlur{0xac0, 24};
 inline constexpr Island CustomPipelineBundles{0xad8, 2 * 24};
 inline constexpr Island ImprovedDisplay{0xb08, 2 * 24};
 inline constexpr Island ScriptFixes{0xb38, 2 * 24};
-inline constexpr Island CustomMenu{0xb68, 24};
-inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, RenderScale, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes, CustomMenu};
+inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, RenderScale, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];

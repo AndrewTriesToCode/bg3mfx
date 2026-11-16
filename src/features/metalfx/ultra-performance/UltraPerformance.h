@@ -11,8 +11,7 @@
 // maximum (BG3 truncates the render size, and a scale of exactly the maximum
 // would give a ratio the scaler rejects at some output sizes). It applies only
 // while MetalFX Temporal is selected and has not failed; otherwise BG3's FSR
-// would stretch the small image, so quality 4 renders at full size. MetalFX AA
-// (quality 5) is above the table and stays at full size. Requires the
+// would stretch the small image, so quality 4 renders at full size. Requires the
 // UUID-checked ARM64 executable. Part of the metalfx feature, which installs it;
 // if it cannot install, metalfx reports it and does not offer Ultra Performance.
 BOOL BG3MFXInstallUltraPerformance(intptr_t slide, NSError **error);
@@ -25,6 +24,5 @@ float BG3MFXUltraPerformanceScale(void);
 // Called every frame from the renderer; takes effect when BG3 next resizes.
 void BG3MFXUltraPerformanceActive(bool active);
 
-// The Upscaling Quality values of Ultra Performance, and the hidden one MetalFX
-// AA uses (see MetalFX.h).
+// The Upscaling Quality value of Ultra Performance.
 inline constexpr int BG3MFXUltraPerformanceQuality = 4;

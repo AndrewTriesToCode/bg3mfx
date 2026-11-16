@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
         BG3MFXTemporalUpscaler *upscaler = [[BG3MFXTemporalUpscaler alloc] initWithDevice:device
             inputWidth:inW inputHeight:inH outputWidth:outW outputHeight:outH error:&error];
         if (!upscaler) { fprintf(stderr,"%s\n",error.description.UTF8String); return 2; }
-        // MetalFX AA renders at output size: a plain scaler accepts 1:1.
+        // A plain 1:1 scaler is accepted.
         if (![[BG3MFXTemporalUpscaler alloc] initWithDevice:device inputWidth:outW inputHeight:outH
                 outputWidth:outW outputHeight:outH error:&error]) {
             fprintf(stderr,"1:1: %s\n",error.description.UTF8String); return 10;

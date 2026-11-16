@@ -45,8 +45,6 @@ int main() {
         put(settings,0x98,uint8_t(quality));
         for(float a:{1.0f,1.5f,2.0f,2.99f,3.5f}) { scale=a; if(!check(a>1 ? std::clamp(unsigned(std::ceil(8*a*a)),8u,128u) : 8u,true)) return 15; }
     }
-    // MetalFX AA: Temporal at 1x (the hidden quality) keeps 8 phases.
-    scale=2.99f; put(settings,0x98,uint8_t(BG3MFXMetalFXAAQuality)); if(!check(8,true)) return 16;
     for(mode=0;mode<3;++mode) if(!check(8,false)) return 2;
     mode=3;put(step,0x18,uint8_t(0)); if(!check(8,false)) return 3;
     put(step,0x18,uint8_t(1));put(stage,0x18,uint8_t(0)); if(!check(8,false)) return 4;

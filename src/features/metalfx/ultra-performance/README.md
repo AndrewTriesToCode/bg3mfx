@@ -27,7 +27,7 @@ for its own qualities.
 [`UltraPerformance.mm`](UltraPerformance.mm) patches those three places so a
 quality of 4 reads a fifth table entry. Each comparison against 3 becomes 4, and
 each table load goes through a pointer in a header-padding island to a table in
-the runtime. MetalFX AA (hidden quality 5) is above 4 and stays at 1.0.
+the runtime.
 
 The scale comes from the device, not from a constant:
 

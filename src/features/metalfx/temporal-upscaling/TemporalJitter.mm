@@ -71,8 +71,6 @@ extern "C" uint64_t BG3MFXTemporalJitterSample(void *view, uint64_t original) {
             unsigned quality=settings ? read<uint8_t>(settings,Layout::SettingsQuality) : 2;
             static const unsigned phases[]={14,18,24,32};
             if (quality<4) { c.phases=phases[quality]; c.own=true; }
-            // MetalFX AA: Temporal at 1x scale, eight samples per pixel.
-            else if (quality==BG3MFXMetalFXAAQuality) { c.phases=8; c.own=true; }
             // Ultra Performance: about eight samples per output pixel at BG3's
             // render scale (render size is output / scale).
             else if (quality==BG3MFXUltraPerformanceQuality) {

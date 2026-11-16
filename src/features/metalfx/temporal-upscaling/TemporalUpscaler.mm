@@ -17,7 +17,7 @@
                    outputHeight:(NSUInteger)outputHeight
                           error:(NSError **)error {
     if (!(self = [super init])) return nil;
-    // Inputs may be output-sized: MetalFX AA runs a plain 1:1 scaler.
+    // Inputs may be output-sized (a plain 1:1 scaler).
     bool smaller = outputWidth >= width && outputHeight >= height;
     if (!device || !width || !height || !smaller ||
         (double)outputWidth / width > 3.0 || (double)outputHeight / height > 3.0) {
