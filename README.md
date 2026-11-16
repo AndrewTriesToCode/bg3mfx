@@ -35,7 +35,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 
 | Feature | Description |
 | --- | --- |
-| **MetalFX Frame Generation** | Creates extra frames for smoother motion. |
+| **MetalFX Frame Generation** | Creates extra frames for smoother motion. Requires VSync set to Double or Triple Buffering. |
 | **MetalFX Spatial Upscaling** | Upscales a smaller rendered image to the final game resolution. |
 | **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. |
 | **Dynamic Upscaling** | Changes MetalFX Temporal Upscaling factor in real time to maintain a minimum target FPS. |
@@ -136,7 +136,9 @@ Baldur's Gate 3 starts with features available. In the game, go to
 - Dynamic Temporal Upscaling works really well when you select the highest resolution and your minimum FPS, and let the upscaler do its magic.
 - At lower game resolution higher quality upscaling is needed to get a good result. At higher resolutions even the performance quality option can produce good results.
 - **Frame Generation** works best on a high refresh rate display, such as a
-  MacBook Pro's 120 Hz ProMotion screen, with **VSync on**. Set the game's
+  MacBook Pro's 120 Hz ProMotion screen, and it **requires VSync** (Double or Triple Buffering): the
+  checkbox is dimmed while VSync is Off, and VSync can't be set to Off while
+  it is ticked. Set the game's
   FPS limiter to half the frame rate you want to see (for example, 60 on a
   120 Hz display).
 - The frame limiter will significantly reduce cpu and gpu usage. Tick

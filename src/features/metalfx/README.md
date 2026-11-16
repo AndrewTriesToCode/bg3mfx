@@ -20,7 +20,9 @@ Adds the MetalFX options to Options → Video:
   and MetalFX Temporal: with AMD FSR 1.0 or MetalFX Spatial it is not in the
   list. Picking another Anti-Aliasing option or Upscaling Type ends it; FSR and
   Spatial return to the player's previous Anti-Aliasing choice.
-- **MetalFX Frame Generation**, a checkbox shown on devices that support it.
+- **MetalFX Frame Generation**, a checkbox shown on devices that support it. It requires BG3's VSync (Double or
+  Triple Buffering): it is dimmed while VSync is Off, and choosing VSync Off while
+  it is ticked snaps back to the previous setting.
 
 The parts:
 
