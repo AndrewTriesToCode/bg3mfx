@@ -86,6 +86,8 @@ static NSError *resourceError(NSString *reason) {
 @property(nonatomic, copy) void (^submit)(void);
 @property(nonatomic, copy) void (^orphan)(void);
 @property(nonatomic) BOOL abandoned;
+@property(nonatomic) id<MTLSharedEvent> event;
+@property(nonatomic) uint64_t done;
 @end
 @implementation BG3MFXMetal4Pending
 @end
@@ -149,6 +151,9 @@ extern "C" void BG3MFXMetal4BridgeBufferCreated(id<MTLCommandBuffer> buffer) {
     // Submission count, and the last submission that used each member of
     // _residency (keyed by identity; the set keeps every key alive).
     uint64_t _submissions;
+    // The last queued submission's event and `done` value: each later submission
+    // waits for it, so Metal 4 never runs two of them at once.
+    id<MTLSharedEvent> _lastEvent; uint64_t _lastDone;
     std::unordered_map<const void *, uint64_t> _lastUse;
 }
 // A member unused this many submissions is dropped when the set is rebuilt.
@@ -230,6 +235,8 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
       resolved=[_unresolved subarrayWithRange:NSMakeRange(0,count)];
       [_unresolved removeObjectsInRange:NSMakeRange(0,count)]; }
     for (BG3MFXMetal4Pending *entry in resolved) {
+        if (_lastEvent) [_queue waitForEvent:_lastEvent value:_lastDone];
+        _lastEvent=entry.event; _lastDone=entry.done;
         if (committed && entry==pending) entry.submit(); else entry.orphan();
         // Feedback now owns the flight resources and bridge through GPU
         // completion; the pending entry must no longer form an owner cycle.
@@ -286,7 +293,7 @@ static constexpr uint64_t ResidencyIdleSubmissions = 16;
     // in time), so then submit at once.
     id<MTL4CommandQueue> queue=_queue;
     BG3MFXMetal4Pending *pending=[BG3MFXMetal4Pending new];
-    pending.bridge=self;
+    pending.bridge=self; pending.event=event; pending.done=done;
     pending.submit=^{
         id<MTL4CommandBuffer> submitted=commands;
         [queue waitForEvent:event value:ready];
