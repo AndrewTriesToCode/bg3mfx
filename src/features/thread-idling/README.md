@@ -1,6 +1,6 @@
 # CPU Thread Idling
 
-Technical name: `cpu-thread-idling`.
+Technical name: `thread-idling`.
 
 Opt-in with `BG3MFX_FEATURE_THREAD_IDLING=1` (the `bg3mfx` launcher sets it);
 without it BG3 keeps its original idle loops. The feature replaces busy waits in idle workers, the worker scheduler,

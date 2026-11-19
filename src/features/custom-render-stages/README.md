@@ -4,7 +4,7 @@ Technical name: `custom-render-stages`.
 
 Lets other features replace the render stages BG3 creates for each kind of
 view, and override methods of particular stage classes. It has no player-visible effect itself: it is enabled by the features
-that require it (Duplicate Shadow Fix, Improved Shadows).
+that require it (Improved Shadows).
 
 ## Behavior
 

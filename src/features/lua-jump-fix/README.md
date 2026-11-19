@@ -1,6 +1,6 @@
 # Lua System Call Elimination
 
-Technical name: `lua-system-call-elimination`.
+Technical name: `lua-jump-fix`.
 
 Opt-in with `BG3MFX_FEATURE_LUA_JUMP_FIX=1` (the `bg3mfx` launcher sets it), for the supported BG3 build. Redirects Lua 5.4's protected
 call and error jumps to `_setjmp` and `_longjmp`, avoiding signal-mask and

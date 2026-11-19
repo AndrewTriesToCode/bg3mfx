@@ -14,8 +14,7 @@
 // name in upper case, with '-' as '_') while BG3MFX_ENABLE=1, or by an enabled
 // feature that requires it. BG3MFX_FEATURE_<NAME>=0 keeps it off even
 // then, and skips the features that require it. The player launcher (src/launcher/main.m)
-// sets every player-facing feature except script-fixes (opt-in); development
-// launches opt in one at a time.
+// sets every player-facing feature; development launches opt in one at a time.
 
 struct BG3MFXFeatureContext {
     intptr_t slide;              // the game executable's slide; 0 outside BG3 or on another build

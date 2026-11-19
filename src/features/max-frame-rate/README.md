@@ -1,4 +1,6 @@
-# max-frame-rate
+# Snap to Native FPS
+
+Technical name: `max-frame-rate`.
 
 Opt-in with `BG3MFX_FEATURE_MAX_FRAME_RATE=1` (the `bg3mfx` launcher sets it);
 requires custom-menu and metal-hooks.

@@ -7,9 +7,8 @@ feature of its own.
 
 Does MetalFX's rendering work from BG3's Metal calls: it tracks the scene
 through TAA and post-processing, replaces FSR and RCAS with the MetalFX
-Spatial or Temporal scalers, skips FSR_Tonemap, composes and presents Frame
-Generation's pairs (with stand-in drawables), and applies reduced
-resolution's draw corrections.
+Spatial or Temporal scalers, skips FSR_Tonemap, and composes and presents Frame
+Generation's pairs (with stand-in drawables).
 
 ## Implementation
 

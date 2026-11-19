@@ -66,10 +66,8 @@ class LauncherTests(unittest.TestCase):
             for feature in ("METAL_HUD", "METALFX", "IMPROVED_SHADOWS",
                             "RENDER_THREAD_OPTIMIZATIONS", "NEW_CHARACTER_CRASH_FIX", "LUA_JUMP_FIX",
                             "THREAD_IDLING", "REDUCE_LOCKING", "SSAO_BLUR_FIX", "ANIMATION_OPTIMIZATIONS",
-                            "IMPROVED_DISPLAY", "MAX_FRAME_RATE"):
+                            "IMPROVED_DISPLAY", "MAX_FRAME_RATE", "SCRIPT_FIXES"):
                 self.assertIn(f"BG3MFX_FEATURE_{feature}=1", result.stdout)
-            # Script Fixes changes gameplay, so it is off unless the player opts in.
-            self.assertNotIn("BG3MFX_FEATURE_SCRIPT_FIXES", result.stdout)
 
     def test_features_can_be_opted_out(self):
         with tempfile.TemporaryDirectory() as root:
@@ -85,7 +83,7 @@ class LauncherTests(unittest.TestCase):
             self.assertIn("BG3MFX_FEATURE_REDUCE_LOCKING=0", result.stdout)
             self.assertIn("BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX=1", result.stdout)
 
-    def test_script_fixes_can_be_opted_in(self):
+    def test_script_fixes_can_be_opted_out(self):
         with tempfile.TemporaryDirectory() as root:
             payload = b"pretend supported build"
             game = fake_game(root, payload=payload)
@@ -94,9 +92,9 @@ class LauncherTests(unittest.TestCase):
             result = self.run_launcher("--dry-run", "--game", str(game), env={
                 "BG3MFX_TEST_SUPPORTED_SHA256": hashlib.sha256(payload).hexdigest(),
                 "BG3MFX_RUNTIME": str(runtime),
-                "BG3MFX_FEATURE_SCRIPT_FIXES": "1"})
+                "BG3MFX_FEATURE_SCRIPT_FIXES": "0"})
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("BG3MFX_FEATURE_SCRIPT_FIXES=1", result.stdout)
+            self.assertIn("BG3MFX_FEATURE_SCRIPT_FIXES=0", result.stdout)
 
     def test_test_hash_override_only_applies_to_dry_runs(self):
         with tempfile.TemporaryDirectory() as root:

@@ -244,19 +244,16 @@ static int launch(NSString *appOverride, BOOL dryRun) {
         @"MTL_HUD_ENABLED": @"1",
     } mutableCopy];
     if (![hud isKindOfClass:NSNumber.class] || !hud.boolValue) environment[@"MTL_HUD_HIDDEN"] = @"1";
-    // The runtime enables nothing by default; players get every feature but the
-    // opt-in ones below. Set a variable to 0 to turn that feature off.
+    // The runtime enables nothing by default; players get every feature. Set a
+    // variable to 0 to turn that feature off.
     for (NSString *key in @[@"BG3MFX_FEATURE_METAL_HUD", @"BG3MFX_FEATURE_METALFX",
             @"BG3MFX_FEATURE_IMPROVED_SHADOWS",
             @"BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS",
             @"BG3MFX_FEATURE_NEW_CHARACTER_CRASH_FIX", @"BG3MFX_FEATURE_LUA_JUMP_FIX", @"BG3MFX_FEATURE_THREAD_IDLING",
             @"BG3MFX_FEATURE_REDUCE_LOCKING", @"BG3MFX_FEATURE_SSAO_BLUR_FIX",
             @"BG3MFX_FEATURE_ANIMATION_OPTIMIZATIONS", @"BG3MFX_FEATURE_IMPROVED_DISPLAY",
-            @"BG3MFX_FEATURE_MAX_FRAME_RATE"])
+            @"BG3MFX_FEATURE_MAX_FRAME_RATE", @"BG3MFX_FEATURE_SCRIPT_FIXES"])
         environment[key] = NSProcessInfo.processInfo.environment[key] ?: @"1";
-    // Opt-in features (gameplay changes): forwarded only when the player sets them.
-    for (NSString *key in @[@"BG3MFX_FEATURE_SCRIPT_FIXES"])
-        if (NSProcessInfo.processInfo.environment[key]) environment[key] = NSProcessInfo.processInfo.environment[key];
     NSArray *arguments = @[@"-NoLauncher", @"1"];
     if (dryRun) {
         say([NSString stringWithFormat:@"Runtime: %@", runtime]);

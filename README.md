@@ -38,8 +38,8 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **MetalFX Frame Generation** | Creates extra frames for smoother motion. Requires VSync set to Double or Triple Buffering. |
 | **MetalFX Spatial Upscaling** | Upscales a smaller rendered image to the final game resolution. |
 | **MetalFX Temporal Upscaling** | Builds an upscaled image from current and earlier frames; better quality than spatial. |
-| **Dynamic Upscaling** | Changes MetalFX Temporal Upscaling factor in real time to maintain a minimum target FPS. |
-| **Dynamic Upscaling Thermal Guard** | Changes MetalFX Temporal Upscaling factor in real time to reduce GPU usage and heat. |
+| **Ultra Performance** | An extra MetalFX Temporal quality that renders at the lowest resolution MetalFX accepts on your Mac (1/9 of the pixels on an M5 Pro), for the highest frame rate at the lowest image quality. |
+| **CAS Sharpening with MetalFX** | Keeps the game's CAS sharpening tick box and slider working with MetalFX Spatial and Temporal; the game normally allows CAS only with upscaling off. |
 | **Improved Shadows** | Draws the sun's shadows once per frame instead of twice, replaces the sun shadow filter to fix dotted lines, diamond patches and dark slopes, and removes the black wedges that torches and other point lights throw around themselves. |
 | **Ambient Occlusion Blur Fix** | Fixes the game's ambient occlusion blur, which on Macs smooths only vertically, so it smooths horizontally too. |
 | **Improved Display** | Replaces the game's Windows-style HDR with macOS EDR, using your screen's real brightness headroom. Brighter highlights and P3 color even on screens that aren't HDR displays, such as the Apple Studio Display and MacBook Air. The launcher's HDR option no longer matters, and HDR calibration skips the peak-brightness step. |
@@ -133,7 +133,7 @@ Baldur's Gate 3 starts with features available. In the game, go to
 
 - Turn on **Show Metal HUD** (Options → Video → General) to see your frame rate.
 - Temporal Upscaling is more resource intensive than spatial but produces much better image quality.
-- Dynamic Temporal Upscaling works really well when you select the highest resolution and your minimum FPS, and let the upscaler do its magic.
+- **Ultra Performance** gives the most frame rate but the softest image. Try it at a high output resolution, and tick **CAS** to sharpen the result.
 - At lower game resolution higher quality upscaling is needed to get a good result. At higher resolutions even the performance quality option can produce good results.
 - **Frame Generation** works best on a high refresh rate display, such as a
   MacBook Pro's 120 Hz ProMotion screen, and it **requires VSync** (Double or Triple Buffering): the
@@ -185,7 +185,7 @@ the environment used to launch `bg3mfx`:
 
 | Feature | Environment variable |
 | --- | --- |
-| **MetalFX upscaling and Frame Generation** | `BG3MFX_FEATURE_METALFX=0` removes the MetalFX options from Options → Video, and Dynamic Resolution with them. |
+| **MetalFX upscaling and Frame Generation** | `BG3MFX_FEATURE_METALFX=0` removes the MetalFX options from Options → Video, including Ultra Performance. |
 | **Improved Shadows** | `BG3MFX_FEATURE_IMPROVED_SHADOWS=0` |
 | **Render Thread Optimizations** | `BG3MFX_FEATURE_RENDER_THREAD_OPTIMIZATIONS=0` |
 | **CPU Thread Idling** | `BG3MFX_FEATURE_THREAD_IDLING=0` |

@@ -30,8 +30,7 @@ def supported_build_value(name):
 SUPPORTED_EXECUTABLE_SHA256 = supported_build_value("BG3MFX_SUPPORTED_SHA256")
 # The runtime enables only the features named here (BG3MFX_FEATURE_<NAME>=1),
 # with the features they require, so a live test exercises one at a time. The
-# player launcher enables all of them except script-fixes, which it forwards
-# only when the player sets it.
+# player launcher enables all of them.
 FEATURES = (
     "metal-hud",
     "max-frame-rate",

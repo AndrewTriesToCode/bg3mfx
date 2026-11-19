@@ -12,7 +12,10 @@ Adds the MetalFX options to Options → Video:
 
 - **MetalFX Spatial** and **MetalFX Temporal**, two more Upscaling Types.
 - **Ultra Performance**, an Upscaling Quality offered with Temporal that renders
-  the smallest region the device allows (1/9 of the pixels on the M5 Pro).
+  at the largest scale the device's Temporal scaler accepts (1/9 of the pixels
+  on the M5 Pro).
+- BG3's **CAS** tick box and sharpness slider, kept available with MetalFX
+  Spatial and Temporal.
 - **MetalFX Frame Generation**, a checkbox shown on devices that support it. It requires BG3's VSync (Double or
   Triple Buffering): it is dimmed while VSync is Off, and choosing VSync Off while
   it is ticked snaps back to the previous setting.

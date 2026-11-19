@@ -2,8 +2,8 @@
 
 Technical name: `improved-display`.
 
-Opt-in with `BG3MFX_FEATURE_IMPROVED_DISPLAY=1` (development launches:
-`--feature improved-display`). Requires metal-hooks. Native: it hooks BG3
+Opt-in with `BG3MFX_FEATURE_IMPROVED_DISPLAY=1` (the `bg3mfx` launcher sets
+it; development launches: `--feature improved-display`). Requires metal-hooks. Native: it hooks BG3
 functions, so it needs the supported build.
 
 ## Behavior

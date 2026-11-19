@@ -1,5 +1,7 @@
 # Animation Optimizations
 
+Technical name: `animation-optimizations`.
+
 Opt-in with `BG3MFX_FEATURE_ANIMATION_OPTIMIZATIONS=1` (the `bg3mfx` launcher
 sets it), for the supported BG3 build. BG3 links the Granny 3D animation
 runtime unoptimized (`-O0`, in both the ARM64 and x86_64 slices): every operand
