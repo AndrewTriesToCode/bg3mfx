@@ -19,6 +19,12 @@ It has three parts, installed together by
 | [Sun shadow mask](#sun-shadow-mask) | [`ShadowMask.*`](ShadowMask.mm), [`ImprovedShadowsShader.h`](ImprovedShadowsShader.h) | No terrain seams, diamond patches or low-resolution darkening in sun shadows. |
 | [Point-light shadows](#point-light-shadows) | [`PointLightShadowFix.*`](PointLightShadowFix.mm) | No black wedges around torches, hearths and other shadowed point lights. |
 
+![The same room without and with Improved Shadows: the black wedges around a torch-bearer are gone, and the hearth's light fills its arch.](comparison.jpg)
+
+Live, displayed (BG3 4.1.1.7631656): the same scene without and with Improved
+Shadows, cropped from two screenshots taken at slightly different camera
+positions.
+
 The sun shadow mask was the separate shadows feature (Shadow Rendering
 Optimizations, `BG3MFX_FEATURE_SHADOWS`), then part of the former
 improved-render-engine feature. The single shadow pass was the separate
