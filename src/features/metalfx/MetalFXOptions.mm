@@ -23,7 +23,7 @@ namespace Layout = BG3MFXBuild::Menu::Layout;
 
 namespace {
 intptr_t slide;
-BG3MFXMenuCallback originalUpscaleCall, originalQualityCall, originalVSyncCall;
+BG3MFXMenuCallback originalUpscaleCall, originalQualityCall, originalVSyncCall, originalCASTickCall;
 // The last VSync combo value that was on (1 Double, 2 Triple).
 int lastVSyncOn = 1;
 // -1: BG3's own setting; 0 or 1: a standalone test harness's VSync.
@@ -42,6 +42,9 @@ std::atomic<int> startupQuality{0};
 // key, then as Upscaling Type values 4 (Temporal + FG) and 5 (Spatial + FG).
 NSString *const legacyFrameGenerationPreference = @"BG3MFXFrameGeneration";
 NSString *const scalingPreference = @"BG3MFXUpscalingType";
+// BG3 does not save its CAS tick under the FSR type MetalFX runs on (the saved
+// settings omit it, and the next launch loads it off), so keep the choice here.
+NSString *const casPreference = @"BG3MFXCASWithMetalFX";
 NSString *const qualityPreference = @"BG3MFXUpscalingQuality";
 constexpr uint16_t upscaleTypeID = 99, upscaleQualityID = 100, upscaleSharpnessID = 101, antiAliasingID = 98, vsyncID = 82;
 constexpr uint16_t frameGenerationID = 0x7f02;
@@ -138,6 +141,11 @@ void updateDependentControls(void *manager, int mode) {
 void syncFrameGenerationVSync(void *manager) {
     if (!frameGenerationSupported()) return;
     BG3MFXMenuSetEnabled(BG3MFXMenuFind(manager, -1, frameGenerationID), menuVSyncOn(manager));
+}
+void casTickChanged(void *storage, const void *item) {
+    if (originalCASTickCall) originalCASTickCall(storage, item);
+    if (!item || !metalFXValue(selectedScalingMode.load())) return;
+    [NSUserDefaults.standardUserDefaults setBool:BG3MFXMenuTickBoxValue(item) forKey:casPreference];
 }
 void vsyncChanged(void *storage, const void *item) {
     void *manager = BG3MFXMenuStorageManager(storage);
@@ -240,6 +248,15 @@ void applyCombo(void *manager, const void *item, BG3MFXMenuApply next) {
     if (item && BG3MFXMenuItemType(mutableItem) == 3 && BG3MFXMenuItemID(mutableItem) == vsyncID) {
         next(manager, item);
         syncFrameGenerationVSync(manager);
+        return;
+    }
+    // Closing Options applies every combo again, after the tick box in a live
+    // log: any of them (quality, anti-aliasing) may run BG3's rules that clear
+    // CAS, which MetalFX keeps. Put back the CAS value the apply started with.
+    if (item && !upscale && BG3MFXMenuItemType(mutableItem) == 3 && metalFXValue(selectedScalingMode.load())) {
+        uint8_t cas = casStorage(manager);
+        next(manager, item);
+        restoreCAS(manager, cas);
         return;
     }
     int value = upscale ? BG3MFXMenuComboSelection(item) : -1;
@@ -360,6 +377,18 @@ void menuBuilt(void *manager) {
         BG3MFXMenuCallback qualityCall = BG3MFXMenuSelectionCallback(quality);
         if (qualityCall != qualityChanged) originalQualityCall = qualityCall;
         if (originalQualityCall) BG3MFXMenuSetSelectionCallback(quality, qualityChanged);
+    }
+    // The CAS tick: remember the player's choice under MetalFX, and start the
+    // manager with it (before the Upscaling Type callback below captures the
+    // manager's CAS to keep), as BG3's loaded settings have it off.
+    if (BG3MFXCASSharpeningInstalled()) {
+        if (void *tick = BG3MFXMenuFind(manager, -1, casTickBoxID)) {
+            BG3MFXMenuCallback call = BG3MFXMenuSelectionCallback(tick);
+            if (call != casTickChanged) originalCASTickCall = call;
+            if (originalCASTickCall) BG3MFXMenuSetSelectionCallback(tick, casTickChanged);
+            id savedCAS = [NSUserDefaults.standardUserDefaults objectForKey:casPreference];
+            if (savedCAS && metalFXValue(mode)) restoreCAS(manager, [savedCAS boolValue]);
+        }
     }
     // Frame Generation needs VSync: a tick saved with VSync Off (an earlier
     // version allowed it) is cleared.

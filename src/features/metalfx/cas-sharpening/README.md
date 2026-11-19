@@ -41,6 +41,19 @@ Two more things stopped the choice from sticking, found in a live test:
   publish for Ultra Performance does the same. BG3's own tick callback then
   enables the slider.
 
+Closing Options applies every combo box again, after the CAS tick box, and
+some of those applies run BG3's rules that clear CAS (live breakpoints showed the
+flag at 1 after the tick store and 0 at the final apply). `applyCombo` in
+`MetalFXOptions.mm` therefore saves the CAS flag around each combo's apply while
+MetalFX is selected and puts it back.
+
+BG3 also does not save the CAS tick under the FSR type MetalFX runs on: its
+saved settings (`graphicSettings.lsx`) omit `CASEnabled` while it is on, and the
+next launch loads it off. `MetalFXOptions.mm` keeps the choice itself
+(`BG3MFXCASWithMetalFX` in the user defaults, written when the tick changes with
+MetalFX selected) and starts the Video options manager with it when the menu is
+built at launch.
+
 With Frame Generation the renderer already carries the scene's depth and motion
 through BG3's CAS dispatch by name (`MetalFXRenderer.mm`), as it did with Off.
 
