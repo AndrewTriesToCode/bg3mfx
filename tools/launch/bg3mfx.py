@@ -147,6 +147,8 @@ def launch(app_arg, features=()):
         SteamGameId="1086940",
         MTL_HUD_ENABLED="1",
         BG3MFX_ENABLE="1",
+        # As the player launcher does: BG3 breaks with a decimal-comma numeric locale.
+        LC_NUMERIC="C",
     )
     for name in FEATURES:
         env.pop(feature_variable(name), None)

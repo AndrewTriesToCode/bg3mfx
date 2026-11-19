@@ -60,6 +60,8 @@ class LauncherTests(unittest.TestCase):
             self.assertIn("SteamAppId=1086940", result.stdout)
             # The HUD is always loaded so the in-game checkbox can toggle it.
             self.assertIn("MTL_HUD_ENABLED=1", result.stdout)
+            # BG3 breaks under a decimal-comma numeric locale (issue 18).
+            self.assertIn("LC_NUMERIC=C", result.stdout)
             self.assertIn("Arguments: -NoLauncher 1", result.stdout)
             self.assertIn("was not started", result.stdout)
             # Every feature is on unless the player opts out.

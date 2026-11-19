@@ -244,6 +244,11 @@ static int launch(NSString *appOverride, BOOL dryRun) {
         @"SteamAppId": SteamAppID,
         @"SteamGameId": SteamAppID,
         @"MTL_HUD_ENABLED": @"1",
+        // BG3 reads numbers with the C library, so a decimal comma (Russian and
+        // other numeric locales, which a terminal's LANG can pass on) breaks its
+        // UI icons, cutscene cameras and lighting. The game is run with the C
+        // numeric locale, as it is when Steam starts it.
+        @"LC_NUMERIC": @"C",
     } mutableCopy];
     if (![hud isKindOfClass:NSNumber.class] || !hud.boolValue) environment[@"MTL_HUD_HIDDEN"] = @"1";
     // The runtime enables nothing by default; players get every feature. Set a

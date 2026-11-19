@@ -34,6 +34,7 @@ class LaunchTests(unittest.TestCase):
             self.assertEqual(env["MTL_HUD_ENABLED"], "1")
             self.assertEqual(env.get("MTL_HUD_HIDDEN"), None if hud else "1")
             self.assertEqual(env["BG3MFX_ENABLE"], "1")
+            self.assertEqual(env["LC_NUMERIC"], "C")
             # Only the requested features, never ones inherited from the shell.
             enabled = {key for key, value in env.items() if key.startswith("BG3MFX_FEATURE_") and value == "1"}
             self.assertEqual(enabled, {bg3mfx.feature_variable(name) for name in features})
