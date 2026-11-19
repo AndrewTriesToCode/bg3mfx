@@ -23,9 +23,12 @@ class Bg3mfx < Formula
       Start Baldur's Gate 3 (Steam version) with MetalFX:
         bg3mfx
 
-      To add "BG3MFX" to your Applications folder (and to Steam with
-      Games > Add a Non-Steam Game to My Library):
+      The first time, bg3mfx offers to add "BG3MFX" to your Applications
+      folder (and from there to Steam with Games > Add a Non-Steam Game to
+      My Library). To add it later:
         bg3mfx install-app
+
+      The app runs the installed bg3mfx, so brew upgrade updates it too.
 
       Choose MetalFX options in the game under Options > Video.
     EOS

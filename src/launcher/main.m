@@ -10,6 +10,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <mach-o/dyld.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "common/native/SupportedBuild.h"
 
 #ifndef BG3MFX_VERSION
@@ -25,6 +26,7 @@ static NSString *const SteamAppID = @"1086940";
 static NSString *const SupportedSHA256 = @BG3MFX_SUPPORTED_SHA256;
 static NSString *const SupportedVersion = @BG3MFX_SUPPORTED_VERSION;
 static NSString *const RememberedGameKey = @"GamePath";
+static NSString *const OfferedAppKey = @"OfferedApp";
 static NSString *const AppName = @"BG3MFX";
 
 static BOOL appMode;
@@ -327,6 +329,27 @@ static int installApp(NSString *directory) {
     return 0;
 }
 
+// Homebrew can't ask questions or write outside its prefix while installing,
+// so the first interactive run in Terminal offers the app instead, once.
+static void offerApp(void) {
+    if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) return;
+    CFStringRef domain = (__bridge CFStringRef)LauncherBundleID;
+    if (CFPreferencesGetAppBooleanValue((__bridge CFStringRef)OfferedAppKey, domain, NULL)) return;
+    NSString *app = [[NSHomeDirectory() stringByAppendingPathComponent:@"Applications"]
+        stringByAppendingPathComponent:[AppName stringByAppendingPathExtension:@"app"]];
+    if (![NSFileManager.defaultManager fileExistsAtPath:app]) {
+        printf("Add BG3MFX to your Applications folder, so you can open it from Launchpad,\n"
+               "Spotlight or the Dock, or add it to Steam? [Y/n] ");
+        fflush(stdout);
+        char answer[16];
+        if (!fgets(answer, sizeof answer, stdin)) { printf("\n"); return; }  // Ask again next time.
+        if (answer[0] == 'n' || answer[0] == 'N') printf("You can add it later with: bg3mfx install-app\n");
+        else installApp(nil);
+    }
+    CFPreferencesSetAppValue((__bridge CFStringRef)OfferedAppKey, kCFBooleanTrue, domain);
+    CFPreferencesAppSynchronize(domain);
+}
+
 static void usage(void) {
     printf("bg3mfx %s: MetalFX upscaling and frame generation for Baldur's Gate 3 (Steam)\n\n"
            "Usage:\n"
@@ -363,6 +386,7 @@ int main(int argc, const char *argv[]) {
             else { fprintf(stderr, "bg3mfx: unknown argument %s (see bg3mfx --help)\n", argv[i]); return 2; }
         }
         if ([command isEqualToString:@"install-app"]) return installApp(destination);
+        if (!appMode && !dryRun) offerApp();
         return launch(game, dryRun);
     }
 }

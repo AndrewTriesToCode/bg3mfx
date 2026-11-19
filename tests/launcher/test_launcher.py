@@ -115,6 +115,14 @@ class LauncherTests(unittest.TestCase):
             result = self.run_launcher("--dry-run", "--game", str(fake_game(root, bundle_id="com.example.other")))
             self.assertIn("isn't Baldur's Gate 3", result.stderr)
 
+    def test_app_offer_needs_a_terminal(self):
+        # The first-run offer reads Terminal input; piped runs (scripts, the
+        # app itself) never wait on it.
+        with tempfile.TemporaryDirectory() as root:
+            result = self.run_launcher("--game", str(fake_game(root, bundle_id="com.example.other")))
+            self.assertNotIn("[Y/n]", result.stdout)
+            self.assertIn("isn't Baldur's Gate 3", result.stderr)
+
     def test_install_app_links_the_installed_command(self):
         with tempfile.TemporaryDirectory() as folder:
             result = self.run_launcher("install-app", "--to", folder)
