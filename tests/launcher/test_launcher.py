@@ -152,6 +152,11 @@ class LauncherTests(unittest.TestCase):
             subprocess.run([str(installed), "install-app", "--to", root], check=True, capture_output=True)
             link = os.readlink(Path(root) / "BG3MFX.app/Contents/MacOS/bg3mfx")
             self.assertEqual(Path(link), Path(root).resolve() / "opt/bg3mfx/bin/bg3mfx")
+            self.assertTrue((prefix / "share/bg3mfx/BG3MFX.icns").is_file())
+            app = Path(root) / "BG3MFX.app/Contents"
+            with (app / "Info.plist").open("rb") as info:
+                self.assertEqual(plistlib.load(info)["CFBundleIconFile"], "BG3MFX")
+            self.assertTrue((app / "Resources/BG3MFX.icns").is_file())
 
 if __name__ == "__main__":
     unittest.main()

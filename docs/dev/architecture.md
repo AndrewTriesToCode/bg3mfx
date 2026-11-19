@@ -332,6 +332,9 @@ does not alter the app bundle.
 - Standalone probes and analysis programs live under `tools/probes/` and
   `tools/analysis/`.
 - `src/launcher/` and `packaging/homebrew/`: the player launcher and formula.
+  `src/launcher/Icon.m` draws BG3MFX.app's icon at build time
+  (`build/bin/BG3MFX.icns`, installed to `share/bg3mfx/`); `install-app` copies
+  it into the app.
 - `tests/`: feature, common, integration, and launcher checks. Python package
   markers keep recursive discovery working with `make test-python`.
 - `tools/launch/`, `tools/reference/`, `tools/release/`, and `tools/build/`: development

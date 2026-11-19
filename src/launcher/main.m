@@ -279,7 +279,7 @@ static int launch(NSString *appOverride, BOOL dryRun) {
         tell(@"Baldur's Gate 3 couldn't be started.", failure.localizedDescription, nil);
         return 1;
     }
-    say(@"Launching Baldur's Gate 3 with bg3mfx " BG3MFX_VERSION "...");
+    say(@"Launching Baldur's Gate 3 with bg3mfx " BG3MFX_VERSION ".");
     return 0;
 }
 
@@ -290,6 +290,16 @@ static NSString *stableExecutable(void) {
     if (cellar.location == NSNotFound) return path;
     NSString *prefix = [path substringToIndex:cellar.location];
     return [prefix stringByAppendingPathComponent:@"opt/bg3mfx/bin/bg3mfx"];
+}
+
+// Installed: <prefix>/share/bg3mfx/BG3MFX.icns. Build tree: beside the launcher.
+static NSString *iconPath(void) {
+    NSString *bin = executablePath().stringByDeletingLastPathComponent;
+    NSString *installed = [bin.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"share/bg3mfx/BG3MFX.icns"];
+    NSFileManager *files = NSFileManager.defaultManager;
+    if ([files isReadableFileAtPath:installed]) return installed;
+    NSString *built = [bin stringByAppendingPathComponent:@"BG3MFX.icns"];
+    return [files isReadableFileAtPath:built] ? built : nil;
 }
 
 static int installApp(NSString *directory) {
@@ -304,7 +314,7 @@ static int installApp(NSString *directory) {
     if (![files createDirectoryAtPath:macOS withIntermediateDirectories:YES attributes:nil error:&error]) {
         tell(@"Couldn't create the app.", error.localizedDescription, nil); return 1;
     }
-    NSDictionary *info = @{
+    NSMutableDictionary *info = [@{
         @"CFBundleIdentifier": LauncherBundleID,
         @"CFBundleName": AppName,
         @"CFBundleDisplayName": AppName,
@@ -316,7 +326,14 @@ static int installApp(NSString *directory) {
         @"LSApplicationCategoryType": @"public.app-category.games",
         // No Dock icon or window: the app only launches the game or shows an alert.
         @"LSUIElement": @YES,
-    };
+    } mutableCopy];
+    // The icon is a copy, so the app keeps it if the installed file goes away.
+    // Without one the app still works, with macOS's generic icon.
+    NSString *icon = iconPath();
+    NSString *resources = [app stringByAppendingPathComponent:@"Contents/Resources"];
+    if (icon && [files createDirectoryAtPath:resources withIntermediateDirectories:YES attributes:nil error:nil] &&
+        [files copyItemAtPath:icon toPath:[resources stringByAppendingPathComponent:@"BG3MFX.icns"] error:nil])
+        info[@"CFBundleIconFile"] = @"BG3MFX";
     if (![info writeToURL:[NSURL fileURLWithPath:[app stringByAppendingPathComponent:@"Contents/Info.plist"]] error:&error]) {
         tell(@"Couldn't write the app's Info.plist.", error.localizedDescription, nil); return 1;
     }

@@ -11,18 +11,27 @@ CXXFLAGS = $(CPPFLAGS) -std=c++17 -fobjc-arc -O2 -Wall -Wextra -mmacosx-version-
 FRAMEWORKS = -framework Foundation -framework Metal -framework MetalFX -framework AppKit -framework QuartzCore
 
 .PHONY: hook-overhead all install test test-python clean clean-evidence
-# The runtime players use, and bg3mfx, its launcher.
-all: $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/bg3mfx
+# The runtime players use, and bg3mfx, its launcher, with BG3MFX.app's icon.
+all: $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/bg3mfx $(BIN_DIR)/BG3MFX.icns
 
 $(BIN_DIR)/bg3mfx: src/launcher/main.m src/common/native/SupportedBuild.h | $(BIN_DIR)
 	xcrun clang $(CPPFLAGS) -fobjc-arc -O2 -Wall -Wextra -mmacosx-version-min=26.0 -DBG3MFX_VERSION=\"$(VERSION)\" $< \
 		-framework AppKit -framework UniformTypeIdentifiers -o $@
 
-# Player install (used by the Homebrew formula): launcher and runtime only.
-install: $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/bg3mfx
-	install -d "$(PREFIX)/bin" "$(PREFIX)/lib/bg3mfx"
+# The icon is drawn at build time (src/launcher/Icon.m), so no image is checked in.
+$(BIN_DIR)/bg3mfx-icon: src/launcher/Icon.m | $(BIN_DIR)
+	xcrun clang -fobjc-arc -O2 -Wall -Wextra -mmacosx-version-min=26.0 $< \
+		-framework AppKit -framework UniformTypeIdentifiers -o $@
+
+$(BIN_DIR)/BG3MFX.icns: $(BIN_DIR)/bg3mfx-icon
+	$< $@
+
+# Player install (used by the Homebrew formula): launcher, runtime and icon.
+install: $(BIN_DIR)/libBG3MetalFX.dylib $(BIN_DIR)/bg3mfx $(BIN_DIR)/BG3MFX.icns
+	install -d "$(PREFIX)/bin" "$(PREFIX)/lib/bg3mfx" "$(PREFIX)/share/bg3mfx"
 	install -m 755 $(BIN_DIR)/bg3mfx "$(PREFIX)/bin/bg3mfx"
 	install -m 644 $(BIN_DIR)/libBG3MetalFX.dylib "$(PREFIX)/lib/bg3mfx/libBG3MetalFX.dylib"
+	install -m 644 $(BIN_DIR)/BG3MFX.icns "$(PREFIX)/share/bg3mfx/BG3MFX.icns"
 
 $(BIN_DIR)/runtime-smoke: tests/integration/runtime_smoke.mm | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $< -framework Foundation -framework Metal -o $@
