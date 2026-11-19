@@ -113,13 +113,17 @@ Homebrew asks you to trust formulae from outside its official taps before it
 will install them; the second command trusts only BG3MFX. Homebrew then
 builds BG3MFX on your Mac, which takes a few seconds.
 
-Want an app you can open from Launchpad, Spotlight or the Dock? Run this once:
+The first time you run `bg3mfx` in Terminal, it offers to add **BG3MFX** to the
+Applications folder in your home folder, so you can open it from Launchpad,
+Spotlight or the Dock, or add it to Steam with **Games → Add a Non-Steam Game to
+My Library**. To add it later, or to give an app made before BG3MFX 0.8.1 its
+new icon, run:
 
 ```sh
 bg3mfx install-app
 ```
 
-This adds **BG3MFX** to the Applications folder in your home folder.
+The app runs the installed `bg3mfx`, so `brew upgrade` updates it too.
 
 ## Play
 
@@ -205,7 +209,7 @@ the environment used to launch `bg3mfx`:
 brew uninstall bg3mfx
 brew untap andrewtriestocode/brews
 brew untrust --formula andrewtriestocode/brews/bg3mfx
-rm -rf ~/Applications/"BG3MFX.app"   # if you ran install-app
+rm -rf ~/Applications/"BG3MFX.app"   # if you added the app
 ```
 
 ## Building from source and contributing
