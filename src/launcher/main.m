@@ -279,7 +279,7 @@ static int launch(NSString *appOverride, BOOL dryRun) {
         tell(@"Baldur's Gate 3 couldn't be started.", failure.localizedDescription, nil);
         return 1;
     }
-    say(@"Baldur's Gate 3 is starting with MetalFX. Choose the upscaler in Options > Video.");
+    say(@"Launching Baldur's Gate 3 with bg3mfx " BG3MFX_VERSION "...");
     return 0;
 }
 
