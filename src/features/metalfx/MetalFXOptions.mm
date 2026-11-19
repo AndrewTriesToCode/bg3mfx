@@ -38,6 +38,8 @@ NSString *const frameGenerationPreference = @"BG3MFXFrameGenerationEnabled";
 // The player's Anti-Aliasing choice while MetalFX holds it at TAA.
 NSString *const savedAntiAliasingPreference = @"BG3MFXSavedAntiAliasing";
 std::atomic<int> startupQuality{0};
+// The saved CAS tick under MetalFX (BG3MFXCASWithMetalFX); -1 when none.
+std::atomic<int> startupCAS{-1};
 // Earlier builds stored Frame Generation as a Temporal-only checkbox under this
 // key, then as Upscaling Type values 4 (Temporal + FG) and 5 (Spatial + FG).
 NSString *const legacyFrameGenerationPreference = @"BG3MFXFrameGeneration";
@@ -467,6 +469,8 @@ void BG3MFXRestoreMetalFXChoices(void) {
         savedQuality = @(BG3MFXUltraPerformanceQuality);
     }
     if (savedQuality && [savedQuality intValue] == BG3MFXUltraPerformanceQuality) startupQuality.store([savedQuality intValue]);
+    id savedCAS = [defaults objectForKey:casPreference];
+    if (savedCAS) startupCAS.store([savedCAS boolValue] ? 1 : 0);
     frameGenerationChecked.store([defaults boolForKey:frameGenerationPreference]);
 }
 
@@ -476,12 +480,18 @@ int BG3MFXSelectedScalingMode(void) { return selectedScalingMode.load(); }
 // menu (a reverted display setting) ends it at once.
 BOOL BG3MFXFrameGenerationEnabled(void) { return frameGenerationChecked.load() && frameGenerationSupported() && bg3VSyncOn(); }
 
-void BG3MFXPublishStartupReducedQuality(void) {
-    int quality = startupQuality.load();
-    if (!quality || BG3MFXMenuOptionsBuilt() || !reducedOffered(selectedScalingMode.load())) return;
+void BG3MFXPublishStartupSettings(void) {
+    if (BG3MFXMenuOptionsBuilt()) return;
+    int mode = selectedScalingMode.load();
+    int quality = reducedOffered(mode) ? startupQuality.load() : 0;
+    int cas = metalFXValue(mode) && BG3MFXCASSharpeningInstalled() ? startupCAS.load() : -1;
+    if (!quality && cas < 0) return;
     void *settings = *at<void **>(BG3MFXBuild::Temporal::Settings);
-    if (!settings || field<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) == quality) return;
-    // Once a second at most, in case BG3 loads its quality again later.
+    if (!settings) return;
+    bool qualityDue = quality && field<uint8_t>(settings, BG3MFXBuild::Temporal::Layout::SettingsQuality) != quality;
+    bool casDue = cas >= 0 && field<uint8_t>(settings, BG3MFXBuild::CASRendering::SettingsCASEnabled) != cas;
+    if (!qualityDue && !casDue) return;
+    // Once a second at most, in case BG3 loads its settings again later.
     static std::atomic<double> published{0};
     double now = CACurrentMediaTime(), last = published.load();
     if (now - last < 1 || !published.compare_exchange_strong(last, now)) return;
@@ -495,10 +505,12 @@ void BG3MFXPublishStartupReducedQuality(void) {
         char *storage = manager + Layout::SettingsStorage;
         memcpy(storage, current, Layout::PublishedSettingsBytes);
         float sharpness = field<float>(storage, BG3MFXBuild::Temporal::Layout::SettingsSharpness);
-        uint8_t cas = field<uint8_t>(storage, BG3MFXBuild::CASRendering::SettingsCASEnabled);
-        at<void (*)(void *, int)>(Native::SetQuality)(storage, quality);
+        uint8_t &casEnabled = field<uint8_t>(storage, BG3MFXBuild::CASRendering::SettingsCASEnabled);
+        uint8_t keptCAS = cas >= 0 ? (uint8_t)cas : casEnabled;
+        // The quality setter clears CAS; keep sharpness and the CAS choice.
+        if (qualityDue) at<void (*)(void *, int)>(Native::SetQuality)(storage, quality);
         field<float>(storage, BG3MFXBuild::Temporal::Layout::SettingsSharpness) = sharpness;
-        field<uint8_t>(storage, BG3MFXBuild::CASRendering::SettingsCASEnabled) = cas;
+        casEnabled = keptCAS;
         publishSettings(manager);
     });
 }

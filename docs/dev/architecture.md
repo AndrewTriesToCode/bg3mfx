@@ -428,7 +428,11 @@ only for a feature that adds options to it (metal-hud, metalfx).
   upscaling type (`+0x97`) below 1. An entry hook at its second instruction
   (`CASRendering` island) applies the same rule but also accepts MetalFX Spatial
   and Temporal, and the menu keeps the CAS options (ids 105, 106) available with
-  them.
+  them. CAS reads its hair mask (an eighth of the render resolution) at output
+  pixel / 8 within the Viewport block's (buffer 9) half-resolution bounds; with
+  upscaling the renderer resamples the mask to an eighth of the output and
+  scales those bounds for BG3's CAS dispatch, using the compute constant
+  bindings metal-hooks records for the watched slots.
 - `src/features/metalfx/renderer/MetalFXRenderer.mm`: part of metalfx. It is metal-hooks'
   renderer extension (`MetalHooksInternal.h`): scene tracking, the Spatial and
   Temporal dispatch that replaces FSR, the FSR_Tonemap skip, Frame

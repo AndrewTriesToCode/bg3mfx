@@ -814,7 +814,102 @@ static void forwardNativeCompute(id encoder, NSString *name, NSDictionary *textu
     }
 }
 // A compute dispatch: Spatial and Temporal replace BG3's FSR and RCAS.
-static DispatchAction dispatch(id self, [[maybe_unused]] SEL cmd, NSString *pipelineName) {
+// BG3's CAS leaves hair unsharpened. It reads a hair mask drawn at an eighth
+// of the render resolution at output pixel / 8, within the Viewport block's
+// half-resolution bounds (g_HalfResViewportMin/Max, slot 9), which BG3 sets to
+// the mask's size; outside them it treats the pixel as hair. With Spatial or
+// Temporal the output is larger than the render resolution, so every pixel
+// past the render width or height counted as hair and only the render-sized
+// top-left of the image was sharpened (issue 19). Resample the mask to an
+// eighth of the output, widen the bounds to match, run BG3's dispatch, and
+// restore its bindings.
+static constexpr NSUInteger CASViewportSize = 168, CASHalfResMin = 128, CASHalfResMax = 136;
+static id<MTLComputePipelineState> hairMaskPipeline(id<MTLDevice> device) {
+    static id<MTLComputePipelineState> resample;
+    static bool failed;
+    std::lock_guard<std::recursive_mutex> lock(guard());
+    if (resample && resample.device == device) return resample;
+    if (failed) return nil;
+    NSString *source = @"#include <metal_stdlib>\nusing namespace metal;\n"
+        "kernel void BG3MFXHairMaskResample(texture2d<float, access::read> src [[texture(0)]], texture2d<float, access::write> dst [[texture(1)]], uint2 p [[thread_position_in_grid]]) {"
+        "uint2 size = uint2(dst.get_width(), dst.get_height()), from = uint2(src.get_width(), src.get_height());"
+        "if (p.x >= size.x || p.y >= size.y) return;"
+        "uint2 q = min(uint2((float2(p) + 0.5) * float2(from) / float2(size)), from - 1);"
+        "dst.write(src.read(q), p); }";
+    NSError *error = nil;
+    id<MTLLibrary> library = [device newLibraryWithSource:source options:nil error:&error];
+    resample = library ? [device newComputePipelineStateWithFunction:[library newFunctionWithName:@"BG3MFXHairMaskResample"] error:&error] : nil;
+    if (!resample) {
+        failed = true;
+        BG3MFXFail([@"The CAS hair mask kernel did not compile: " stringByAppendingString:error.localizedDescription ?: @"unknown error"], nil, nil);
+    }
+    return resample;
+}
+// One mask per size, reused every frame; command buffers on BG3's queue order
+// its writes after the previous frame's reads.
+static id<MTLTexture> scaledHairMask(id<MTLDevice> device, MTLPixelFormat format, NSUInteger width, NSUInteger height) {
+    static id<MTLTexture> mask;
+    std::lock_guard<std::recursive_mutex> lock(guard());
+    if (mask && mask.device == device && mask.pixelFormat == format && mask.width == width && mask.height == height) return mask;
+    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format width:width height:height mipmapped:NO];
+    desc.storageMode = MTLStorageModePrivate;
+    desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+    mask = [device newTextureWithDescriptor:desc];
+    mask.label = @"BG3MFX CAS hair mask";
+    return mask;
+}
+static BOOL dispatchCASWithScaledHairMask(id encoder, SEL cmd, NSDictionary *textures, id<MTLCommandBuffer> buffer, MTLSize grid, MTLSize threads) {
+    id<MTLTexture> input = textures[@"0"], output = textures[@"1"], hair = textures[@"2"];
+    if (!buffer || !input || !output || !hair) return NO;
+    NSUInteger width = (output.width + 7) / 8, height = (output.height + 7) / 8;
+    if (hair.width >= width && hair.height >= height) return NO;
+    // The kernel's float read and write cover BG3's R8Unorm mask.
+    if (hair.pixelFormat != MTLPixelFormatR8Unorm || !(hair.usage & MTLTextureUsageShaderRead)) return NO;
+    ConstantBinding *slot = constantSlot(encoder,StageCompute,9);
+    NSData *viewport = constantBytes(encoder,StageCompute,9,CASViewportSize);
+    id native = encoderPipeline(encoder);
+    id<MTLComputePipelineState> resample = hairMaskPipeline(buffer.device);
+    id<MTLTexture> mask = resample ? scaledHairMask(buffer.device,hair.pixelFormat,width,height) : nil;
+    if (!slot || !viewport || !native || !mask) return NO;
+    const ConstantBinding saved = *slot;
+    NSData *savedBytes = saved.hasBytes ? constantBytes(encoder,StageCompute,9,saved.length) : nil;
+    if (saved.hasBytes && !savedBytes) return NO;
+    // Scale the bounds with the mask, so a smaller viewport keeps its share.
+    NSMutableData *patched = [viewport mutableCopy];
+    uint32_t *bounds = (uint32_t *)((uint8_t *)patched.mutableBytes + CASHalfResMin);
+    const NSUInteger from[2] = {hair.width, hair.height}, to[2] = {width, height};
+    for (int i = 0; i < 2; ++i) {
+        bounds[i] = (uint32_t)(bounds[i] * to[i] / from[i]);
+        uint32_t &last = bounds[(CASHalfResMax - CASHalfResMin) / 4 + i];
+        last = (uint32_t)MIN((last + 1) * to[i] / from[i], to[i]) - 1;
+    }
+    SEL setPipeline = @selector(setComputePipelineState:), setTexture = @selector(setTexture:atIndex:);
+    SEL setBuffer = @selector(setBuffer:offset:atIndex:), setBytes = @selector(setBytes:length:atIndex:);
+    SEL run = @selector(dispatchThreads:threadsPerThreadgroup:);
+    auto bindPipeline = (void(*)(id,SEL,id))originalOrCurrent(encoder,setPipeline);
+    auto bindTexture = (void(*)(id,SEL,id,NSUInteger))originalOrCurrent(encoder,setTexture);
+    auto bindBytes = (void(*)(id,SEL,const void *,NSUInteger,NSUInteger))originalOrCurrent(encoder,setBytes);
+    bindPipeline(encoder,setPipeline,resample);
+    bindTexture(encoder,setTexture,hair,0);
+    bindTexture(encoder,setTexture,mask,1);
+    ((void(*)(id,SEL,MTLSize,MTLSize))originalOrCurrent(encoder,run))(encoder,run,MTLSizeMake(width,height,1),MTLSizeMake(8,8,1));
+    if ([(id<MTLComputeCommandEncoder>)encoder dispatchType] == MTLDispatchTypeConcurrent) {
+        id<MTLResource> written[] = {mask};
+        [(id<MTLComputeCommandEncoder>)encoder memoryBarrierWithResources:written count:1];
+    }
+    bindPipeline(encoder,setPipeline,native);
+    bindTexture(encoder,setTexture,input,0);
+    bindTexture(encoder,setTexture,output,1);
+    bindTexture(encoder,setTexture,mask,2);
+    bindBytes(encoder,setBytes,patched.bytes,patched.length,9);
+    ((void(*)(id,SEL,MTLSize,MTLSize))originalOrCurrent(encoder,cmd))(encoder,cmd,grid,threads);
+    // Restore BG3's mask and Viewport binding; the hooks' records still describe them.
+    bindTexture(encoder,setTexture,hair,2);
+    if (savedBytes) bindBytes(encoder,setBytes,savedBytes.bytes,savedBytes.length,9);
+    else ((void(*)(id,SEL,id,NSUInteger,NSUInteger))originalOrCurrent(encoder,setBuffer))(encoder,setBuffer,saved.buffer,saved.offset,9);
+    return YES;
+}
+static DispatchAction dispatch(id self, [[maybe_unused]] SEL cmd, NSString *pipelineName, MTLSize grid, MTLSize threads) {
     BOOL suppressNative = NO;
     NSDictionary *textures = boundTextures(self);
     NSDictionary *pending = objc_getAssociatedObject(self,&fsrInputsKey);
@@ -882,6 +977,8 @@ native:
     if (suppressNative) {
         return DispatchSuppressed;
     }
+    if (runtimeEnabled && [pipelineName isEqualToString:@"CAS"] &&
+        dispatchCASWithScaledHairMask(self,cmd,textures,buffer,grid,threads)) return DispatchSuppressed;
     // Native FSR after a skipped FSR_Tonemap draw (a fallback frame) needs that pass's output.
     if (runtimeEnabled && buffer && [pipelineName isEqualToString:@"FSR"]) restoreSkippedTonemap(self,buffer,textures);
     return DispatchNative;
@@ -1004,9 +1101,9 @@ static void commandBufferCreated(id<MTLCommandBuffer> buffer) {
     // menu independently at TAA and FSR could mix two render paths in one frame.
     objc_setAssociatedObject(buffer,&bufferScalingModeKey,@(BG3MFXSelectedScalingMode()),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     // Ultra Performance renders small only while Temporal can upscale it, and
-    // BG3 starts with its own quality until the saved one is published.
+    // BG3 starts with its own quality and CAS until the saved ones are published.
     BG3MFXUltraPerformanceActive(BG3MFXSelectedScalingMode()==3 && !BG3MFXTemporalFailed());
-    BG3MFXPublishStartupReducedQuality();
+    BG3MFXPublishStartupSettings();
     // Frame Generation combines with every Upscaling Type: it uses the camera,
     // depth and motion captured at BG3's TAA pass.
     bool frameGenerationSelected=BG3MFXFrameGenerationEnabled();

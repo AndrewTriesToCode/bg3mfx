@@ -15,11 +15,11 @@ BOOL BG3MFXFrameGenerationEnabled(void);
 // underneath, so Video options show it. NO without the menu (test harnesses).
 BOOL BG3MFXFallBackToFSR(void);
 // Render thread, before each frame: BG3 starts with its own quality (at most
-// Ultra Quality). Until Video options are first built and restore the saved
-// Ultra Performance quality themselves, publish it to the
-// renderer from the main thread as the menu does, so BG3 also resizes its render
-// targets.
-void BG3MFXPublishStartupReducedQuality(void);
+// Ultra Quality) and with CAS off under the FSR type MetalFX runs on. Until
+// Video options are first built and restore the saved Ultra Performance quality
+// and CAS tick themselves, publish them to the renderer from the main thread as
+// the menu does, so BG3 also resizes its render targets.
+void BG3MFXPublishStartupSettings(void);
 // The parts the feature's install puts in. Temporal's native jitter
 // (temporal-upscaling/TemporalJitter.mm); NO with `error` when it cannot.
 BOOL BG3MFXInstallTemporalJitter(intptr_t slide, NSError **error);

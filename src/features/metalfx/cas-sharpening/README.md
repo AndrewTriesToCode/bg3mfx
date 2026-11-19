@@ -51,8 +51,29 @@ BG3 also does not save the CAS tick under the FSR type MetalFX runs on: its
 saved settings (`graphicSettings.lsx`) omit `CASEnabled` while it is on, and the
 next launch loads it off. `MetalFXOptions.mm` keeps the choice itself
 (`BG3MFXCASWithMetalFX` in the user defaults, written when the tick changes with
-MetalFX selected) and starts the Video options manager with it when the menu is
-built at launch.
+MetalFX selected). Video options are built only when the player first opens
+them, so until then `BG3MFXPublishStartupSettings` publishes the saved tick to
+the renderer, as it does a saved Ultra Performance quality; without it CAS
+stayed off after launch until Options was opened. The Video options manager
+starts with the tick when the menu is built.
+
+## Hair mask
+
+BG3's CAS shader leaves hair unsharpened. It reads a hair mask (R8Unorm) drawn at
+an eighth of the render resolution at output pixel / 8, inside the Viewport
+block's (buffer 9) `g_HalfResViewportMin/Max`, which BG3 sets to the mask's
+size; a pixel outside those bounds counts as hair. With Off the render and
+output sizes match. With Spatial or Temporal every pixel past the render width
+or height counted as hair, so only the render-sized top-left of the image was
+sharpened, with seams that moved with the quality preset (issue 19). Live, at
+3456x2160 output, the mask was 216x135 at Performance and 288x180 at Quality.
+
+At BG3's CAS dispatch, when the mask is smaller than an eighth of the output,
+the renderer resamples it (nearest) to that size, binds a copy of the Viewport
+block with the half-resolution bounds scaled to match, issues BG3's dispatch,
+and restores BG3's mask and Viewport bindings. metal-hooks records compute
+constant bindings for the watched slots, as it does for the render stages, so
+the renderer can read the block.
 
 With Frame Generation the renderer already carries the scene's depth and motion
 through BG3's CAS dispatch by name (`MetalFXRenderer.mm`), as it did with Off.
@@ -63,5 +84,7 @@ on, with CAS off with MetalFX as before.
 ## Status
 
 The rule is covered by `tests/features/metalfx/cas-sharpening/cas_rule_smoke.mm`
-(synthetic). Not yet tried live in the game; the quality effect on MetalFX
-output is not measured.
+(synthetic). Live (displayed, MetalFX Temporal Quality at 3456x2160): CAS ran
+from launch without opening Options, every CAS dispatch used the resampled
+432x270 mask, and the sharpening covered the whole screen to the eye. The
+quality effect on MetalFX output is not measured.

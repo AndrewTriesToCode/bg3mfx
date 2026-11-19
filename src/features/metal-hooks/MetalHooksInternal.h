@@ -198,7 +198,9 @@ struct RendererExtension {
     bool (*pipelineBound)(id encoder, BG3MFXEncoderState *state, BG3MFXPipelineInfo *info, NSDictionary *description);
     // A draw on a slow-draw pipeline; forward issues it.
     void (*draw)(id encoder, BG3MFXEncoderState *state, const DrawCall &call, void (^forward)(void));
-    DispatchAction (*dispatch)(id encoder, SEL cmd, NSString *pipeline);
+    // A compute dispatch with its grid and threadgroup size (threads or
+    // threadgroups, by cmd). DispatchSuppressed when the extension issued it.
+    DispatchAction (*dispatch)(id encoder, SEL cmd, NSString *pipeline, MTLSize grid, MTLSize threads);
     // `minimum`: presentDrawable:afterMinimumDuration:'s duration after the
     // present-duration filters (as BG3's would be); negative for the other presents.
     PresentAction (*present)(id buffer, SEL cmd, id drawable, double minimum);

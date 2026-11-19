@@ -459,7 +459,7 @@ static void drawIndexedBase(__unsafe_unretained id self, SEL cmd, MTLPrimitiveTy
 }
 static void dispatch(id self, SEL cmd, MTLSize grid, MTLSize threads) {
     NSString *pipelineName = pipelineDescription(self)[@"compute"];
-    DispatchAction action = renderer.dispatch ? renderer.dispatch(self,cmd,pipelineName) : DispatchNative;
+    DispatchAction action = renderer.dispatch ? renderer.dispatch(self,cmd,pipelineName,grid,threads) : DispatchNative;
     if (action == DispatchDropped) return;
     if (action == DispatchSuppressed) return;
     ((void(*)(id,SEL,MTLSize,MTLSize))original(self,cmd))(self,cmd,grid,threads);
@@ -533,6 +533,12 @@ static void instrumentEncoder(id encoder) {
     hook(encoder,"setRenderPipelineState:",(IMP)pipeline);
     hook(encoder,"setComputePipelineState:",(IMP)pipeline);
     if (runtimeEnabled) {
+        // Compute constant bindings, recorded like the render stages' for the
+        // watched slots (render encoders do not respond to these).
+        hook(encoder,"setBuffer:offset:atIndex:",(IMP)bindBuffer);
+        hook(encoder,"setBuffers:offsets:withRange:",(IMP)bindBuffers);
+        hook(encoder,"setBufferOffset:atIndex:",(IMP)bufferOffset);
+        hook(encoder,"setBytes:length:atIndex:",(IMP)bindBytes);
         hook(encoder,"dispatchThreads:threadsPerThreadgroup:",(IMP)dispatch);
         hook(encoder,"dispatchThreadgroups:threadsPerThreadgroup:",(IMP)dispatch);
     }
