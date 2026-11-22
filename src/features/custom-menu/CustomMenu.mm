@@ -205,6 +205,13 @@ void *BG3MFXMenuAddSlider(void *manager, uint16_t id, const BG3MFXMenuText &name
     if (item) BG3MFXMenuSetSelectionCallback(item, changed);
     return item;
 }
+void *BG3MFXMenuAddCombo(void *manager, uint16_t id, const BG3MFXMenuText &name, const BG3MFXMenuText &description,
+                         BG3MFXMenuCallback changed) {
+    void *item = at<void *(*)(void *, uint16_t, const Text *, const Text *)>(Native::AddCombo)
+        (manager, id, &text(name), &text(description));
+    if (item) BG3MFXMenuSetSelectionCallback(item, changed);
+    return item;
+}
 float BG3MFXMenuSliderValue(const void *item) { return field<float>(item, Layout::SliderValue); }
 void BG3MFXMenuShowSliderValue(void *item, float value) {
     if (field<float>(item, Layout::SliderValue) == value) return;

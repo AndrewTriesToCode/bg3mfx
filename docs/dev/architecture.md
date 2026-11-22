@@ -391,7 +391,8 @@ only for a feature that adds options to it (metal-hud, metalfx).
   and resolves, installs and activates the registered features.
 - `src/features/custom-menu/CustomMenu.*`: the custom-menu feature, enabled
   by the features that add options. `CustomMenu.h` is its API: built
-  callbacks, an ApplyCombo wrapper chain, and item calls on BG3's ABI. It
+  callbacks, an ApplyCombo wrapper chain, and item calls on BG3's ABI
+  (tick boxes, sliders and combos). It
   patches the Video options manager's Init and ApplyCombo at activation,
   after those features have installed.
 - `src/features/custom-menu/RefreshRepair.*`: part of custom-menu (which
@@ -541,17 +542,27 @@ only for a feature that adds options to it (metal-hud, metalfx).
   incompatible casters and rejected composites invalidate the pending sequence;
   driver recycling cannot match a previous recording at the same address.
 - `src/features/improved-display/`: Improved Display (`BG3MFX_FEATURE_IMPROVED_DISPLAY=1`,
-  requires metal-hooks; native). It replaces BG3's Windows-style PQ HDR with
-  macOS EDR on every screen, including EDR-capable screens that aren't HDR
-  displays, and ignores the launcher's HDR option. `ImprovedDisplay.mm` replaces `LSMTLView`'s
-  init and `updateHDRState:` so the drawable is always EDR (RGBA16Float,
-  extended-linear BT.2020), with entry hooks on `ampas::init_TsParams` (the
-  HDR peak becomes 100 nits × the screen's current headroom) and
+  requires metal-hooks and custom-menu; native). A Display Mode combo
+  (Improved SDR, Improved HDR; saved; before a choice, HDR where the
+  screen reports any potential headroom) chooses BG3's SDR
+  path or its HDR grading; Max Nits is dimmed. It replaces BG3's
+  Windows-style PQ HDR with macOS EDR and ignores the launcher's HDR option.
+  `ImprovedDisplay.mm` replaces `LSMTLView`'s init and `updateHDRState:` so
+  the drawable is always RGBA16Float, extended-linear BT.2020, and BG3 takes
+  its HDR path in Improved HDR and its SDR path in Improved SDR. Entry hooks
+  on `ampas::init_TsParams` (Improved HDR: mid grey at SDR's level, held at
+  3 nits or more, and a `maxNits` that puts the display LUT's peak at 100 nits
+  × the screen's current headroom, from a table measured on BG3's LUT and
+  paper white read from `GraphicSettings`) and
   `ls::GameRenderView::Update` (it sets the view's state-changed flag when
-  the headroom changes, so BG3 rebuilds its display LUT). Through metal-hooks
-  it turns BGR10A2 attachments into RGBA16Float, replaces `CombineUI_HDR` and
-  `CombineUINo_UI_HDR` with `ImprovedDisplayShader.h`'s (PQ to extended linear),
-  and substitutes their sRGB gamut-compressing variants on screens without P3.
+  the headroom or mode changes, so BG3 rebuilds its display LUT). Through
+  metal-hooks it turns BGR10A2 attachments into RGBA16Float, replaces
+  `CombineUI_HDR` and `CombineUINo_UI_HDR` (PQ to extended linear, partly
+  covered UI blended as BG3's SDR composite does) and `CombineUI` and
+  `CombineUI_NoUI` (BG3's SDR composite, decoded as sRGB BT.709) with
+  `ImprovedDisplayShader.h`'s (Improved HDR also scales chroma to SDR's),
+  and substitutes HDR variants that compress into sRGB on screens without P3
+  and roll highlights off into the headroom where BG3's LUT would clamp them.
   One patched instruction starts BG3's HDR calibration at its paper white and
   contrast phase, skipping the peak luminance page.
 - `src/features/thread-idling/ThreadIdling.*`: CPU Thread Idling (`BG3MFX_FEATURE_THREAD_IDLING=1`). BG3's idle workers, job scheduler,

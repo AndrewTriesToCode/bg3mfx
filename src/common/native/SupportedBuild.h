@@ -26,6 +26,9 @@ inline constexpr uintptr_t DestroyHandle = 0x1064d0c60;
 inline constexpr uintptr_t DestroyText = 0x106545e94;
 inline constexpr uintptr_t AppendComboValue = 0x103294954;
 inline constexpr uintptr_t AddTickBox = 0x1030a39bc;
+// OptionManagerBase::AddComboBoxOption(id, name, description): returns the
+// combo, filled with ComboBoxManager::AddComboItem (AppendComboValue).
+inline constexpr uintptr_t AddCombo = 0x1030a3e4c;
 // OptionManagerBase::AddSliderOption(id, name, description, value, min, max,
 // bool): Max Frame Rate (id 0x54) passes 10, 240 and true.
 inline constexpr uintptr_t AddSlider = 0x1030a4784;
@@ -301,6 +304,9 @@ inline constexpr uint32_t CalibrationFirstPhaseOriginal = 0x52800028; // mov w8,
 inline constexpr uint32_t CalibrationFirstPhasePatched = 0x52800048;  // mov w8, #2
 }
 namespace ImprovedDisplay::Layout {
+// GraphicSettings (Temporal::Settings): HDR paper white (float, nits), which
+// PostProcessStep_ComputeLUTs applies to the display LUT's output (x / 100).
+inline constexpr size_t SettingsPaperWhite = 0x80;
 // GameRenderView: the state-changed flag (u8) Update consumes.
 inline constexpr size_t RenderViewStateChanged = 0x2b78;
 }

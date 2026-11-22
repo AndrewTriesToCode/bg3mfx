@@ -42,7 +42,7 @@ BG3MFX mods Baldur's Gate 3 on Mac to improve performance and reduce power usage
 | **CAS Sharpening with MetalFX** | Keeps the game's CAS sharpening tick box and slider working with MetalFX Spatial and Temporal; the game normally allows CAS only with upscaling off. |
 | **Improved Shadows** | Draws the sun's shadows once per frame instead of twice, replaces the sun shadow filter to fix dotted lines, diamond patches and dark slopes, and removes the black wedges that torches and other point lights throw around themselves. |
 | **Ambient Occlusion Blur Fix** | Fixes the game's ambient occlusion blur, which on Macs smooths only vertically, so it smooths horizontally too. |
-| **Improved Display** | Replaces the game's Windows-style HDR with macOS EDR, using your screen's real brightness headroom. Brighter highlights and P3 color even on screens that aren't HDR displays, such as the Apple Studio Display and MacBook Air. The launcher's HDR option no longer matters, and HDR calibration skips the peak-brightness step. |
+| **Improved Display** | Replaces the game's Windows-style HDR with macOS EDR. A Display Mode option (Options → Video) picks **Improved HDR**, with SDR's mid tones and color, P3 color and highlights up to your screen's real brightness headroom, or **Improved SDR**, the game's SDR image in accurate color without banding. Your choice is saved; until you pick, screens with headroom get Improved HDR, including the Apple Studio Display and MacBook Air below full brightness. The launcher's HDR option no longer matters, and HDR calibration skips the peak-brightness step. |
 
 ### CPU features
 

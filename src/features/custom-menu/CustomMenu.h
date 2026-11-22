@@ -64,6 +64,10 @@ bool BG3MFXMenuTickBoxValue(const void *item);
 void *BG3MFXMenuAddSlider(void *manager, uint16_t id, const BG3MFXMenuText &name, const BG3MFXMenuText &description,
                           float value, float lowest, float highest, BG3MFXMenuCallback changed);
 float BG3MFXMenuSliderValue(const void *item);
+// An empty combo, added last; fill it with BG3MFXMenuAppendComboValue and
+// BG3MFXMenuComboItemsChanged, then set its selection.
+void *BG3MFXMenuAddCombo(void *manager, uint16_t id, const BG3MFXMenuText &name, const BG3MFXMenuText &description,
+                         BG3MFXMenuCallback changed);
 // Shows a tick box value without calling its selection callback.
 void BG3MFXMenuShowTickBoxValue(void *item, bool value);
 // Shows `value` on a slider, notifying its value observers.
