@@ -157,6 +157,19 @@ inline constexpr uintptr_t ScaleOffsetTable = 0x10785a5a0, IdentityTable = 0x108
 // call to BindIsland, which stores the slot just written: ldr w9, [x20,
 // #0x28]; and w9, w9, #0x3; ldr x9, [x20, w9, uxtw #3]; str x9, [x0, #0x8];
 // ret. The function saved x30, and x9 is free there.
+// draw-distance (src/features/improved-draw-distance/): ls::GlobalSwitches::Reset sets
+// the size cull's full-strength distance, one per Detail Distance value, at
+// switches +0x80/+0x84/+0x88. +0x80 is the last float of the 16-byte constant
+// `ldr q0` loads for +0x74 (its first three floats are the size thresholds);
+// +0x84/+0x88 come from `mov w9, #0x42480000` (50.0) and `dup.2s v0, w9`.
+// Nothing else reads that constant.
+namespace ImprovedDrawDistance {
+inline constexpr uintptr_t ResetConstant = 0x107872b50;
+inline constexpr uint32_t ResetConstantOriginal[] = {0x3c83126f, 0x3c9374bc, 0x3ca3d70a, 0x42480000};
+inline constexpr size_t ResetConstantDistanceWord = 3;
+inline constexpr uintptr_t ResetDistanceMove = 0x1064d2d54;
+inline constexpr uint32_t ResetDistanceMoveOriginal = 0x52a84909; // mov w9, #0x42480000
+}
 namespace SSAOBlur {
 inline constexpr uintptr_t Bind = 0x1061086c8;
 inline constexpr uint32_t BindOriginal[] = {0x91002260, 0x52800115, 0x52800501, 0x52800102, 0x940e7a50, 0xf9000414, 0x9000bb48,

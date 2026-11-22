@@ -35,7 +35,7 @@ time: `--feature thread-idling`, repeatable, with any of `metal-hud`,
 `max-frame-rate`, `metalfx`, `improved-shadows`,
 `render-thread-optimizations`, `new-character-crash-fix`, `lua-jump-fix`,
 `script-fixes`, `thread-idling`, `reduce-locking`, `ssao-blur-fix`,
-`animation-optimizations` and `improved-display`. A feature brings the features it
+`improved-draw-distance`, `animation-optimizations` and `improved-display`. A feature brings the features it
 requires (custom-menu for the menu options, custom-render-stages for the shadow
 features). Shell `BG3MFX_FEATURE_*` variables are ignored. Run
 it from your own Terminal: a process without access to `~/Documents` starts BG3

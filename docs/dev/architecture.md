@@ -421,6 +421,11 @@ only for a feature that adds options to it (metal-hud, metalfx).
   metalfx: Temporal's jitter, guarded sample selection and ARM64
   preservation. If it cannot install it shows "MetalFX could not start" and
   metalfx's install fails.
+- `src/features/improved-draw-distance/ImprovedDrawDistance.*`: raises the distance at which
+  BG3's size cull reaches full strength from 50 m to 100 m, so small props and
+  their shadows stay drawn about twice as far
+  (`BG3MFX_FEATURE_IMPROVED_DRAW_DISTANCE=1`, set by the player launcher). Patches the two sites in
+  `ls::GlobalSwitches::Reset` that write it (+0x80/+0x84/+0x88).
 - `src/features/metalfx/ultra-performance/UltraPerformance.*`: part of
   metalfx, optional: when it cannot install, MetalFX starts without Ultra Performance.
 - `src/features/metalfx/cas-sharpening/CASSharpening.*`: part of metalfx,
