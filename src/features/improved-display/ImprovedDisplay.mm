@@ -34,7 +34,9 @@
 // - BG3's composition pipelines (CombineUI_HDR, CombineUINo_UI_HDR, CombineUI,
 //   CombineUI_NoUI) get bg3mfx's fragment functions, which write extended
 //   linear in place of PQ or Display P3-tagged sRGB, and every pipeline drawing
-//   to BG3's HDR drawable format (BGR10A2Unorm) draws to RGBA16Float.
+//   to BG3's HDR drawable format (BGR10A2Unorm) draws to RGBA16Float. With the
+//   launcher's HDR option on, BG3 builds the compositions and cursor for
+//   RGB10A2Unorm instead; those are retargeted too.
 // - BG3's HDR calibration skips its peak luminance page.
 // - A Display Mode combo in Video options picks the look: Improved SDR (BG3's
 //   SDR image in its own BT.709 colors, at SDR white) or Improved HDR (BG3's
@@ -295,11 +297,15 @@ MTLRenderPipelineDescriptor *filterPipeline(id device, MTLRenderPipelineDescript
     bool drawable = false;
     for (NSUInteger i = 0; i < 8 && !drawable; ++i) drawable = desc.colorAttachments[i].pixelFormat == MTLPixelFormatBGR10A2Unorm;
     // BG3 builds its drawable's pipelines (the compositions and the soft
-    // cursor) for BGR10A2Unorm or BGRA8Unorm, whichever path it started on.
-    // It also draws CombineUI and CombineUI_HDR into 8-bit offscreen targets
-    // (RGBA8Unorm), which keep BG3's pipeline.
+    // cursor) for BGR10A2Unorm or BGRA8Unorm, whichever path it started on, or
+    // RGB10A2Unorm when the launcher's HDR option is on. That path also tone
+    // maps (PPToneMap_LUT) into an RGB10A2Unorm offscreen target, so only the
+    // drawable's functions are retargeted from that format. BG3 also draws
+    // CombineUI and CombineUI_HDR into 8-bit offscreen targets (RGBA8Unorm),
+    // which keep BG3's pipeline.
     const MTLPixelFormat target = desc.colorAttachments[0].pixelFormat;
-    const bool onDrawable = target == MTLPixelFormatBGR10A2Unorm || target == MTLPixelFormatBGRA8Unorm;
+    const bool onDrawable = target == MTLPixelFormatBGR10A2Unorm || target == MTLPixelFormatBGRA8Unorm ||
+                            target == MTLPixelFormatRGB10A2Unorm;
     const bool composition = compositionFunction(fragment) && onDrawable;
     const bool cursor = [fragment isEqualToString:@"SoftCursorPS"] && onDrawable;
     if (!composition && !cursor && !drawable) return desc;

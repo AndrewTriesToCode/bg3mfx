@@ -561,7 +561,8 @@ only for a feature that adds options to it (metal-hud, metalfx).
   paper white read from `GraphicSettings`) and
   `ls::GameRenderView::Update` (it sets the view's state-changed flag when
   the headroom or mode changes, so BG3 rebuilds its display LUT). Through
-  metal-hooks it turns BGR10A2 attachments into RGBA16Float, replaces
+  metal-hooks it turns BGR10A2 attachments, and the composites' and soft
+  cursor's RGB10A2 ones (the launcher's HDR option), into RGBA16Float, replaces
   `CombineUI_HDR` and `CombineUINo_UI_HDR` (PQ to extended linear, partly
   covered UI blended as BG3's SDR composite does) and `CombineUI` and
   `CombineUI_NoUI` (BG3's SDR composite, decoded as sRGB BT.709) with

@@ -148,6 +148,11 @@ With this feature, on any screen:
 - **Pipelines** (metal-hooks):
   - A render-pipeline filter changes every BGR10A2Unorm attachment (BG3's HDR
     drawable format) to RGBA16Float.
+  - With the launcher's HDR option on, BG3 builds its drawable's pipelines
+    (the composites and the soft cursor) for RGB10A2Unorm instead, and tone
+    maps (`PPToneMap_LUT`) into an RGB10A2Unorm offscreen target. Only the
+    composite and cursor pipelines are moved off that format; the tone map
+    keeps its target.
   - It swaps the fragment functions of `CombineUI_HDR`,
     `CombineUINo_UI_HDR`, `CombineUI` and `CombineUI_NoUI` for bg3mfx's
     ([`ImprovedDisplayShader.h`](ImprovedDisplayShader.h), compiled once per
