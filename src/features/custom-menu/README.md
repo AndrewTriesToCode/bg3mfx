@@ -3,7 +3,7 @@
 Technical name: `custom-menu`.
 
 There is no flag of its own: it is enabled by the features that require it
-(metal-hud, metalfx and max-frame-rate), and requires metal-hooks. It needs the
+(metal-hud, metalfx, max-frame-rate and notch-area), and requires metal-hooks. It needs the
 supported ARM64 executable. It also repairs three BG3 Video settings bugs
 (below).
 
@@ -34,6 +34,8 @@ below the notch (1728×1084 pt), as a resolution change does. With Scale to
 fit on, the window is not moved: macOS scales the whole full-screen space
 below the camera, with bars at the sides, and BG3's 16:10 picture is
 stretched to the window's height (not repaired).
+With [notch-area](../notch-area/README.md) on, the window is not in macOS
+full screen on a notched screen, so this repair does not apply there.
 
 ### Borderless refresh repair
 

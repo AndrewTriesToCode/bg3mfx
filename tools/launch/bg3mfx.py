@@ -46,6 +46,7 @@ FEATURES = (
     "improved-draw-distance",
     "animation-optimizations",
     "improved-display",
+    "notch-area",
 )
 
 
