@@ -457,7 +457,10 @@ only for a feature that adds options to it (metal-hud, metalfx).
   custom-menu): a Use Notch Area checkbox after Display Mode. On a screen with
   a notch it wraps `LSWindow`'s `toggleFullScreen:` so BG3's borderless window
   gets the screen's whole frame with the menu bar and Dock hidden, instead of
-  macOS full screen below the notch.
+  macOS full screen below the notch. On the supported build, entry hooks on
+  `ui::NoesisUIManager::Render` and `Noesis::View::Update` give the combat
+  turn order (`CombatantsOverlay`'s `CombatState`) a top margin below the
+  notch.
 - `src/features/max-frame-rate/MaxFrameRate.mm`: the max-frame-rate feature (requires
   custom-menu and metal-hooks): a Snap to Native FPS checkbox between Max
   Frame Rate's tick box (0x53) and slider (0x54), following the tick box.

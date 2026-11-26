@@ -316,6 +316,33 @@ inline constexpr uintptr_t CalibrationFirstPhase = 0x1024e7e58;
 inline constexpr uint32_t CalibrationFirstPhaseOriginal = 0x52800028; // mov w8, #1
 inline constexpr uint32_t CalibrationFirstPhasePatched = 0x52800048;  // mov w8, #2
 }
+// notch-area: entry hooks on BG3's UI manager render and Noesis's view update,
+// and the Noesis calls that move the combat turn order below the notch.
+namespace NotchArea {
+// ui::NoesisUIManager::Render(this), each frame on the render thread: renders
+// the view at Layout::ManagerView. `sub sp, sp, #0x40`.
+inline constexpr uintptr_t ManagerRender = 0x1038b3378;
+inline constexpr uint32_t ManagerRenderFirst = 0xd10103ff;
+// Noesis::View::Update(this, double time), each frame for every view on the
+// thread that may change its tree; it lays the tree out. `sub sp, sp, #0x80`.
+inline constexpr uintptr_t ViewUpdate = 0x10777cc70;
+inline constexpr uint32_t ViewUpdateFirst = 0xd10203ff;
+// Noesis::FrameworkElement::GetName, GetActualHeight, GetMargin, SetMargin,
+// and Noesis::VisualTreeHelper::GetChildrenCount and GetChild.
+inline constexpr uintptr_t GetName = 0x1004d868c;
+inline constexpr uintptr_t GetActualHeight = 0x1004d7c50;
+inline constexpr uintptr_t GetMargin = 0x1004d8238;
+inline constexpr uintptr_t SetMargin = 0x1004d8248;
+inline constexpr uintptr_t GetChildrenCount = 0x1006080f8;
+inline constexpr uintptr_t GetChild = 0x100608104;
+}
+namespace NotchArea::Layout {
+// ui::NoesisUIManager: its view, a Noesis::IView *.
+inline constexpr size_t ManagerView = 0x70;
+// Noesis::View: its IView base (the thunks subtract 0x10) and its content.
+inline constexpr size_t ViewInterface = 0x10;
+inline constexpr size_t ViewContent = 0x20;
+}
 namespace ImprovedDisplay::Layout {
 // GraphicSettings (Temporal::Settings): HDR paper white (float, nits), which
 // PostProcessStep_ComputeLUTs applies to the display LUT's output (x / 100).
@@ -469,7 +496,8 @@ inline constexpr Island CustomPipelineBundles{0xad8, 2 * 24};
 inline constexpr Island ImprovedDisplay{0xb08, 2 * 24};
 inline constexpr Island ScriptFixes{0xb38, 2 * 24};
 inline constexpr Island CASRendering{0xb68, 24};
-inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, RenderScale, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes, CASRendering};
+inline constexpr Island NotchArea{0xb80, 2 * 24};
+inline constexpr Island All[] = {Temporal, Lua, ThreadIdle, UniformSlices, RenderScale, SSAOBlur, CustomPipelineBundles, ImprovedDisplay, ScriptFixes, CASRendering, NotchArea};
 constexpr bool valid(const Island *ranges, size_t count) {
     for (size_t i=0; i<count; ++i) {
         const Island current = ranges[i];

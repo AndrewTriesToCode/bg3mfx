@@ -4,7 +4,9 @@ Technical name: `notch-area`.
 
 Opt-in with `BG3MFX_FEATURE_NOTCH_AREA=1` (the `bg3mfx` launcher sets it;
 development launches: `--feature notch-area`). Requires custom-menu. Not
-native: it uses no executable offsets, only AppKit on BG3's `LSWindow`.
+native: the window part is AppKit on BG3's `LSWindow`; the turn-order part
+hooks BG3 and Noesis functions and is installed only on the supported build
+(`SupportedBuild.h`, `NotchArea`).
 
 ## Behavior
 
@@ -12,8 +14,9 @@ On a MacBook with a notch, BG3's Borderless mode leaves a black bar across
 the top of the screen: the strip beside the camera notch is not used. With
 this feature the game is drawn into that strip too, so it covers the whole
 panel (1280×832 pt instead of 1280×800 pt on a 13-inch MacBook Air). The
-notch itself hides the part of the picture behind it, including part of the
-HUD at the top center (the combat turn order).
+notch itself hides the part of the picture behind it. The combat turn order,
+at the top center, is moved down below the notch; the rest of the HUD,
+menus and loading screens keep their place.
 
 **Use Notch Area** (Options → Video, after Display Mode, saved across
 launches as `BG3MFXNotchArea`) is on by default. It is listed only when a
@@ -56,6 +59,29 @@ the two: unticked, it restores the options and enters native full screen;
 ticked, it leaves native full screen and covers the screen once BG3's
 `windowDidExitFullScreen:` has run.
 
+### Turn order
+
+BG3's UI is one Noesis view: `CanvasRoot`, then `ViewboxRoot` (scaling a
+3323×2160-unit design to the screen), then `ContentRoot`, a grid of widgets.
+The turn order is the `CombatantsOverlay` widget: `HudRoot`, then
+`HudRootPresenter`, then `CombatState`, a full-screen border around a
+top-anchored panel of portraits, and nothing else.
+
+Two entry hooks (islands in `Islands::NotchArea`) move it:
+
+- `ui::NoesisUIManager::Render` records the view BG3 renders (its `IView` at
+  +0x70, 0x10 into the `Noesis::View`).
+- `Noesis::View::Update`, on the thread that may change the view's tree, finds
+  `CombatState` by name along that path for BG3's view, and sets its top
+  margin to its original one plus the notch's share of the UI's height
+  (`safeAreaInsets.top / frame height`, 73 of 2160 units on a 13-inch MacBook
+  Air) while the window is beside the notch, and back otherwise. A new widget
+  (combat starting again) is found the next frame.
+
+Noesis hit-tests in its own layout, so hover and clicks follow the portraits.
+Moving BG3's whole UI root instead was tried and dropped: full-screen panels
+and loading art then sat below a strip of game world.
+
 custom-menu's Borderless fit repair only acts on native full-screen windows,
 so it applies only when this feature is off or the screen has no notch.
 
@@ -67,5 +93,6 @@ panel). In native full screen the 1280×832 pt surface was shown in a
 The Borderless fill, clicks at the top and bottom edges, and the tick box
 switching both ways were user-confirmed November 26, 2026 (13-inch MacBook
 Air, BG3 4.1.1.7631656), as was the fill with MetalFX upscaling and every
-other feature on, started from BG3MFX Fast.app. Fullscreen at 20:13 got the
+other feature on, started from the bg3mfx launcher, and the turn order below the
+notch with hover and clicks working. Fullscreen at 20:13 got the
 full-screen frame, from the window list, but was not checked by eye.
