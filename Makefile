@@ -102,6 +102,7 @@ RUNTIME_SOURCES = \
 	src/features/custom-menu/RenderViewFocus.mm \
 	src/features/custom-menu/RefreshRepair.mm \
 	src/features/custom-menu/FullscreenFit.mm \
+	src/features/notch-area/NotchArea.mm \
 	src/common/gpu/GPUResources.mm \
 	src/common/gpu/MetalFXPipeline.mm \
 	src/common/native/CodePatch.mm \

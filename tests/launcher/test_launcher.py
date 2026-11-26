@@ -68,7 +68,8 @@ class LauncherTests(unittest.TestCase):
             for feature in ("METAL_HUD", "METALFX", "IMPROVED_SHADOWS",
                             "RENDER_THREAD_OPTIMIZATIONS", "NEW_CHARACTER_CRASH_FIX", "LUA_JUMP_FIX",
                             "THREAD_IDLING", "REDUCE_LOCKING", "SSAO_BLUR_FIX", "ANIMATION_OPTIMIZATIONS",
-                            "IMPROVED_DRAW_DISTANCE", "IMPROVED_DISPLAY", "MAX_FRAME_RATE", "SCRIPT_FIXES"):
+                            "IMPROVED_DRAW_DISTANCE", "IMPROVED_DISPLAY", "MAX_FRAME_RATE", "SCRIPT_FIXES",
+                            "NOTCH_AREA"):
                 self.assertIn(f"BG3MFX_FEATURE_{feature}=1", result.stdout)
 
     def test_features_can_be_opted_out(self):
